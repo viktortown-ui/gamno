@@ -1,6 +1,22 @@
 import { METRICS, type MetricId } from '../../metrics'
 import type { InfluenceMatrix, MetricVector } from './types'
 
+export interface InfluenceEdge {
+  from: MetricId
+  to: MetricId
+  weight: number
+  absWeight: number
+}
+
+export interface DriverInsight {
+  from: MetricId
+  to: MetricId
+  weight: number
+  change: number
+  strength: number
+  text: string
+}
+
 export const defaultInfluenceMatrix: InfluenceMatrix = {
   energy: { focus: 0.4, mood: 0.3, productivity: 0.5 },
   focus: { productivity: 0.6, stress: -0.2 },
@@ -46,8 +62,33 @@ export function applyImpulse(
   return next
 }
 
-export function explainDrivers(result: MetricVector, base: MetricVector, matrix: InfluenceMatrix): string[] {
-  const drivers: { text: string; strength: number }[] = []
+export function listInfluenceEdges(matrix: InfluenceMatrix): InfluenceEdge[] {
+  const edges: InfluenceEdge[] = []
+  for (const from of Object.keys(matrix) as MetricId[]) {
+    for (const to of Object.keys(matrix[from]) as MetricId[]) {
+      const weight = matrix[from][to] ?? 0
+      edges.push({ from, to, weight, absWeight: Math.abs(weight) })
+    }
+  }
+  return edges
+}
+
+export function explainDrivers(
+  result: MetricVector,
+  base: MetricVector,
+  matrix: InfluenceMatrix,
+  limit = 5,
+): string[] {
+  return explainDriverInsights(result, base, matrix, limit).map((d) => d.text)
+}
+
+export function explainDriverInsights(
+  result: MetricVector,
+  base: MetricVector,
+  matrix: InfluenceMatrix,
+  limit = 5,
+): DriverInsight[] {
+  const drivers: DriverInsight[] = []
   for (const from of Object.keys(matrix) as MetricId[]) {
     for (const to of Object.keys(matrix[from]) as MetricId[]) {
       const change = result[from] - base[from]
@@ -55,13 +96,20 @@ export function explainDrivers(result: MetricVector, base: MetricVector, matrix:
       const strength = Math.abs(change * weight)
       if (strength > 0.1) {
         drivers.push({
-          text: `${label(from)} ${change >= 0 ? '↑' : '↓'} → ${label(to)} ${weight >= 0 ? '↑' : '↓'}`,
+          from,
+          to,
+          weight,
+          change,
           strength,
+          text: `${label(from)} ${change >= 0 ? '↑' : '↓'} → ${label(to)} ${weight >= 0 ? 'усиливает' : 'ослабляет'}`,
         })
       }
     }
   }
-  return drivers.sort((a, b) => b.strength - a.strength).slice(0, 3).map((d) => d.text)
+
+  return drivers
+    .sort((a, b) => b.strength - a.strength || Math.abs(b.weight) - Math.abs(a.weight) || a.from.localeCompare(b.from) || a.to.localeCompare(b.to))
+    .slice(0, limit)
 }
 
 function label(metricId: MetricId): string {

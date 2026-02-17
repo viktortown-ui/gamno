@@ -52,13 +52,13 @@ export function DashboardPage({ checkins }: { checkins: CheckinRecord[] }) {
   return (
     <section className="page">
       <h1>Дашборд</h1>
-      <article className="summary-card">
-        <h2>Сводка 7 дней</h2>
-        <p>Индекс: <strong>{formatNumber(analytics.indexAvg7)}</strong></p>
-        <p>Тренд: {analytics.indexDelta7 > 0 ? '+' : ''}{formatNumber(analytics.indexDelta7)}</p>
-        <p>Серия: <strong>{analytics.streak}</strong></p>
-        <p>Волатильность: <strong>{volatilityLabel}</strong></p>
-      </article>
+      <div className="cockpit-strip">
+        <article><span>Индекс (7д)</span><strong>{formatNumber(analytics.indexAvg7)}</strong></article>
+        <article><span>Δ к прошлым 7д</span><strong>{analytics.indexDelta7 > 0 ? '+' : ''}{formatNumber(analytics.indexDelta7)}</strong></article>
+        <article><span>Сигналы</span><strong>{analytics.signals.length}</strong></article>
+        <article><span>Прогноз next7</span><strong>{formatNumber(analytics.forecast.values[analytics.forecast.values.length - 1] ?? analytics.indexAvg7)}</strong></article>
+        <article><span>Волатильность</span><strong className={`volatility volatility--${volatilityLabel}`}>{volatilityLabel}</strong></article>
+      </div>
 
       <div className="metric-cards">
         {METRICS.filter((m) => m.id !== 'cashFlow').map((metric) => {
