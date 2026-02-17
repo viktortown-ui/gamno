@@ -1,20 +1,20 @@
 import type { ChangeEventHandler } from 'react'
-import { clearAllData, exportData, importData } from '../core/storage/repo'
+import { clearAllData, exportDataBlob, importDataBlob, seedDemoData } from '../core/storage/repo'
 
 export function SettingsPage({ onDataChanged }: { onDataChanged: () => Promise<void> }) {
   const handleClear = async () => {
-    if (!window.confirm('Точно очистить все локальные данные?')) return
+    if (!window.confirm('Это удалит все данные локально в браузере')) return
     await clearAllData()
     await onDataChanged()
   }
 
   const handleExport = async () => {
-    const payload = await exportData()
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+    const blob = await exportDataBlob()
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
+    const date = new Date().toLocaleDateString('ru-RU').replace(/\./g, '-')
     link.href = url
-    link.download = `gamno-export-${new Date().toISOString().slice(0, 10)}.json`
+    link.download = `gamno-backup-${date}.json`
     link.click()
     URL.revokeObjectURL(url)
   }
@@ -22,29 +22,28 @@ export function SettingsPage({ onDataChanged }: { onDataChanged: () => Promise<v
   const handleImport: ChangeEventHandler<HTMLInputElement> = async (event) => {
     const file = event.target.files?.[0]
     if (!file) return
-    if (!window.confirm('Импорт заменит текущие данные. Продолжить?')) {
-      event.target.value = ''
-      return
-    }
-
-    const text = await file.text()
-    const payload = JSON.parse(text)
-    await importData(payload)
+    if (!window.confirm('Перезаписать данные?')) return
+    await importDataBlob(file)
     await onDataChanged()
     event.target.value = ''
+  }
+
+  const handleSeed = async () => {
+    const raw = window.prompt('Введите seed (опционально)')
+    const seed = raw ? Number(raw) : 42
+    await seedDemoData(30, Number.isFinite(seed) ? seed : 42)
+    await onDataChanged()
   }
 
   return (
     <section className="page">
       <h1>Настройки</h1>
-      <p>Данные сохраняются локально в браузере (IndexedDB).</p>
+      <p>Данные хранятся локально в IndexedDB.</p>
       <div className="settings-actions">
         <button type="button" onClick={handleExport}>Экспорт данных</button>
-        <label className="import-label">
-          Импорт данных
-          <input type="file" accept="application/json" onChange={handleImport} />
-        </label>
+        <label className="import-label">Импорт данных<input type="file" onChange={handleImport} /></label>
         <button type="button" onClick={handleClear}>Очистить данные</button>
+        <button type="button" onClick={handleSeed}>Сгенерировать демо-данные (30 дней)</button>
       </div>
     </section>
   )

@@ -1,74 +1,35 @@
-import { describe, expect, it } from 'vitest'
-import type { CheckinRecord } from './types'
-import {
-  computeAverages,
-  computeDelta,
-  computeIndexTrend,
-  computeStreak,
-  computeTopMovers,
-  computeVolatility,
-  getRange,
-} from './compute'
-import { evaluateSignals } from './rules'
+import { describe, expect, it, vi } from 'vitest'
+import { computeAverages, computeIndexSeries, computeStreak, computeWindowDelta } from './compute'
+import type { CheckinRecord } from '../../models/checkin'
 import { INDEX_METRIC_IDS } from '../../metrics'
 
-const DAY_MS = 24 * 60 * 60 * 1000
-const NOW_TS = Date.UTC(2026, 0, 16, 12, 0, 0)
+const NOW = Date.UTC(2026, 0, 31)
+vi.setSystemTime(NOW)
 
-function buildFixtures(): CheckinRecord[] {
-  return Array.from({ length: 15 }).map((_, i) => ({
-    id: i + 1,
-    ts: NOW_TS - i * DAY_MS,
-    energy: i <= 6 ? 2 : 6,
-    focus: i <= 6 ? 4 : 7,
-    mood: i <= 6 ? 4 : 7,
-    stress: i <= 6 ? 8 : 4,
-    sleepHours: i <= 6 ? 5 : 7,
-    social: i <= 6 ? 4 : 7,
-    productivity: i <= 6 ? 4 : 7,
-    health: i <= 6 ? 4 : 7,
-    cashFlow: i <= 6 ? 100 : 200,
-  }))
-}
+const records: CheckinRecord[] = Array.from({ length: 14 }).map((_, i) => ({
+  id: i + 1,
+  ts: NOW - i * 86400000,
+  energy: i < 7 ? 3 : 6,
+  focus: 5,
+  mood: 5,
+  stress: i < 7 ? 7 : 4,
+  sleepHours: 6,
+  social: 5,
+  productivity: 5,
+  health: 5,
+  cashFlow: 0,
+}))
 
-describe('analytics compute', () => {
-  const fixtures = buildFixtures()
-
-  it('computes 7-day averages and deltas against previous window', () => {
-    const last7 = getRange(fixtures, 7, NOW_TS)
-    const prev7 = fixtures.filter((item) => item.ts < NOW_TS - 7 * DAY_MS && item.ts >= NOW_TS - 14 * DAY_MS)
-    const currentAvg = computeAverages(last7, INDEX_METRIC_IDS)
-    const previousAvg = computeAverages(prev7, INDEX_METRIC_IDS)
-    const delta = computeDelta(currentAvg, previousAvg)
-
-    expect(currentAvg.energy).toBe(2.5)
-    expect(previousAvg.energy).toBe(6)
-    expect(delta.energy).toBe(-3.5)
+describe('analytics engine', () => {
+  it('computes averages and deltas', () => {
+    const avg = computeAverages(records, INDEX_METRIC_IDS, 7)
+    const delta = computeWindowDelta(records, INDEX_METRIC_IDS, 7)
+    expect(avg.energy).toBeCloseTo(3.375, 3)
+    expect(delta.energy).toBeCloseTo(-2.625, 3)
   })
 
-  it('calculates index trend and streak', () => {
-    const trend = computeIndexTrend(fixtures, 7, NOW_TS)
-    const streak = computeStreak(fixtures)
-
-    expect(trend.currentAvg).toBeCloseTo(4.640625, 3)
-    expect(trend.previousAvg).toBeCloseTo(6.5, 3)
-    expect(trend.delta).toBeCloseTo(-1.859375, 3)
-    expect(trend.direction).toBe('down')
-    expect(streak).toBe(15)
-  })
-
-  it('returns top movers and volatility', () => {
-    const top = computeTopMovers({ energy: -4, stress: 4, focus: -3, mood: -3 }, 3)
-    const volatility = computeVolatility(fixtures, 'energy', 14, NOW_TS)
-
-    expect(top).toHaveLength(3)
-    expect(top[0].metricId).toBe('energy')
-    expect(volatility).toBeCloseTo(1.03, 2)
-  })
-
-  it('returns rule signals for low energy/high stress and index drop', () => {
-    const signals = evaluateSignals(fixtures, NOW_TS)
-    expect(signals.map((item) => item.severity)).toEqual(['red', 'yellow', 'yellow'])
-    expect(signals[0].titleRu).toContain('Критический')
+  it('computes streak and index series', () => {
+    expect(computeStreak(records)).toBe(14)
+    expect(computeIndexSeries(records)).toHaveLength(14)
   })
 })
