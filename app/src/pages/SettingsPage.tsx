@@ -1,7 +1,15 @@
 import type { ChangeEventHandler } from 'react'
 import { clearAllData, exportDataBlob, importDataBlob, seedTestData } from '../core/storage/repo'
+import type { AppearanceSettings } from '../ui/appearance'
+import { SparkButton } from '../ui/SparkButton'
 
-export function SettingsPage({ onDataChanged }: { onDataChanged: () => Promise<void> }) {
+interface SettingsPageProps {
+  onDataChanged: () => Promise<void>
+  appearance: AppearanceSettings
+  onAppearanceChange: (next: AppearanceSettings) => void
+}
+
+export function SettingsPage({ onDataChanged, appearance, onAppearanceChange }: SettingsPageProps) {
   const handleClear = async () => {
     if (!window.confirm('Это удалит все данные локально в браузере')) return
     await clearAllData()
@@ -29,21 +37,46 @@ export function SettingsPage({ onDataChanged }: { onDataChanged: () => Promise<v
   }
 
   const handleSeed = async () => {
-    const raw = window.prompt('Введите Сид (seed) (опционально)')
+    const raw = window.prompt('Введите сид (опционально)')
     const seed = raw ? Number(raw) : 42
     await seedTestData(30, Number.isFinite(seed) ? seed : 42)
     await onDataChanged()
   }
 
   return (
-    <section className="page">
+    <section className="page panel">
       <h1>Настройки</h1>
       <p>Данные хранятся локально в IndexedDB.</p>
+
+      <article className="panel settings-panel">
+        <h2>Оформление</h2>
+        <div className="settings-appearance">
+          <label>Тема
+            <select
+              value={appearance.theme}
+              onChange={(event) => onAppearanceChange({ ...appearance, theme: event.target.value === 'light' ? 'light' : 'dark' })}
+            >
+              <option value="light">Светлая</option>
+              <option value="dark">Тёмная</option>
+            </select>
+          </label>
+          <label>Движение
+            <select
+              value={appearance.motion}
+              onChange={(event) => onAppearanceChange({ ...appearance, motion: event.target.value === 'reduced' ? 'reduced' : 'normal' })}
+            >
+              <option value="normal">Обычная</option>
+              <option value="reduced">Сниженная</option>
+            </select>
+          </label>
+        </div>
+      </article>
+
       <div className="settings-actions">
-        <button type="button" onClick={handleExport}>Экспорт данных</button>
+        <SparkButton type="button" onClick={handleExport}>Экспорт данных</SparkButton>
         <label className="import-label">Импорт данных<input type="file" onChange={handleImport} /></label>
-        <button type="button" onClick={handleClear}>Очистить данные</button>
-        <button type="button" onClick={handleSeed}>Сгенерировать тестовые данные (30 дней)</button>
+        <SparkButton type="button" onClick={handleClear}>Очистить данные</SparkButton>
+        <SparkButton type="button" onClick={handleSeed}>Сгенерировать тестовые данные (30 дней)</SparkButton>
       </div>
     </section>
   )

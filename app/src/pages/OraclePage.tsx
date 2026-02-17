@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { INDEX_METRIC_IDS, METRICS, type MetricId } from '../core/metrics'
 import type { CheckinRecord } from '../core/models/checkin'
-import { addScenario, listCheckins, listScenarios, loadInfluenceMatrix } from '../core/storage/repo'
+import { addScenario, listCheckins, listScenarios, loadInfluenceMatrix, seedTestData } from '../core/storage/repo'
 import { explainDriverInsights } from '../core/engines/influence/influence'
 import type { InfluenceMatrix, MetricVector, OracleScenario } from '../core/engines/influence/types'
 import { computeIndexDay } from '../core/engines/analytics/compute'
 import { formatDateTime, formatNumber } from '../ui/format'
 import { buildPlaybook, propagateBySteps } from '../core/engines/influence/oracle'
+import { SparkButton } from '../ui/SparkButton'
 
 function toVector(base?: CheckinRecord): MetricVector | undefined {
   if (!base) return undefined
@@ -23,23 +25,48 @@ export function OraclePage({ latest }: { latest?: CheckinRecord }) {
   const [saved, setSaved] = useState<OracleScenario[]>([])
   const [baselineTs, setBaselineTs] = useState<number | 'latest'>('latest')
   const [checkins, setCheckins] = useState<CheckinRecord[]>([])
+  const navigate = useNavigate()
+
+  const refreshOracleData = async () => {
+    const [loadedMatrix, loadedScenarios, loadedCheckins] = await Promise.all([
+      loadInfluenceMatrix(),
+      listScenarios(),
+      listCheckins(),
+    ])
+    setMatrix(loadedMatrix)
+    setSaved(loadedScenarios)
+    setCheckins(loadedCheckins)
+  }
 
   useEffect(() => {
-    void loadInfluenceMatrix().then(setMatrix)
-    void listScenarios().then(setSaved)
-    void listCheckins().then(setCheckins)
+    void refreshOracleData()
   }, [])
 
   const baseline = useMemo(() => {
-    if (baselineTs === 'latest') return latest
-    return checkins.find((item) => item.ts === baselineTs) ?? latest
+    if (baselineTs === 'latest') return checkins[0] ?? latest
+    return checkins.find((item) => item.ts === baselineTs) ?? checkins[0] ?? latest
   }, [baselineTs, checkins, latest])
 
   const baseVector = useMemo(() => toVector(baseline), [baseline])
   const propagation = useMemo(() => (baseVector && matrix ? propagateBySteps(baseVector, impulses, matrix, 3) : undefined), [baseVector, impulses, matrix])
   const result = propagation?.[2]
 
-  if (!latest || !baseVector || !matrix || !result || !baseline) return <section className="page"><h1>Оракул</h1><p>Нет базового чек-ина для сценариев.</p></section>
+  if (!baseline || !baseVector || !matrix || !result) {
+    return (
+      <section className="page panel">
+        <h1>Оракул</h1>
+        <article className="empty-state panel">
+          <h2>Нет базовой точки для сценариев</h2>
+          <p>Сначала нужно зафиксировать состояние, чтобы прогнозировать импульсы и последствия.</p>
+          <div className="settings-actions">
+            <SparkButton type="button" onClick={() => navigate('/core')}>Сделать чек-ин</SparkButton>
+            <SparkButton type="button" onClick={async () => { await seedTestData(30, 42); await refreshOracleData() }}>Сгенерировать тестовые данные (30 дней)</SparkButton>
+            <SparkButton type="button" onClick={() => navigate('/history')}>Выбрать базу из истории</SparkButton>
+          </div>
+        </article>
+      </section>
+    )
+  }
 
   const baseIndex = computeIndexDay(baseline)
   const resultRecord = { ...baseline, ...result }
@@ -56,12 +83,12 @@ export function OraclePage({ latest }: { latest?: CheckinRecord }) {
     })
   }
 
-  return <section className="page">
+  return <section className="page panel">
     <h1>Оракул</h1>
     <p>Сначала задайте сценарий, потом смотрите последствия.</p>
 
     <div className="oracle-grid">
-      <article className="summary-card">
+      <article className="summary-card panel">
         <h2>Базовая точка</h2>
         <label>Чек-ин
           <select value={baselineTs} onChange={(e) => setBaselineTs(e.target.value === 'latest' ? 'latest' : Number(e.target.value))}>
@@ -72,7 +99,7 @@ export function OraclePage({ latest }: { latest?: CheckinRecord }) {
         <p>Индекс базы: <strong>{formatNumber(baseIndex)}</strong></p>
       </article>
 
-      <article className="summary-card">
+      <article className="summary-card panel">
         <h2>Конструктор сценария</h2>
         <p>Выберите 3-5 метрик.</p>
         <div className="metric-tags">{INDEX_METRIC_IDS.map((id) => {
@@ -86,7 +113,7 @@ export function OraclePage({ latest }: { latest?: CheckinRecord }) {
         })}</div>
       </article>
 
-      <article className="summary-card">
+      <article className="summary-card panel">
         <h2>Результат</h2>
         <p>Новый индекс: <strong>{formatNumber(scenarioIndex)}</strong></p>
         <p>Δ индекса: <strong>{indexDelta > 0 ? '+' : ''}{formatNumber(indexDelta)}</strong></p>
@@ -95,17 +122,17 @@ export function OraclePage({ latest }: { latest?: CheckinRecord }) {
     </div>
 
     <div className="oracle-grid">
-      <article className="summary-card">
+      <article className="summary-card panel">
         <h2>Почему так</h2>
         <ul>{drivers.map((driver) => <li key={`${driver.from}-${driver.to}`}>{driver.text} ({formatNumber(driver.strength)})</li>)}</ul>
       </article>
 
-      <article className="summary-card">
+      <article className="summary-card panel">
         <h2>Плейбук</h2>
         <ol>{playbook.map((item) => <li key={item}>{item}</li>)}</ol>
       </article>
 
-      <article className="summary-card">
+      <article className="summary-card panel">
         <h2>Сравнение базы и сценария</h2>
         <table className="table table--dense"><thead><tr><th>Метрика</th><th>База</th><th>Сценарий</th><th>Δ</th></tr></thead>
           <tbody>{METRICS.map((metric) => {
@@ -116,13 +143,13 @@ export function OraclePage({ latest }: { latest?: CheckinRecord }) {
       </article>
     </div>
 
-    <button type="button" onClick={async () => {
+    <SparkButton type="button" onClick={async () => {
       const nameRu = window.prompt('Название сценария')
       if (!nameRu) return
       const scenario: OracleScenario = { ts: Date.now(), nameRu, baseTs: baseline.ts, impulses, result, index: scenarioIndex }
       await addScenario(scenario)
       setSaved(await listScenarios())
-    }}>Сохранить сценарий</button>
+    }}>Сохранить сценарий</SparkButton>
 
     <h2>Сохраненные сценарии</h2>
     <ul>{saved.map((row) => <li key={`${row.ts}-${row.nameRu}`}>{row.nameRu}: {formatNumber(row.index)}</li>)}</ul>

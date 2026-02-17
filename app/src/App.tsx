@@ -9,6 +9,8 @@ import { SettingsPage } from './pages/SettingsPage'
 import { OraclePage } from './pages/OraclePage'
 import { GraphPage } from './pages/GraphPage'
 import { CommandPalette } from './ui/CommandPalette'
+import { loadAppearanceSettings, saveAppearanceSettings, type AppearanceSettings } from './ui/appearance'
+import { Starfield } from './ui/Starfield'
 
 type PageKey = 'core' | 'dashboard' | 'oracle' | 'graph' | 'history' | 'settings'
 
@@ -44,6 +46,7 @@ function DesktopApp() {
   const [checkins, setCheckins] = useState<CheckinRecord[]>([])
   const [latestCheckin, setLatestCheckin] = useState<CheckinRecord | undefined>()
   const [templateValues, setTemplateValues] = useState<CheckinValues | undefined>()
+  const [appearance, setAppearance] = useState<AppearanceSettings>(() => loadAppearanceSettings())
 
   const loadData = async () => {
     const [all, latest] = await Promise.all([listCheckins(), getLatestCheckin()])
@@ -55,10 +58,17 @@ function DesktopApp() {
     void loadData()
   }, [])
 
+  useEffect(() => {
+    document.documentElement.dataset.theme = appearance.theme
+    document.documentElement.dataset.motion = appearance.motion
+    saveAppearanceSettings(appearance)
+  }, [appearance])
+
   return (
     <div className="layout">
+      <Starfield />
       <CommandPalette />
-      <aside className="sidebar">
+      <aside className="sidebar panel">
         <h2>Gamno</h2>
         <nav>
           {pageMeta.map((page) => (
@@ -89,7 +99,7 @@ function DesktopApp() {
           />
           <Route path="/dashboard" element={<DashboardPage checkins={checkins} />} />
           <Route path="/history" element={<HistoryPage checkins={checkins} onUseTemplate={setTemplateValues} onDataChanged={loadData} />} />
-          <Route path="/settings" element={<SettingsPage onDataChanged={loadData} />} />
+          <Route path="/settings" element={<SettingsPage onDataChanged={loadData} appearance={appearance} onAppearanceChange={setAppearance} />} />
           <Route path="/oracle" element={<OraclePage latest={latestCheckin} />} />
           <Route path="/graph" element={<GraphPage />} />
         </Routes>
