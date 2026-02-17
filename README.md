@@ -1,6 +1,6 @@
 # gamno
 
-## Local development
+## Локальный запуск
 
 ```bash
 cd app
@@ -8,22 +8,39 @@ npm install
 npm run dev
 ```
 
-## Production build
+## Сборка
 
 ```bash
 cd app
 npm run build
 ```
 
-## GitHub Pages deployment
+## Тесты
 
-Deployment is configured with GitHub Actions in `.github/workflows/deploy.yml`.
+```bash
+cd app
+npm run test
+```
 
-To enable Pages in the repository:
-1. Open **Settings → Pages**.
-2. In **Build and deployment**, set **Source** to **GitHub Actions**.
-3. Push to `main` (or trigger workflow manually) to publish `app/dist`.
+## GitHub Pages
 
-## Локальные данные
+Деплой настроен через GitHub Actions в `.github/workflows/deploy.yml`.
 
-Данные хранятся локально в браузере (IndexedDB). Чек-ины, история и агрегаты дашборда сохраняются на устройстве и не отправляются на сервер.
+Чтобы включить публикацию:
+1. Откройте **Settings → Pages**.
+2. В разделе **Build and deployment** выберите **Source: GitHub Actions**.
+3. Запушьте изменения в `main` (или запустите workflow вручную).
+
+## Хранение данных
+
+Данные приложения хранятся **локально в браузере (IndexedDB)**.
+
+## Экспорт и импорт
+
+- В разделе **Настройки** нажмите **Экспорт данных**, чтобы скачать JSON-файл с локальной базой.
+- Для восстановления нажмите **Импорт данных**, выберите JSON и подтвердите замену текущих данных.
+- Кнопка **Очистить данные** удаляет все локальные записи после подтверждения.
+
+## Примечание
+
+Это демо-приложение, **без сервера**: синхронизации с облаком нет.
