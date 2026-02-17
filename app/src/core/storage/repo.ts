@@ -2,8 +2,10 @@ import { exportDB, importDB } from 'dexie-export-import'
 import type { CheckinRecord, CheckinValues } from '../models/checkin'
 import { METRICS, type MetricId } from '../metrics'
 import { db } from './db'
+import type { QuestRecord } from '../models/quest'
 import { defaultInfluenceMatrix } from '../engines/influence/influence'
 import type { InfluenceMatrix, OracleScenario } from '../engines/influence/types'
+import { completeQuest } from '../engines/engagement/quests'
 
 export async function addCheckin(values: CheckinValues): Promise<CheckinRecord> {
   const ts = Date.now()
@@ -93,6 +95,28 @@ export async function saveInfluenceMatrix(value: InfluenceMatrix): Promise<void>
 
 export async function resetInfluenceMatrix(): Promise<void> {
   await saveInfluenceMatrix(defaultInfluenceMatrix)
+}
+
+
+export async function addQuest(quest: QuestRecord): Promise<QuestRecord> {
+  const id = await db.quests.add(quest)
+  return { ...quest, id }
+}
+
+export async function listQuests(): Promise<QuestRecord[]> {
+  return db.quests.orderBy('createdAt').reverse().toArray()
+}
+
+export async function getActiveQuest(): Promise<QuestRecord | undefined> {
+  return db.quests.where('status').equals('active').last()
+}
+
+export async function completeQuestById(id: number): Promise<QuestRecord | undefined> {
+  const row = await db.quests.get(id)
+  if (!row) return undefined
+  const completed = completeQuest(row)
+  await db.quests.put(completed)
+  return completed
 }
 
 export async function addScenario(scenario: OracleScenario): Promise<void> {

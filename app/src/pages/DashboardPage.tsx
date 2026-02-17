@@ -1,6 +1,7 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { INDEX_METRIC_IDS, METRICS } from '../core/metrics'
 import type { CheckinRecord } from '../core/models/checkin'
+import type { QuestRecord } from '../core/models/quest'
 import {
   computeAverages,
   computeIndexSeries,
@@ -12,8 +13,22 @@ import { evaluateSignals } from '../core/engines/rules/evaluateSignals'
 import { forecastIndex } from '../core/engines/forecast/indexForecast'
 import { formatNumber } from '../ui/format'
 import { Sparkline } from '../ui/Sparkline'
+import { buildCheckinResultInsight } from '../core/engines/engagement/suggestions'
+import { defaultInfluenceMatrix } from '../core/engines/influence/influence'
+import { addQuest, completeQuestById } from '../core/storage/repo'
+import { createQuestFromSuggestion } from '../core/engines/engagement/quests'
 
-export function DashboardPage({ checkins }: { checkins: CheckinRecord[] }) {
+export function DashboardPage({
+  checkins,
+  activeQuest,
+  onQuestChange,
+}: {
+  checkins: CheckinRecord[]
+  activeQuest?: QuestRecord
+  onQuestChange: () => Promise<void>
+}) {
+  const [outcomeMessage, setOutcomeMessage] = useState<string>('')
+
   const analytics = useMemo(() => {
     const avg7 = computeAverages(checkins, INDEX_METRIC_IDS, 7)
     const delta7 = computeWindowDelta(checkins, INDEX_METRIC_IDS, 7)
@@ -43,6 +58,12 @@ export function DashboardPage({ checkins }: { checkins: CheckinRecord[] }) {
     }
   }, [checkins])
 
+  const suggestedQuest = useMemo(() => {
+    if (!checkins.length) return null
+    const insight = buildCheckinResultInsight(checkins[0], checkins[1], defaultInfluenceMatrix)
+    return insight.bestLever ? createQuestFromSuggestion(insight.bestLever) : null
+  }, [checkins])
+
   if (checkins.length < 3) {
     return <section className="page"><h1>Дашборд</h1><p>Добавьте минимум 3 чек-ина для аналитики.</p><a href="#/core">Сделать чек-ин</a></section>
   }
@@ -52,13 +73,34 @@ export function DashboardPage({ checkins }: { checkins: CheckinRecord[] }) {
   return (
     <section className="page">
       <h1>Дашборд</h1>
-      <div className="cockpit-strip">
-        <article><span>Индекс (7д)</span><strong>{formatNumber(analytics.indexAvg7)}</strong></article>
-        <article><span>Δ к прошлым 7д</span><strong>{analytics.indexDelta7 > 0 ? '+' : ''}{formatNumber(analytics.indexDelta7)}</strong></article>
-        <article><span>Сигналы</span><strong>{analytics.signals.length}</strong></article>
-        <article><span>Прогноз next7</span><strong>{formatNumber(analytics.forecast.values[analytics.forecast.values.length - 1] ?? analytics.indexAvg7)}</strong></article>
-        <article><span>Волатильность</span><strong className={`volatility volatility--${volatilityLabel}`}>{volatilityLabel}</strong></article>
-      </div>
+      <p>Серия: <strong>{analytics.streak}</strong> дн.</p>
+
+      <article className="summary-card panel">
+        <h2>Следующее действие</h2>
+        {activeQuest ? (
+          <>
+            <p><strong>{activeQuest.title}</strong></p>
+            <p>Ожидаемый рост индекса: +{formatNumber(activeQuest.predictedIndexLift)}</p>
+            <button type="button" onClick={async () => {
+              if (!activeQuest.id) return
+              const completed = await completeQuestById(activeQuest.id)
+              setOutcomeMessage(completed ? `${completed.outcomeRu} +${completed.xpEarned} XP` : '')
+              await onQuestChange()
+            }}>Отметить выполненным</button>
+          </>
+        ) : (
+          <>
+            <p>{suggestedQuest?.title ?? 'Пока нет предложения'}</p>
+            <p>{suggestedQuest ? `Ожидаемый рост индекса: +${formatNumber(suggestedQuest.predictedIndexLift)}` : 'Добавьте данные для подсказки.'}</p>
+            <button type="button" disabled={!suggestedQuest} onClick={async () => {
+              if (!suggestedQuest) return
+              await addQuest(suggestedQuest)
+              await onQuestChange()
+            }}>Принять действие</button>
+          </>
+        )}
+        {outcomeMessage ? <p className="chip">{outcomeMessage}</p> : null}
+      </article>
 
       <div className="metric-cards">
         {METRICS.filter((m) => m.id !== 'cashFlow').map((metric) => {
@@ -89,6 +131,14 @@ export function DashboardPage({ checkins }: { checkins: CheckinRecord[] }) {
       <p>Прогноз — это экстраполяция тренда, не гарантия.</p>
       <p>Уверенность: {analytics.forecast.confidence === 'high' ? 'высокая' : analytics.forecast.confidence === 'med' ? 'средняя' : 'низкая'}</p>
       <ol>{analytics.forecast.values.map((v, i) => <li key={i}>{formatNumber(v)}</li>)}</ol>
+
+      <div className="cockpit-strip">
+        <article><span>Индекс (7д)</span><strong>{formatNumber(analytics.indexAvg7)}</strong></article>
+        <article><span>Δ к прошлым 7д</span><strong>{analytics.indexDelta7 > 0 ? '+' : ''}{formatNumber(analytics.indexDelta7)}</strong></article>
+        <article><span>Сигналы</span><strong>{analytics.signals.length}</strong></article>
+        <article><span>Прогноз next7</span><strong>{formatNumber(analytics.forecast.values[analytics.forecast.values.length - 1] ?? analytics.indexAvg7)}</strong></article>
+        <article><span>Волатильность</span><strong className={`volatility volatility--${volatilityLabel}`}>{volatilityLabel}</strong></article>
+      </div>
     </section>
   )
 }

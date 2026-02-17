@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom'
 import type { CheckinRecord, CheckinValues } from './core/models/checkin'
-import { getLatestCheckin, listCheckins } from './core/storage/repo'
+import type { QuestRecord } from './core/models/quest'
+import { getActiveQuest, getLatestCheckin, listCheckins } from './core/storage/repo'
 import { CorePage } from './pages/CorePage'
 import { DashboardPage } from './pages/DashboardPage'
 import { HistoryPage } from './pages/HistoryPage'
@@ -11,6 +12,11 @@ import { GraphPage } from './pages/GraphPage'
 import { CommandPalette } from './ui/CommandPalette'
 import { loadAppearanceSettings, saveAppearanceSettings, type AppearanceSettings } from './ui/appearance'
 import { Starfield } from './ui/Starfield'
+import { MissionStrip } from './ui/MissionStrip'
+import { computeAverages, computeIndexSeries, computeVolatility } from './core/engines/analytics/compute'
+import { INDEX_METRIC_IDS } from './core/metrics'
+import { evaluateSignals } from './core/engines/rules/evaluateSignals'
+import { forecastIndex } from './core/engines/forecast/indexForecast'
 
 type PageKey = 'core' | 'dashboard' | 'oracle' | 'graph' | 'history' | 'settings'
 
@@ -46,12 +52,14 @@ function DesktopApp() {
   const [checkins, setCheckins] = useState<CheckinRecord[]>([])
   const [latestCheckin, setLatestCheckin] = useState<CheckinRecord | undefined>()
   const [templateValues, setTemplateValues] = useState<CheckinValues | undefined>()
+  const [activeQuest, setActiveQuest] = useState<QuestRecord | undefined>()
   const [appearance, setAppearance] = useState<AppearanceSettings>(() => loadAppearanceSettings())
 
   const loadData = async () => {
-    const [all, latest] = await Promise.all([listCheckins(), getLatestCheckin()])
+    const [all, latest, currentQuest] = await Promise.all([listCheckins(), getLatestCheckin(), getActiveQuest()])
     setCheckins(all)
     setLatestCheckin(latest)
+    setActiveQuest(currentQuest)
   }
 
   useEffect(() => {
@@ -63,6 +71,34 @@ function DesktopApp() {
     document.documentElement.dataset.motion = appearance.motion
     saveAppearanceSettings(appearance)
   }, [appearance])
+
+  const missionSummary = useMemo(() => {
+    if (!checkins.length) {
+      return { index: 0, risk: 'нет данных', forecast: 0, signals: 0, volatility: 'нет данных' }
+    }
+
+    const indexSeries = computeIndexSeries(checkins)
+    const forecast = forecastIndex(indexSeries)
+    const avg7 = computeAverages(checkins, INDEX_METRIC_IDS, 7)
+    const riskScore = (avg7.stress ?? 0) - (avg7.sleepHours ?? 0) * 0.5
+    const risk = riskScore > 3 ? 'повышенный' : riskScore > 1.5 ? 'средний' : 'низкий'
+    const signals = evaluateSignals({
+      energyAvg7d: avg7.energy ?? 0,
+      stressAvg7d: avg7.stress ?? 0,
+      sleepAvg7d: avg7.sleepHours ?? 0,
+      indexDelta7d: (indexSeries.at(-1) ?? 0) - (indexSeries.at(-8) ?? indexSeries.at(-1) ?? 0),
+    }).length
+    const volatilityValue = computeVolatility(checkins, 'energy', 14)
+    const volatility = volatilityValue < 0.8 ? 'низкая' : volatilityValue < 1.6 ? 'средняя' : 'высокая'
+
+    return {
+      index: indexSeries.at(-1) ?? 0,
+      risk,
+      forecast: forecast.values.at(-1) ?? 0,
+      signals,
+      volatility,
+    }
+  }, [checkins])
 
   return (
     <div className="layout">
@@ -84,6 +120,7 @@ function DesktopApp() {
       </aside>
 
       <main className="content">
+        <MissionStrip {...missionSummary} activeQuest={activeQuest} />
         <Routes>
           <Route path="/" element={<Navigate to="/core" replace />} />
           <Route
@@ -94,13 +131,15 @@ function DesktopApp() {
                 latest={latestCheckin}
                 previous={checkins[1]}
                 templateValues={templateValues}
+                activeQuest={activeQuest}
+                onQuestChange={loadData}
               />
             }
           />
-          <Route path="/dashboard" element={<DashboardPage checkins={checkins} />} />
+          <Route path="/dashboard" element={<DashboardPage checkins={checkins} activeQuest={activeQuest} onQuestChange={loadData} />} />
           <Route path="/history" element={<HistoryPage checkins={checkins} onUseTemplate={setTemplateValues} onDataChanged={loadData} />} />
           <Route path="/settings" element={<SettingsPage onDataChanged={loadData} appearance={appearance} onAppearanceChange={setAppearance} />} />
-          <Route path="/oracle" element={<OraclePage latest={latestCheckin} />} />
+          <Route path="/oracle" element={<OraclePage latest={latestCheckin} onQuestChange={loadData} />} />
           <Route path="/graph" element={<GraphPage />} />
         </Routes>
       </main>
