@@ -3,100 +3,92 @@ import { INDEX_METRIC_IDS, METRICS } from '../core/metrics'
 import type { CheckinRecord } from '../core/models/checkin'
 import {
   computeAverages,
-  computeDelta,
-  computeIndexTrend,
+  computeIndexSeries,
   computeStreak,
-  getRange,
+  computeVolatility,
+  computeWindowDelta,
 } from '../core/engines/analytics/compute'
-import { evaluateSignals } from '../core/engines/analytics/rules'
+import { evaluateSignals } from '../core/engines/rules/evaluateSignals'
+import { forecastIndex } from '../core/engines/forecast/indexForecast'
 import { formatNumber } from '../ui/format'
+import { Sparkline } from '../ui/Sparkline'
 
 export function DashboardPage({ checkins }: { checkins: CheckinRecord[] }) {
-  const summary = useMemo(() => {
-    const sorted = [...checkins].sort((a, b) => b.ts - a.ts)
-    const last7 = getRange(sorted, 7)
-    const prev7From = Date.now() - 14 * 24 * 60 * 60 * 1000
-    const currentFrom = Date.now() - 7 * 24 * 60 * 60 * 1000
-    const prev7 = sorted.filter((item) => item.ts >= prev7From && item.ts < currentFrom)
-    const currentAvg = computeAverages(last7, INDEX_METRIC_IDS)
-    const previousAvg = computeAverages(prev7, INDEX_METRIC_IDS)
-    const delta = computeDelta(currentAvg, previousAvg)
-    const trend = computeIndexTrend(sorted)
-    const streak = computeStreak(sorted)
-    const signals = evaluateSignals(sorted)
+  const analytics = useMemo(() => {
+    const avg7 = computeAverages(checkins, INDEX_METRIC_IDS, 7)
+    const delta7 = computeWindowDelta(checkins, INDEX_METRIC_IDS, 7)
+    const indexSeries = computeIndexSeries(checkins)
+    const current7 = indexSeries.slice(-7)
+    const previous7 = indexSeries.slice(-14, -7)
+    const indexAvg7 = current7.length ? current7.reduce((s, v) => s + v, 0) / current7.length : 0
+    const prevIndexAvg7 = previous7.length ? previous7.reduce((s, v) => s + v, 0) / previous7.length : 0
+    const signals = evaluateSignals({
+      energyAvg7d: avg7.energy ?? 0,
+      stressAvg7d: avg7.stress ?? 0,
+      sleepAvg7d: avg7.sleepHours ?? 0,
+      indexDelta7d: indexAvg7 - prevIndexAvg7,
+    })
+    const forecast = forecastIndex(indexSeries)
 
     return {
-      trend,
-      streak,
-      currentAvg,
-      delta,
+      avg7,
+      delta7,
+      indexAvg7,
+      indexDelta7: indexAvg7 - prevIndexAvg7,
+      streak: computeStreak(checkins),
+      volatility: computeVolatility(checkins, 'energy', 14),
       signals,
-      hasEnoughData: sorted.length >= 2,
+      forecast,
+      indexSeries,
     }
   }, [checkins])
 
-  if (!summary.hasEnoughData) {
-    return (
-      <section className="page">
-        <h1>Дашборд</h1>
-        <p>Недостаточно данных для аналитики. Сохраните минимум два чек-ина, чтобы увидеть динамику за 7 дней.</p>
-      </section>
-    )
+  if (checkins.length < 3) {
+    return <section className="page"><h1>Дашборд</h1><p>Добавьте минимум 3 чек-ина для аналитики.</p><a href="#/core">Сделать чек-ин</a></section>
   }
+
+  const volatilityLabel = analytics.volatility < 0.8 ? 'низкая' : analytics.volatility < 1.6 ? 'средняя' : 'высокая'
 
   return (
     <section className="page">
       <h1>Дашборд</h1>
+      <article className="summary-card">
+        <h2>Сводка 7 дней</h2>
+        <p>Индекс: <strong>{formatNumber(analytics.indexAvg7)}</strong></p>
+        <p>Тренд: {analytics.indexDelta7 > 0 ? '+' : ''}{formatNumber(analytics.indexDelta7)}</p>
+        <p>Серия: <strong>{analytics.streak}</strong></p>
+        <p>Волатильность: <strong>{volatilityLabel}</strong></p>
+      </article>
 
-      <section className="summary-grid">
-        <article className="summary-card">
-          <h2>Сводка 7 дней</h2>
-          <p>Индекс: <strong>{formatNumber(summary.trend.currentAvg)}</strong></p>
-          <p>
-            Тренд: {summary.trend.direction === 'up' ? '↑' : summary.trend.direction === 'down' ? '↓' : '→'}
-            {' '}Δ {summary.trend.delta > 0 ? '+' : ''}{formatNumber(summary.trend.delta)}
-          </p>
-          <p>Серия дней подряд: <strong>{summary.streak}</strong></p>
-        </article>
-      </section>
+      <div className="metric-cards">
+        {METRICS.filter((m) => m.id !== 'cashFlow').map((metric) => {
+          const metricSeries = checkins.slice(0, 14).reverse().map((r) => r[metric.id])
+          const delta = analytics.delta7[metric.id] ?? 0
+          return (
+            <article className="metric-card" key={metric.id}>
+              <h3>{metric.labelRu}</h3>
+              <p>{formatNumber(analytics.avg7[metric.id] ?? 0)} ({delta > 0 ? '↑' : delta < 0 ? '↓' : '→'} {formatNumber(delta)})</p>
+              <Sparkline values={metricSeries} />
+            </article>
+          )
+        })}
+      </div>
 
-      <section>
-        <h2>Метрики</h2>
-        <div className="metric-cards">
-          {METRICS.filter((metric) => metric.id !== 'cashFlow').map((metric) => {
-            const delta = summary.delta[metric.id] ?? 0
-            const direction = delta > 0 ? '↑' : delta < 0 ? '↓' : '→'
-            return (
-              <article className="metric-card" key={metric.id}>
-                <h3>{metric.labelRu}</h3>
-                <p>Среднее 7 дн.: <strong>{formatNumber(summary.currentAvg[metric.id] ?? 0)}</strong></p>
-                <p>Δ: {delta > 0 ? '+' : ''}{formatNumber(delta)} {direction}</p>
-              </article>
-            )
-          })}
-        </div>
-      </section>
+      <h2>Сигналы</h2>
+      <ul className="signals-list">
+        {analytics.signals.length ? analytics.signals.map((signal) => (
+          <li className={`signal signal--${signal.severity}`} key={signal.id}>
+            <strong>{signal.titleRu}</strong>
+            <p>{signal.descriptionRu}</p>
+            <ul>{signal.actionsRu.map((a) => <li key={a}>{a}</li>)}</ul>
+          </li>
+        )) : <li>Сигналы не обнаружены.</li>}
+      </ul>
 
-      <section>
-        <h2>Сигналы</h2>
-        {summary.signals.length === 0 ? (
-          <p>Сейчас сигналы не обнаружены.</p>
-        ) : (
-          <ul className="signals-list">
-            {summary.signals.map((signal) => (
-              <li key={signal.titleRu} className={`signal signal--${signal.severity}`}>
-                <h3>{signal.titleRu}</h3>
-                <p>{signal.descriptionRu}</p>
-                <ul>
-                  {signal.suggestedActionsRu.map((action) => (
-                    <li key={action}>{action}</li>
-                  ))}
-                </ul>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      <h2>Прогноз (7 дней)</h2>
+      <p>Прогноз — это экстраполяция тренда, не гарантия.</p>
+      <p>Уверенность: {analytics.forecast.confidence === 'high' ? 'высокая' : analytics.forecast.confidence === 'med' ? 'средняя' : 'низкая'}</p>
+      <ol>{analytics.forecast.values.map((v, i) => <li key={i}>{formatNumber(v)}</li>)}</ol>
     </section>
   )
 }

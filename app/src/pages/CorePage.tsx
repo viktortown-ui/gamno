@@ -28,7 +28,7 @@ export function CorePage({
   previous,
   templateValues,
 }: {
-  onSaved: (saved: CheckinRecord) => Promise<void>
+  onSaved: () => Promise<void>
   latest?: CheckinRecord
   previous?: CheckinRecord
   templateValues?: CheckinValues
@@ -64,7 +64,7 @@ export function CorePage({
     const savedRecord = await addCheckin(values)
     setSavedAt(savedRecord.ts)
     setSaveState('saved')
-    await onSaved(savedRecord)
+    await onSaved()
   }
 
   const dayIndex = latest ? computeIndexDay(latest) : 0
