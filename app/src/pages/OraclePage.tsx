@@ -2,13 +2,21 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { INDEX_METRIC_IDS, METRICS, type MetricId } from '../core/metrics'
 import type { CheckinRecord } from '../core/models/checkin'
-import { addScenario, listCheckins, listScenarios, loadInfluenceMatrix, seedTestData } from '../core/storage/repo'
+import { addQuest, addScenario, listCheckins, listScenarios, loadInfluenceMatrix, seedTestData } from '../core/storage/repo'
 import { explainDriverInsights } from '../core/engines/influence/influence'
 import type { InfluenceMatrix, MetricVector, OracleScenario } from '../core/engines/influence/types'
 import { computeIndexDay } from '../core/engines/analytics/compute'
 import { formatDateTime, formatNumber } from '../ui/format'
 import { buildPlaybook, propagateBySteps } from '../core/engines/influence/oracle'
 import { SparkButton } from '../ui/SparkButton'
+
+const presets: { title: string; impulses: Partial<Record<MetricId, number>>; focus: MetricId[] }[] = [
+  { title: 'Восстановление сна', impulses: { sleepHours: 1, stress: -1 }, focus: ['sleepHours', 'stress', 'energy'] },
+  { title: 'Фокус без перегруза', impulses: { focus: 1, stress: -0.5 }, focus: ['focus', 'stress', 'productivity'] },
+  { title: 'Социальная подпитка', impulses: { social: 1, mood: 1 }, focus: ['social', 'mood', 'stress'] },
+  { title: 'Режим продуктивности', impulses: { productivity: 1, focus: 1, energy: 0.5 }, focus: ['productivity', 'focus', 'energy'] },
+  { title: 'Антистресс минимум', impulses: { stress: -1, mood: 1, health: 1 }, focus: ['stress', 'mood', 'health'] },
+]
 
 function toVector(base?: CheckinRecord): MetricVector | undefined {
   if (!base) return undefined
@@ -18,7 +26,7 @@ function toVector(base?: CheckinRecord): MetricVector | undefined {
   }, {} as MetricVector)
 }
 
-export function OraclePage({ latest }: { latest?: CheckinRecord }) {
+export function OraclePage({ latest, onQuestChange }: { latest?: CheckinRecord; onQuestChange: () => Promise<void> }) {
   const [impulses, setImpulses] = useState<Partial<Record<MetricId, number>>>({})
   const [focusMetrics, setFocusMetrics] = useState<MetricId[]>(['energy', 'stress', 'sleepHours'])
   const [matrix, setMatrix] = useState<InfluenceMatrix | null>(null)
@@ -87,6 +95,12 @@ export function OraclePage({ latest }: { latest?: CheckinRecord }) {
     <h1>Оракул</h1>
     <p>Сначала задайте сценарий, потом смотрите последствия.</p>
 
+    <div className="preset-row">
+      {presets.map((preset) => (
+        <button key={preset.title} type="button" onClick={() => { setImpulses(preset.impulses); setFocusMetrics(preset.focus) }}>{preset.title}</button>
+      ))}
+    </div>
+
     <div className="oracle-grid">
       <article className="summary-card panel">
         <h2>Базовая точка</h2>
@@ -118,6 +132,20 @@ export function OraclePage({ latest }: { latest?: CheckinRecord }) {
         <p>Новый индекс: <strong>{formatNumber(scenarioIndex)}</strong></p>
         <p>Δ индекса: <strong>{indexDelta > 0 ? '+' : ''}{formatNumber(indexDelta)}</strong></p>
         <ol>{propagation.map((vector, idx) => <li key={idx}>Шаг {idx + 1}: {METRICS.map((m) => `${m.labelRu} ${formatNumber(vector[m.id])}`).join(' | ')}</li>)}</ol>
+        <button type="button" onClick={async () => {
+          const strongest = drivers[0]
+          if (!strongest) return
+          await addQuest({
+            createdAt: Date.now(),
+            title: `План на 3 дня: усилить ${METRICS.find((m) => m.id === strongest.from)?.labelRu ?? strongest.from}`,
+            metricTarget: strongest.from,
+            delta: 1,
+            horizonDays: 3,
+            status: 'active',
+            predictedIndexLift: Math.max(0.3, indexDelta),
+          })
+          await onQuestChange()
+        }}>Принять план на 3 дня</button>
       </article>
     </div>
 

@@ -188,3 +188,7 @@ input, select, textarea {
     scroll-behavior: auto !important;
   }
 }
+
+
+.mission-strip { grid-template-columns: repeat(6, minmax(0, 1fr)); margin-bottom: var(--space-2); }
+.result-panel { padding: var(--space-3); border: 1px solid var(--line); }
