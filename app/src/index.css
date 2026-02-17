@@ -79,22 +79,75 @@ body {
   margin-bottom: 12px;
 }
 
+
 .form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
+  column-gap: 20px;
+  row-gap: 18px;
   margin-bottom: 20px;
 }
 
-.field {
+.metric-control {
   display: grid;
   gap: 8px;
   text-align: left;
+  align-content: start;
 }
 
-.field input[type='number'] {
+.metric-control__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 600;
+}
+
+.metric-control__unit {
+  color: #4b5563;
+  font-size: 13px;
+}
+
+.metric-control__scale {
+  display: flex;
+  justify-content: space-between;
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.metric-control input[type='number'] {
   width: 100%;
+  max-width: 240px;
   padding: 8px;
+}
+
+.metric-control__error {
+  color: #b91c1c;
+  font-size: 12px;
+}
+
+.save-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.save-button {
+  background: #111827;
+  color: #fff;
+  border: 1px solid #111827;
+  border-radius: 8px;
+  padding: 10px 16px;
+  cursor: pointer;
+}
+
+.save-button:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.save-feedback {
+  min-height: 20px;
+  color: #1f2937;
 }
 
 .last-checkin {

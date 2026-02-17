@@ -24,8 +24,10 @@ const normalizeCheckin = (value: Partial<CheckinRecord>): CheckinRecord => ({
   cashFlow: toNumber(value.cashFlow),
 })
 
-export async function addCheckin(values: CheckinValues): Promise<number | undefined> {
-  return db.checkins.add({ ...values, ts: Date.now() })
+export async function addCheckin(values: CheckinValues): Promise<CheckinRecord> {
+  const ts = Date.now()
+  const id = await db.checkins.add({ ...values, ts })
+  return { ...values, ts, id }
 }
 
 export async function getLatestCheckin(): Promise<CheckinRecord | undefined> {

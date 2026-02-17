@@ -1,22 +1,20 @@
 import { useEffect, useMemo, useState, type ChangeEventHandler } from 'react'
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom'
-import {
-  CHECKIN_METRICS,
-  DEFAULT_CHECKIN_VALUES,
-  type CheckinMetricKey,
-  type CheckinRecord,
-  type CheckinValues,
-} from './core/models/checkin'
+import { MetricControl } from './components/MetricControl'
+import { DEFAULT_CHECKIN_VALUES, INDEX_METRIC_IDS, METRICS, type MetricConfig, type MetricId } from './core/metrics'
+import type { CheckinRecord, CheckinValues } from './core/models/checkin'
 import {
   addCheckin,
   clearAllData,
   exportData,
   getLatestCheckin,
   importData,
-  listCheckins
+  listCheckins,
 } from './core/storage/repo'
 
 type PageKey = 'core' | 'dashboard' | 'oracle' | 'graph' | 'history' | 'settings'
+
+type SaveState = 'idle' | 'saving' | 'saved'
 
 const pageMeta: { key: PageKey; label: string }[] = [
   { key: 'core', label: 'Чек-ин' },
@@ -31,14 +29,37 @@ function formatDate(ts: number): string {
   return new Date(ts).toLocaleString('ru-RU')
 }
 
-function formatMetricValue(metric: { key: CheckinMetricKey; step: number }, value: number): string {
-  if (metric.key === 'cashFlow') {
-    return new Intl.NumberFormat('ru-RU').format(value)
+function formatTime(ts: number): string {
+  return new Date(ts).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+}
+
+function formatMetricValue(metric: MetricConfig, value: number): string {
+  const normalized = metric.step < 1 ? value.toFixed(1) : String(Math.round(value))
+  if (metric.unitRu === '₽') {
+    return `${new Intl.NumberFormat('ru-RU').format(Number(normalized))} ${metric.unitRu}`
   }
-  if (metric.step < 1) {
-    return value.toFixed(1)
+  return metric.unitRu ? `${normalized} ${metric.unitRu}` : normalized
+}
+
+function clamp(metric: MetricConfig, value: number): number {
+  return Math.min(metric.max, Math.max(metric.min, value))
+}
+
+function getValidationError(metric: MetricConfig, raw: string): string | undefined {
+  if (raw.trim() === '') {
+    return 'Введите число.'
   }
-  return String(Math.round(value))
+
+  const parsed = Number(raw)
+  if (Number.isNaN(parsed)) {
+    return 'Введите корректное число.'
+  }
+
+  if (parsed < metric.min || parsed > metric.max) {
+    return `Диапазон: ${metric.min}…${metric.max}${metric.unitRu ? ` ${metric.unitRu}` : ''}.`
+  }
+
+  return undefined
 }
 
 function DashboardPage({ checkins }: { checkins: CheckinRecord[] }) {
@@ -50,28 +71,17 @@ function DashboardPage({ checkins }: { checkins: CheckinRecord[] }) {
   const last7 = checkins.filter((item) => item.ts >= last7From)
   const prev7 = checkins.filter((item) => item.ts >= prev7From && item.ts < last7From)
 
-  const metricRows = CHECKIN_METRICS.map((metric) => {
+  const metricRows = METRICS.map((metric) => {
     const currentAvg =
-      last7.length > 0
-        ? last7.reduce((sum, item) => sum + item[metric.key], 0) / last7.length
-        : 0
+      last7.length > 0 ? last7.reduce((sum, item) => sum + item[metric.id], 0) / last7.length : 0
     const prevAvg =
-      prev7.length > 0
-        ? prev7.reduce((sum, item) => sum + item[metric.key], 0) / prev7.length
-        : 0
+      prev7.length > 0 ? prev7.reduce((sum, item) => sum + item[metric.id], 0) / prev7.length : 0
 
     let trend = '→'
-    if (currentAvg > prevAvg) {
-      trend = '↑'
-    } else if (currentAvg < prevAvg) {
-      trend = '↓'
-    }
+    if (currentAvg > prevAvg) trend = '↑'
+    else if (currentAvg < prevAvg) trend = '↓'
 
-    return {
-      metric,
-      currentAvg,
-      trend,
-    }
+    return { metric, currentAvg, trend }
   })
 
   return (
@@ -88,8 +98,8 @@ function DashboardPage({ checkins }: { checkins: CheckinRecord[] }) {
         </thead>
         <tbody>
           {metricRows.map((row) => (
-            <tr key={row.metric.key}>
-              <td>{row.metric.label}</td>
+            <tr key={row.metric.id}>
+              <td>{row.metric.labelRu}</td>
               <td>{formatMetricValue(row.metric, row.currentAvg)}</td>
               <td>{row.trend}</td>
             </tr>
@@ -127,22 +137,22 @@ function HistoryPage({ checkins }: { checkins: CheckinRecord[] }) {
         <thead>
           <tr>
             <th>Дата</th>
-            {CHECKIN_METRICS.map((metric) => (
-              <th key={metric.key}>{metric.label}</th>
+            {METRICS.map((metric) => (
+              <th key={metric.id}>{metric.labelRu}</th>
             ))}
           </tr>
         </thead>
         <tbody>
           {filtered.length === 0 ? (
             <tr>
-              <td colSpan={CHECKIN_METRICS.length + 1}>Данных нет.</td>
+              <td colSpan={METRICS.length + 1}>Данных нет.</td>
             </tr>
           ) : (
             filtered.map((item) => (
               <tr key={item.id}>
                 <td>{formatDate(item.ts)}</td>
-                {CHECKIN_METRICS.map((metric) => (
-                  <td key={metric.key}>{formatMetricValue(metric, item[metric.key])}</td>
+                {METRICS.map((metric) => (
+                  <td key={metric.id}>{formatMetricValue(metric, item[metric.id])}</td>
                 ))}
               </tr>
             ))
@@ -153,64 +163,86 @@ function HistoryPage({ checkins }: { checkins: CheckinRecord[] }) {
   )
 }
 
-function CorePage({ onSaved, latest }: { onSaved: () => Promise<void>; latest?: CheckinRecord }) {
+function CorePage({
+  onSaved,
+  latest,
+  previous,
+}: {
+  onSaved: (saved: CheckinRecord) => Promise<void>
+  latest?: CheckinRecord
+  previous?: CheckinRecord
+}) {
   const [values, setValues] = useState<CheckinValues>(DEFAULT_CHECKIN_VALUES)
-  const [saving, setSaving] = useState(false)
+  const [saveState, setSaveState] = useState<SaveState>('idle')
+  const [savedAt, setSavedAt] = useState<number | null>(null)
+  const [errors, setErrors] = useState<Partial<Record<MetricId, string>>>({})
 
-  const updateValue = (key: CheckinMetricKey, value: number) => {
-    setValues((prev) => ({ ...prev, [key]: value }))
+  const updateValue = (id: MetricId, value: number) => {
+    const metric = METRICS.find((item) => item.id === id)
+    if (!metric) return
+
+    setValues((prev) => ({ ...prev, [id]: clamp(metric, value) }))
+  }
+
+  const handleBlur = (metric: MetricConfig, raw: string) => {
+    const error = getValidationError(metric, raw)
+    setErrors((prev) => ({ ...prev, [metric.id]: error }))
+
+    if (!error) {
+      const parsed = Number(raw)
+      setValues((prev) => ({ ...prev, [metric.id]: clamp(metric, parsed) }))
+    }
   }
 
   const handleSave = async () => {
-    setSaving(true)
-    await addCheckin(values)
-    await onSaved()
-    setSaving(false)
+    setSaveState('saving')
+    const savedRecord = await addCheckin(values)
+    setSavedAt(savedRecord.ts)
+    setSaveState('saved')
+    await onSaved(savedRecord)
   }
+
+  const dayIndex = latest
+    ? INDEX_METRIC_IDS.reduce((sum, id) => sum + latest[id], 0) / INDEX_METRIC_IDS.length
+    : 0
+
+  const topDeltas = latest && previous
+    ? METRICS
+        .filter((metric) => metric.id !== 'cashFlow')
+        .map((metric) => ({
+          metric,
+          delta: latest[metric.id] - previous[metric.id],
+        }))
+        .filter((row) => row.delta !== 0)
+        .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
+        .slice(0, 3)
+    : []
 
   return (
     <section className="page">
       <h1>Чек-ин</h1>
       <div className="form-grid">
-        {CHECKIN_METRICS.map((metric) => (
-          <label key={metric.key} className="field">
-            <span>{metric.label}</span>
-            {metric.key === 'cashFlow' ? (
-              <input
-                type="number"
-                min={metric.min}
-                max={metric.max}
-                step={metric.step}
-                value={values[metric.key]}
-                onChange={(e) => updateValue(metric.key, Number(e.target.value))}
-              />
-            ) : (
-              <>
-                <input
-                  type="range"
-                  min={metric.min}
-                  max={metric.max}
-                  step={metric.step}
-                  value={values[metric.key]}
-                  onChange={(e) => updateValue(metric.key, Number(e.target.value))}
-                />
-                <input
-                  type="number"
-                  min={metric.min}
-                  max={metric.max}
-                  step={metric.step}
-                  value={values[metric.key]}
-                  onChange={(e) => updateValue(metric.key, Number(e.target.value))}
-                />
-              </>
-            )}
-          </label>
+        {METRICS.map((metric) => (
+          <MetricControl
+            key={metric.id}
+            metric={metric}
+            value={values[metric.id]}
+            error={errors[metric.id]}
+            onValueChange={(next) => updateValue(metric.id, next)}
+            onBlur={(raw) => handleBlur(metric, raw)}
+          />
         ))}
       </div>
 
-      <button type="button" onClick={handleSave} disabled={saving}>
-        {saving ? 'Сохранение...' : 'Сохранить чек-ин'}
-      </button>
+      <div className="save-row">
+        <button type="button" className="save-button" onClick={handleSave} disabled={saveState === 'saving'}>
+          Сохранить чек-ин
+        </button>
+        <span className="save-feedback">
+          {saveState === 'saving' ? 'Сохранение…' : null}
+          {saveState === 'saved' && savedAt ? `Сохранено в ${formatTime(savedAt)}` : null}
+        </span>
+      </div>
 
       <section className="last-checkin">
         <h2>Последний чек-ин</h2>
@@ -219,13 +251,21 @@ function CorePage({ onSaved, latest }: { onSaved: () => Promise<void>; latest?: 
         ) : (
           <>
             <p>{formatDate(latest.ts)}</p>
-            <ul>
-              {CHECKIN_METRICS.map((metric) => (
-                <li key={metric.key}>
-                  {metric.label}: {formatMetricValue(metric, latest[metric.key])}
-                </li>
-              ))}
-            </ul>
+            <p>
+              Индекс дня: <strong>{dayIndex.toFixed(1)}</strong>
+            </p>
+            {topDeltas.length > 0 ? (
+              <ul>
+                {topDeltas.map((row) => (
+                  <li key={row.metric.id}>
+                    Δ {row.metric.labelRu}: {row.delta > 0 ? '+' : ''}
+                    {row.delta.toFixed(1).replace('.0', '')}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p>Изменений относительно прошлого чек-ина пока нет.</p>
+            )}
           </>
         )}
       </section>
@@ -255,9 +295,7 @@ function SettingsPage({ onDataChanged }: { onDataChanged: () => Promise<void> })
 
   const handleImport: ChangeEventHandler<HTMLInputElement> = async (event) => {
     const file = event.target.files?.[0]
-    if (!file) {
-      return
-    }
+    if (!file) return
 
     const text = await file.text()
     const payload = JSON.parse(text)
@@ -298,17 +336,12 @@ function DesktopOnlyGate() {
   const [isDesktop, setIsDesktop] = useState(window.innerWidth >= 1200)
 
   useEffect(() => {
-    const handleResize = () => {
-      setIsDesktop(window.innerWidth >= 1200)
-    }
-
+    const handleResize = () => setIsDesktop(window.innerWidth >= 1200)
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
   }, [])
 
-  if (isDesktop) {
-    return <DesktopApp />
-  }
+  if (isDesktop) return <DesktopApp />
 
   return (
     <main className="gate">
@@ -328,6 +361,12 @@ function DesktopApp() {
     setLatestCheckin(latest)
   }
 
+  const handleSaved = async (saved: CheckinRecord) => {
+    setLatestCheckin(saved)
+    setCheckins((prev) => [saved, ...prev])
+    await loadData()
+  }
+
   useEffect(() => {
     void loadData()
   }, [])
@@ -340,9 +379,7 @@ function DesktopApp() {
           {pageMeta.map((page) => (
             <NavLink
               key={page.key}
-              className={({ isActive }) =>
-                `nav-link ${isActive ? 'nav-link--active' : ''}`
-              }
+              className={({ isActive }) => `nav-link ${isActive ? 'nav-link--active' : ''}`}
               to={`/${page.key}`}
             >
               {page.label}
@@ -354,7 +391,10 @@ function DesktopApp() {
       <main className="content">
         <Routes>
           <Route path="/" element={<Navigate to="/core" replace />} />
-          <Route path="/core" element={<CorePage onSaved={loadData} latest={latestCheckin} />} />
+          <Route
+            path="/core"
+            element={<CorePage onSaved={handleSaved} latest={latestCheckin} previous={checkins[1]} />}
+          />
           <Route path="/dashboard" element={<DashboardPage checkins={checkins} />} />
           <Route path="/history" element={<HistoryPage checkins={checkins} />} />
           <Route path="/settings" element={<SettingsPage onDataChanged={loadData} />} />
