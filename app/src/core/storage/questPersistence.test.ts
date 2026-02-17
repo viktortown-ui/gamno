@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import 'fake-indexeddb/auto'
 
-;(globalThis as any).self = globalThis
+;(globalThis as unknown as { self: typeof globalThis }).self = globalThis
 
 describe('quest persistence', () => {
   beforeEach(async () => {

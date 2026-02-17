@@ -1,13 +1,14 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { MetricControl } from '../components/MetricControl'
 import { DEFAULT_CHECKIN_VALUES, INDEX_METRIC_IDS, METRICS, type MetricConfig, type MetricId } from '../core/metrics'
 import type { CheckinRecord, CheckinValues } from '../core/models/checkin'
 import type { QuestRecord } from '../core/models/quest'
-import { addCheckin, addQuest, loadInfluenceMatrix } from '../core/storage/repo'
+import { addCheckin, addQuest } from '../core/storage/repo'
 import { computeIndexDay, computeTopMovers } from '../core/engines/analytics/compute'
 import { formatDateTime, formatNumber } from '../ui/format'
 import { buildCheckinResultInsight } from '../core/engines/engagement/suggestions'
 import { createQuestFromSuggestion } from '../core/engines/engagement/quests'
+import { defaultInfluenceMatrix } from '../core/engines/influence/influence'
 
 type SaveState = 'idle' | 'saving' | 'saved'
 
@@ -42,16 +43,8 @@ export function CorePage({
 }) {
   const [values, setValues] = useState<CheckinValues>(templateValues ?? DEFAULT_CHECKIN_VALUES)
   const [saveState, setSaveState] = useState<SaveState>('idle')
-  const [savedAt, setSavedAt] = useState<number | null>(null)
   const [savedRecord, setSavedRecord] = useState<CheckinRecord | null>(null)
   const [errors, setErrors] = useState<Partial<Record<MetricId, string>>>({})
-  const [matrixLoadedAt, setMatrixLoadedAt] = useState<number>(0)
-
-  useEffect(() => {
-    if (templateValues) {
-      setValues(templateValues)
-    }
-  }, [templateValues])
 
   const updateValue = (id: MetricId, value: number) => {
     const metric = METRICS.find((item) => item.id === id)
@@ -72,9 +65,7 @@ export function CorePage({
     setSaveState('saving')
     const saved = await addCheckin(values)
     setSavedRecord(saved)
-    setSavedAt(saved.ts)
     setSaveState('saved')
-    setMatrixLoadedAt(Date.now())
     await onSaved()
   }
 
@@ -90,30 +81,12 @@ export function CorePage({
 
   const resultInsight = useMemo(() => {
     if (!savedRecord) return null
-    return loadInfluenceMatrix().then((matrix) => buildCheckinResultInsight(savedRecord, latest, matrix))
-  }, [savedRecord, latest, matrixLoadedAt])
-
-  const [resolvedInsight, setResolvedInsight] = useState<Awaited<typeof resultInsight> | null>(null)
-
-  useEffect(() => {
-    let cancelled = false
-    if (!resultInsight) {
-      setResolvedInsight(null)
-      return
-    }
-
-    void resultInsight.then((value) => {
-      if (!cancelled) setResolvedInsight(value)
-    })
-
-    return () => {
-      cancelled = true
-    }
-  }, [resultInsight])
+    return buildCheckinResultInsight(savedRecord, latest, defaultInfluenceMatrix)
+  }, [savedRecord, latest])
 
   const acceptAction = async () => {
-    if (!resolvedInsight?.bestLever) return
-    const quest = createQuestFromSuggestion(resolvedInsight.bestLever)
+    if (!resultInsight?.bestLever) return
+    const quest = createQuestFromSuggestion(resultInsight.bestLever)
     await addQuest(quest)
     await onQuestChange()
   }
@@ -140,22 +113,22 @@ export function CorePage({
         </button>
         <span className="save-feedback">
           {saveState === 'saving' ? 'Сохранение…' : null}
-          {saveState === 'saved' && savedAt ? `Сохранено в ${new Date(savedAt).toLocaleTimeString('ru-RU')}` : null}
+          {saveState === 'saved' && savedRecord ? `Сохранено в ${new Date(savedRecord.ts).toLocaleTimeString('ru-RU')}` : null}
         </span>
       </div>
 
-      {resolvedInsight ? (
+      {resultInsight ? (
         <section className="result-panel panel">
           <h2>Результат чек-ина</h2>
-          <p>Индекс дня: <strong>{formatNumber(resolvedInsight.index)}</strong> ({resolvedInsight.deltaVsPrevious > 0 ? '+' : ''}{formatNumber(resolvedInsight.deltaVsPrevious)} к прошлому)</p>
-          <p>Главный драйвер: <strong>{resolvedInsight.topDriver?.text ?? 'Недостаточно данных'}</strong></p>
+          <p>Индекс дня: <strong>{formatNumber(resultInsight.index)}</strong> ({resultInsight.deltaVsPrevious > 0 ? '+' : ''}{formatNumber(resultInsight.deltaVsPrevious)} к прошлому)</p>
+          <p>Главный драйвер: <strong>{resultInsight.topDriver?.text ?? 'Недостаточно данных'}</strong></p>
           <p>
             Лучший рычаг дня:{' '}
-            <strong>{resolvedInsight.bestLever?.title ?? 'Пока не найден'}</strong>
-            {resolvedInsight.bestLever ? ` (ожидаемый рост индекса: +${formatNumber(resolvedInsight.bestLever.predictedIndexLift)})` : ''}
+            <strong>{resultInsight.bestLever?.title ?? 'Пока не найден'}</strong>
+            {resultInsight.bestLever ? ` (ожидаемый рост индекса: +${formatNumber(resultInsight.bestLever.predictedIndexLift)})` : ''}
           </p>
           <div className="save-row">
-            <button type="button" onClick={acceptAction} disabled={!resolvedInsight.bestLever || Boolean(activeQuest)}>
+            <button type="button" onClick={acceptAction} disabled={!resultInsight.bestLever || Boolean(activeQuest)}>
               Принять действие
             </button>
             {activeQuest ? <span className="chip">У вас уже есть активный квест</span> : null}

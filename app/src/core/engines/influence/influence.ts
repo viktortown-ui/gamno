@@ -41,7 +41,7 @@ export function applyImpulse(
   influenceMatrix: InfluenceMatrix,
   steps = 2,
 ): MetricVector {
-  let next = { ...baseVector }
+  const next = { ...baseVector }
   for (const [metricId, delta] of Object.entries(impulses) as [MetricId, number][]) {
     next[metricId] = clampMetric(metricId, next[metricId] + delta)
   }

@@ -10,10 +10,11 @@ const columnOrder: MetricId[] = ['energy', 'focus', 'mood', 'stress', 'sleepHour
 export function HistoryPage({ checkins, onUseTemplate, onDataChanged }: { checkins: CheckinRecord[]; onUseTemplate: (v: CheckinValues) => void; onDataChanged: () => Promise<void> }) {
   const [days, setDays] = useState<7 | 30 | 90>(30)
   const [selectedId, setSelectedId] = useState<number | undefined>()
+  const [nowTs] = useState(() => Date.now())
 
   const filtered = useMemo(() => checkins
-    .filter((item) => item.ts >= Date.now() - days * 86400000)
-    .sort((a, b) => b.ts - a.ts), [checkins, days])
+    .filter((item) => item.ts >= nowTs - days * 86400000)
+    .sort((a, b) => b.ts - a.ts), [checkins, days, nowTs])
 
   const selectedIndex = filtered.findIndex((row) => row.id === selectedId)
   const selected = selectedIndex >= 0 ? filtered[selectedIndex] : undefined

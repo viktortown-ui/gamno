@@ -47,7 +47,17 @@ export function OraclePage({ latest, onQuestChange }: { latest?: CheckinRecord; 
   }
 
   useEffect(() => {
-    void refreshOracleData()
+    let cancelled = false
+    void Promise.all([loadInfluenceMatrix(), listScenarios(), listCheckins()]).then(([loadedMatrix, loadedScenarios, loadedCheckins]) => {
+      if (cancelled) return
+      setMatrix(loadedMatrix)
+      setSaved(loadedScenarios)
+      setCheckins(loadedCheckins)
+    })
+
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   const baseline = useMemo(() => {

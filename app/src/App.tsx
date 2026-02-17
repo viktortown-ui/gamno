@@ -63,7 +63,17 @@ function DesktopApp() {
   }
 
   useEffect(() => {
-    void loadData()
+    let cancelled = false
+    void Promise.all([listCheckins(), getLatestCheckin(), getActiveQuest()]).then(([all, latest, currentQuest]) => {
+      if (cancelled) return
+      setCheckins(all)
+      setLatestCheckin(latest)
+      setActiveQuest(currentQuest)
+    })
+
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   useEffect(() => {
