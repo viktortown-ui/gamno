@@ -73,14 +73,14 @@ export function DashboardPage({
   return (
     <section className="page">
       <h1>Дашборд</h1>
-      <p>Серия: <strong>{analytics.streak}</strong> дн.</p>
+      <p>Серия: <strong className="mono">{analytics.streak}</strong> дн.</p>
 
       <article className="summary-card panel">
         <h2>Следующее действие</h2>
         {activeQuest ? (
           <>
             <p><strong>{activeQuest.title}</strong></p>
-            <p>Ожидаемый рост индекса: +{formatNumber(activeQuest.predictedIndexLift)}</p>
+            <p>Ожидаемый рост индекса: <strong className="mono">+{formatNumber(activeQuest.predictedIndexLift)}</strong></p>
             <button type="button" onClick={async () => {
               if (!activeQuest.id) return
               const completed = await completeQuestById(activeQuest.id)
@@ -91,7 +91,7 @@ export function DashboardPage({
         ) : (
           <>
             <p>{suggestedQuest?.title ?? 'Пока нет предложения'}</p>
-            <p>{suggestedQuest ? `Ожидаемый рост индекса: +${formatNumber(suggestedQuest.predictedIndexLift)}` : 'Добавьте данные для подсказки.'}</p>
+            <p>{suggestedQuest ? <>Ожидаемый рост индекса: <strong className="mono">+{formatNumber(suggestedQuest.predictedIndexLift)}</strong></> : 'Добавьте данные для подсказки.'}</p>
             <button type="button" disabled={!suggestedQuest} onClick={async () => {
               if (!suggestedQuest) return
               await addQuest(suggestedQuest)
@@ -109,7 +109,7 @@ export function DashboardPage({
           return (
             <article className="metric-card" key={metric.id}>
               <h3>{metric.labelRu}</h3>
-              <p>{formatNumber(analytics.avg7[metric.id] ?? 0)} ({delta > 0 ? '↑' : delta < 0 ? '↓' : '→'} {formatNumber(delta)})</p>
+              <p><span className="mono">{formatNumber(analytics.avg7[metric.id] ?? 0)}</span> ({delta > 0 ? '↑' : delta < 0 ? '↓' : '→'} <span className="mono">{formatNumber(delta)}</span>)</p>
               <Sparkline values={metricSeries} />
             </article>
           )
@@ -133,10 +133,26 @@ export function DashboardPage({
       <ol>{analytics.forecast.values.map((v, i) => <li key={i}>{formatNumber(v)}</li>)}</ol>
 
       <div className="cockpit-strip">
-        <article><span>Индекс (7д)</span><strong>{formatNumber(analytics.indexAvg7)}</strong></article>
-        <article><span>Δ к прошлым 7д</span><strong>{analytics.indexDelta7 > 0 ? '+' : ''}{formatNumber(analytics.indexDelta7)}</strong></article>
-        <article><span>Сигналы</span><strong>{analytics.signals.length}</strong></article>
-        <article><span>Прогноз next7</span><strong>{formatNumber(analytics.forecast.values[analytics.forecast.values.length - 1] ?? analytics.indexAvg7)}</strong></article>
+        <article>
+          <span>Индекс (7д)</span>
+          <strong className="mono">{formatNumber(analytics.indexAvg7)}</strong>
+          <div className="meter" aria-hidden="true"><div className="meter__fill" style={{ width: `${Math.max(0, Math.min(100, analytics.indexAvg7 * 10))}%` }} /></div>
+        </article>
+        <article>
+          <span>Δ к прошлым 7д</span>
+          <strong className="mono">{analytics.indexDelta7 > 0 ? '+' : ''}{formatNumber(analytics.indexDelta7)}</strong>
+          <span className={`status-badge ${analytics.indexDelta7 >= 0 ? 'status-badge--low' : 'status-badge--high'}`}>{analytics.indexDelta7 >= 0 ? 'рост' : 'спад'}</span>
+        </article>
+        <article>
+          <span>Сигналы</span>
+          <strong className="mono">{analytics.signals.length}</strong>
+          <span className={`status-badge ${analytics.signals.length >= 3 ? 'status-badge--high' : analytics.signals.length > 0 ? 'status-badge--mid' : 'status-badge--low'}`}>{analytics.signals.length >= 3 ? 'критично' : analytics.signals.length > 0 ? 'внимание' : 'чисто'}</span>
+        </article>
+        <article>
+          <span>Прогноз 7д</span>
+          <strong className="mono">{formatNumber(analytics.forecast.values[analytics.forecast.values.length - 1] ?? analytics.indexAvg7)}</strong>
+          <div className="meter" aria-hidden="true"><div className="meter__fill meter__fill--alt" style={{ width: `${Math.max(0, Math.min(100, (analytics.forecast.values[analytics.forecast.values.length - 1] ?? analytics.indexAvg7) * 10))}%` }} /></div>
+        </article>
         <article><span>Волатильность</span><strong className={`volatility volatility--${volatilityLabel}`}>{volatilityLabel}</strong></article>
       </div>
     </section>

@@ -79,6 +79,7 @@ function DesktopApp() {
   useEffect(() => {
     document.documentElement.dataset.theme = appearance.theme
     document.documentElement.dataset.motion = appearance.motion
+    document.documentElement.dataset.transparency = appearance.transparency
     saveAppearanceSettings(appearance)
   }, [appearance])
 

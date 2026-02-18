@@ -69,6 +69,15 @@ export function SettingsPage({ onDataChanged, appearance, onAppearanceChange }: 
               <option value="reduced">Сниженная</option>
             </select>
           </label>
+          <label>Прозрачность
+            <select
+              value={appearance.transparency}
+              onChange={(event) => onAppearanceChange({ ...appearance, transparency: event.target.value === 'reduced' ? 'reduced' : 'glass' })}
+            >
+              <option value="glass">Стекло</option>
+              <option value="reduced">Сниженная</option>
+            </select>
+          </label>
         </div>
       </article>
 
