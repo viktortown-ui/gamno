@@ -21,7 +21,7 @@ import { forecastIndex } from './core/engines/forecast/indexForecast'
 type PageKey = 'core' | 'dashboard' | 'oracle' | 'graph' | 'history' | 'settings'
 
 const pageMeta: { key: PageKey; label: string }[] = [
-  { key: 'core', label: 'Чек-ин' },
+  { key: 'core', label: 'Живое ядро' },
   { key: 'dashboard', label: 'Дашборд' },
   { key: 'oracle', label: 'Оракул' },
   { key: 'graph', label: 'Граф' },
@@ -144,6 +144,7 @@ function DesktopApp() {
                 templateValues={templateValues}
                 activeQuest={activeQuest}
                 onQuestChange={loadData}
+                checkins={checkins}
               />
             }
           />

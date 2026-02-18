@@ -282,3 +282,81 @@ textarea:focus-visible,
 
 .mission-strip { grid-template-columns: repeat(6, minmax(0, 1fr)); margin-bottom: var(--space-2); }
 .result-panel { padding: var(--space-3); border: 1px solid var(--line); }
+
+.core-cockpit-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: var(--space-2);
+}
+
+.core-orb-card,
+.core-stats-card,
+.core-next-action,
+.core-explain {
+  padding: var(--space-3);
+}
+
+.core-orb-wrap {
+  min-height: 250px;
+  display: grid;
+  place-items: center;
+}
+
+.core-orb {
+  width: min(100%, 320px);
+  filter: drop-shadow(0 0 18px rgba(143, 107, 255, 0.38));
+}
+
+.core-orb__halo {
+  fill: none;
+  stroke: rgba(46, 233, 210, 0.5);
+  stroke-width: 2;
+  transform-origin: 120px 120px;
+  animation: orb-pulse 2.4s ease-in-out infinite;
+}
+
+.core-orb__value {
+  font-size: 28px;
+  fill: var(--text);
+  font-family: var(--font-mono);
+  font-weight: 700;
+}
+
+.core-orb__label {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  fill: var(--muted);
+}
+
+.core-stats-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.core-stats-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.core-next-action,
+.core-explain {
+  border: 1px solid var(--line);
+}
+
+.core-explain ul {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 8px;
+}
+
+@keyframes orb-pulse {
+  0% { opacity: 0.5; }
+  50% { opacity: 0.95; }
+  100% { opacity: 0.5; }
+}
