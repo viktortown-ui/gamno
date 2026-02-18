@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { INDEX_METRIC_IDS, METRICS, type MetricId } from '../core/metrics'
 import type { CheckinRecord } from '../core/models/checkin'
 import { addQuest, addScenario, listCheckins, listScenarios, loadInfluenceMatrix, seedTestData } from '../core/storage/repo'
 import { explainDriverInsights } from '../core/engines/influence/influence'
+import { consumeOracleScenarioDraft } from '../core/engines/influence/scenarioDraft'
 import type { InfluenceMatrix, MetricVector, OracleScenario } from '../core/engines/influence/types'
 import { computeIndexDay } from '../core/engines/analytics/compute'
 import { formatDateTime, formatNumber } from '../ui/format'
@@ -27,12 +28,19 @@ function toVector(base?: CheckinRecord): MetricVector | undefined {
 }
 
 export function OraclePage({ latest, onQuestChange }: { latest?: CheckinRecord; onQuestChange: () => Promise<void> }) {
-  const [impulses, setImpulses] = useState<Partial<Record<MetricId, number>>>({})
-  const [focusMetrics, setFocusMetrics] = useState<MetricId[]>(['energy', 'stress', 'sleepHours'])
+  const location = useLocation()
+  const initialDraft = useMemo(
+    () => (location.search.includes('prefill=1') ? consumeOracleScenarioDraft() : undefined),
+    [location.search],
+  )
+  const [impulses, setImpulses] = useState<Partial<Record<MetricId, number>>>(initialDraft?.impulses ?? {})
+  const [focusMetrics, setFocusMetrics] = useState<MetricId[]>(initialDraft?.focusMetrics ?? ['energy', 'stress', 'sleepHours'])
   const [matrix, setMatrix] = useState<InfluenceMatrix | null>(null)
   const [saved, setSaved] = useState<OracleScenario[]>([])
-  const [baselineTs, setBaselineTs] = useState<number | 'latest'>('latest')
+  const [baselineTs, setBaselineTs] = useState<number | 'latest'>(initialDraft?.baselineTs ?? 'latest')
   const [checkins, setCheckins] = useState<CheckinRecord[]>([])
+  const [planSummary, setPlanSummary] = useState<string>('')
+  const [prefillSource] = useState<string>(initialDraft?.sourceLabelRu ?? '')
   const navigate = useNavigate()
 
   const refreshOracleData = async () => {
@@ -104,6 +112,7 @@ export function OraclePage({ latest, onQuestChange }: { latest?: CheckinRecord; 
   return <section className="page panel">
     <h1>Оракул</h1>
     <p>Сначала задайте сценарий, потом смотрите последствия.</p>
+    {prefillSource ? <p className="chip">{prefillSource}</p> : null}
 
     <div className="preset-row">
       {presets.map((preset) => (
@@ -145,17 +154,20 @@ export function OraclePage({ latest, onQuestChange }: { latest?: CheckinRecord; 
         <button type="button" onClick={async () => {
           const strongest = drivers[0]
           if (!strongest) return
+          const questTitle = `План на 3 дня: усилить ${METRICS.find((m) => m.id === strongest.from)?.labelRu ?? strongest.from}`
           await addQuest({
             createdAt: Date.now(),
-            title: `План на 3 дня: усилить ${METRICS.find((m) => m.id === strongest.from)?.labelRu ?? strongest.from}`,
+            title: questTitle,
             metricTarget: strongest.from,
             delta: 1,
             horizonDays: 3,
             status: 'active',
             predictedIndexLift: Math.max(0.3, indexDelta),
           })
+          setPlanSummary(`Миссия создана: ${questTitle}. Ожидаемый Δ индекса ${indexDelta > 0 ? '+' : ''}${formatNumber(indexDelta)}. Главные драйверы: ${drivers.slice(0, 2).map((driver) => METRICS.find((m) => m.id === driver.from)?.labelRu ?? driver.from).join(', ')}.`)
           await onQuestChange()
         }}>Принять план на 3 дня</button>
+        {planSummary ? <p className="chip">{planSummary}</p> : null}
       </article>
     </div>
 

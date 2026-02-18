@@ -1,5 +1,7 @@
 import { METRICS, type MetricId } from '../../metrics'
+import { computeIndexDay } from '../analytics/compute'
 import type { InfluenceMatrix, MetricVector } from './types'
+import type { AutoLeverRecommendation } from './types'
 
 export interface InfluenceEdge {
   from: MetricId
@@ -110,6 +112,40 @@ export function explainDriverInsights(
   return drivers
     .sort((a, b) => b.strength - a.strength || Math.abs(b.weight) - Math.abs(a.weight) || a.from.localeCompare(b.from) || a.to.localeCompare(b.to))
     .slice(0, limit)
+}
+
+export function computeTopLevers(
+  baseVector: MetricVector,
+  matrix: InfluenceMatrix,
+  topN = 3,
+): AutoLeverRecommendation[] {
+  const baseIndex = computeIndexDay({ ...baseVector, ts: 0 })
+  const recommendations: AutoLeverRecommendation[] = []
+
+  for (const from of Object.keys(matrix) as MetricId[]) {
+    for (const to of Object.keys(matrix[from]) as MetricId[]) {
+      const weight = matrix[from][to] ?? 0
+      if (Math.abs(weight) < 0.15) continue
+
+      const suggestedDelta = weight >= 0 ? 1 : -1
+      const result = applyImpulse(baseVector, { [from]: suggestedDelta }, matrix, 3)
+      const scenarioIndex = computeIndexDay({ ...result, ts: 0 })
+      const expectedIndexDelta = scenarioIndex - baseIndex
+      if (expectedIndexDelta <= 0) continue
+
+      recommendations.push({ from, to, weight, suggestedDelta, expectedIndexDelta })
+    }
+  }
+
+  return recommendations
+    .sort(
+      (a, b) =>
+        b.expectedIndexDelta - a.expectedIndexDelta ||
+        Math.abs(b.weight) - Math.abs(a.weight) ||
+        a.from.localeCompare(b.from) ||
+        a.to.localeCompare(b.to),
+    )
+    .slice(0, topN)
 }
 
 function label(metricId: MetricId): string {

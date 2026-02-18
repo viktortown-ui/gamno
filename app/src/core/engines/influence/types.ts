@@ -11,3 +11,18 @@ export interface OracleScenario {
   result: MetricVector
   index: number
 }
+
+export interface OracleScenarioDraft {
+  baselineTs?: number | 'latest'
+  impulses: Partial<Record<MetricId, number>>
+  focusMetrics: MetricId[]
+  sourceLabelRu?: string
+}
+
+export interface AutoLeverRecommendation {
+  from: MetricId
+  to: MetricId
+  weight: number
+  suggestedDelta: number
+  expectedIndexDelta: number
+}

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { forceCenter, forceLink, forceManyBody, forceSimulation, forceX, forceY } from 'd3-force'
 import { METRICS, type MetricId } from '../core/metrics'
 import { applyImpulse, defaultInfluenceMatrix, type InfluenceEdge } from '../core/engines/influence/influence'
@@ -6,6 +7,8 @@ import { getTopEdges } from '../core/engines/influence/graphView'
 import type { InfluenceMatrix, MetricVector } from '../core/engines/influence/types'
 import { loadInfluenceMatrix, resetInfluenceMatrix, saveInfluenceMatrix } from '../core/storage/repo'
 import { SparkButton } from '../ui/SparkButton'
+import { saveOracleScenarioDraft } from '../core/engines/influence/scenarioDraft'
+import { formatDateTime } from '../ui/format'
 
 type ViewMode = 'levers' | 'map' | 'matrix'
 
@@ -19,6 +22,7 @@ function edgeMeaning(edge: InfluenceEdge): string {
 }
 
 export function GraphPage() {
+  const navigate = useNavigate()
   const [matrix, setMatrix] = useState<InfluenceMatrix>(defaultInfluenceMatrix)
   const [mode, setMode] = useState<ViewMode>('levers')
   const [selectedEdge, setSelectedEdge] = useState<{ from: MetricId; to: MetricId } | null>(null)
@@ -92,6 +96,16 @@ export function GraphPage() {
     ? edgeMeaning({ from: selectedEdge.from, to: selectedEdge.to, weight: selectedWeight, absWeight: Math.abs(selectedWeight) })
     : ''
 
+  const applyEdgeAsScenario = (from: MetricId, to: MetricId, weight: number) => {
+    saveOracleScenarioDraft({
+      baselineTs: 'latest',
+      impulses: { [from]: weight >= 0 ? 1 : -1 },
+      focusMetrics: [from, to],
+      sourceLabelRu: `Сценарий из графа: ${METRICS.find((m) => m.id === from)?.labelRu ?? from} → ${METRICS.find((m) => m.id === to)?.labelRu ?? to} (${formatDateTime(Date.now())})`,
+    })
+    navigate('/oracle?prefill=1')
+  }
+
   return <section className="page panel graph-page">
     <h1>Граф влияний</h1>
     <div className="mode-tabs">
@@ -113,7 +127,7 @@ export function GraphPage() {
               <label>Топ N <input type="number" min={1} max={40} value={topN} onChange={(e) => setTopN(Number(e.target.value))} /></label>
             </div>
             <table className="table table--dense"><thead><tr><th>От</th><th>К</th><th>Вес</th><th>Смысл</th><th>Действие</th></tr></thead>
-              <tbody>{topEdges.map((edge) => <tr key={`${edge.from}-${edge.to}`} onClick={() => selectEdge(edge)} className={selectedEdge?.from === edge.from && selectedEdge?.to === edge.to ? 'row-active' : ''}><td>{METRICS.find((m) => m.id === edge.from)?.labelRu}</td><td>{METRICS.find((m) => m.id === edge.to)?.labelRu}</td><td>{edge.weight > 0 ? '+' : ''}{edge.weight.toFixed(2)}</td><td>{edgeMeaning(edge)}</td><td><button type="button" className="chip" onClick={(event) => { event.stopPropagation(); runImpulseTest(edge.from, edge.weight >= 0 ? 1 : -1) }}>Проверить импульсом</button></td></tr>)}</tbody></table>
+              <tbody>{topEdges.map((edge) => <tr key={`${edge.from}-${edge.to}`} onClick={() => selectEdge(edge)} className={selectedEdge?.from === edge.from && selectedEdge?.to === edge.to ? 'row-active' : ''}><td>{METRICS.find((m) => m.id === edge.from)?.labelRu}</td><td>{METRICS.find((m) => m.id === edge.to)?.labelRu}</td><td>{edge.weight > 0 ? '+' : ''}{edge.weight.toFixed(2)}</td><td>{edgeMeaning(edge)}</td><td><button type="button" className="chip" onClick={(event) => { event.stopPropagation(); runImpulseTest(edge.from, edge.weight >= 0 ? 1 : -1) }}>Проверить импульсом</button> <button type="button" className="chip" onClick={(event) => { event.stopPropagation(); applyEdgeAsScenario(edge.from, edge.to, edge.weight) }}>Применить как сценарий</button></td></tr>)}</tbody></table>
           </>
         )}
 
@@ -154,6 +168,7 @@ export function GraphPage() {
           <p>{selectedMeaning}</p>
           <input type="range" min={-1} max={1} step={0.05} value={selectedWeight} onChange={(e) => updateEdge(selectedEdge.from, selectedEdge.to, Number(e.target.value))} />
           <div className="preset-row">{[-0.8, -0.4, 0, 0.4, 0.8].map((preset) => <button key={preset} type="button" className="chip" onClick={() => updateEdge(selectedEdge.from, selectedEdge.to, preset)}>Применить пресет {preset > 0 ? '+' : ''}{preset}</button>)}</div>
+          <button type="button" onClick={() => applyEdgeAsScenario(selectedEdge.from, selectedEdge.to, selectedWeight)}>Применить как сценарий</button>
         </>}
         <div className="settings-actions">
           <SparkButton type="button" onClick={() => saveInfluenceMatrix(matrix)}>Сохранить карту</SparkButton>
