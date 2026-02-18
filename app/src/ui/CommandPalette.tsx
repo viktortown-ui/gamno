@@ -3,11 +3,12 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 const commands = [
-  { label: 'Чек-ин', path: '/core' },
+  { label: 'Открыть Живое ядро', path: '/core' },
+  { label: 'Создать чек-ин', path: '/core' },
+  { label: 'Оракул: новый сценарий', path: '/oracle' },
+  { label: 'Граф: рычаги', path: '/graph' },
   { label: 'Дашборд', path: '/dashboard' },
   { label: 'История', path: '/history' },
-  { label: 'Оракул', path: '/oracle' },
-  { label: 'Граф влияний', path: '/graph' },
   { label: 'Настройки', path: '/settings' },
 ]
 
@@ -35,7 +36,7 @@ export function CommandPalette() {
         <Command.Input placeholder="Введите команду" autoFocus />
         <Command.List>
           {commands.map((item) => (
-            <Command.Item key={item.path} onSelect={() => { navigate(item.path); setOpen(false) }}>
+            <Command.Item key={`${item.path}-${item.label}`} onSelect={() => { navigate(item.path); setOpen(false) }}>
               {item.label}
             </Command.Item>
           ))}

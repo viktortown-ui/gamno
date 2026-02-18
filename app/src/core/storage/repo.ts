@@ -6,11 +6,15 @@ import type { QuestRecord } from '../models/quest'
 import { defaultInfluenceMatrix } from '../engines/influence/influence'
 import type { InfluenceMatrix, OracleScenario } from '../engines/influence/types'
 import { completeQuest } from '../engines/engagement/quests'
+import { computeCoreState, type CoreStateSnapshot } from '../engines/stateEngine'
+import type { StateSnapshotRecord } from '../models/state'
 
 export async function addCheckin(values: CheckinValues): Promise<CheckinRecord> {
   const ts = Date.now()
   const id = await db.checkins.add({ ...values, ts })
-  return { ...values, ts, id }
+  const saved = { ...values, ts, id }
+  await saveStateSnapshot(ts)
+  return saved
 }
 
 export async function deleteCheckin(id: number): Promise<void> {
@@ -76,6 +80,7 @@ export async function seedTestData(days = 30, seed = 42): Promise<void> {
   })
 
   await db.checkins.bulkAdd(rows)
+  await saveStateSnapshot(Date.now())
 }
 
 function clamp(id: MetricId, value: number): number {
@@ -88,7 +93,6 @@ export interface InfluenceLearnedMeta {
   windowDays: number
   computedAt: number
 }
-
 
 function emptyInfluenceMatrix(): InfluenceMatrix {
   return METRICS.reduce<Partial<InfluenceMatrix>>((acc, metric) => {
@@ -128,7 +132,6 @@ export async function saveInfluenceLearnedMeta(value: InfluenceLearnedMeta): Pro
   await db.settings.put({ key: 'influence-learned-meta', value, updatedAt: Date.now() })
 }
 
-
 export async function addQuest(quest: QuestRecord): Promise<QuestRecord> {
   const id = await db.quests.add(quest)
   return { ...quest, id }
@@ -147,6 +150,7 @@ export async function completeQuestById(id: number): Promise<QuestRecord | undef
   if (!row) return undefined
   const completed = completeQuest(row)
   await db.quests.put(completed)
+  await saveStateSnapshot(Date.now())
   return completed
 }
 
@@ -157,4 +161,38 @@ export async function addScenario(scenario: OracleScenario): Promise<void> {
 export async function listScenarios(): Promise<OracleScenario[]> {
   const rows = await db.scenarios.orderBy('ts').reverse().toArray()
   return rows
+}
+
+function toStateRecord(snapshot: CoreStateSnapshot): StateSnapshotRecord {
+  return {
+    ts: snapshot.ts,
+    index: snapshot.index,
+    risk: snapshot.risk,
+    volatility: snapshot.volatility,
+    xp: snapshot.xp,
+    level: snapshot.level,
+    entropy: snapshot.entropy,
+    drift: snapshot.drift,
+    stats: snapshot.stats,
+  }
+}
+
+export async function computeCurrentStateSnapshot(ts = Date.now()): Promise<CoreStateSnapshot> {
+  const [checkins, quests] = await Promise.all([listCheckins(), listQuests()])
+  return computeCoreState(checkins, quests, ts)
+}
+
+export async function saveStateSnapshot(ts = Date.now()): Promise<StateSnapshotRecord> {
+  const snapshot = await computeCurrentStateSnapshot(ts)
+  const record = toStateRecord(snapshot)
+  const id = await db.stateSnapshots.add(record)
+  return { ...record, id }
+}
+
+export async function getLatestStateSnapshot(): Promise<StateSnapshotRecord | undefined> {
+  return db.stateSnapshots.orderBy('ts').last()
+}
+
+export async function listStateSnapshots(limit = 90): Promise<StateSnapshotRecord[]> {
+  return db.stateSnapshots.orderBy('ts').reverse().limit(limit).toArray()
 }
