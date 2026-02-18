@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
-import { INDEX_METRIC_IDS, METRICS } from '../core/metrics'
+import { useNavigate } from 'react-router-dom'
+import { INDEX_METRIC_IDS, METRICS, type MetricId } from '../core/metrics'
 import type { CheckinRecord } from '../core/models/checkin'
 import type { QuestRecord } from '../core/models/quest'
 import {
@@ -11,11 +12,12 @@ import {
 } from '../core/engines/analytics/compute'
 import { evaluateSignals } from '../core/engines/rules/evaluateSignals'
 import { forecastIndex } from '../core/engines/forecast/indexForecast'
-import { formatNumber } from '../ui/format'
+import { formatDateTime, formatNumber } from '../ui/format'
 import { Sparkline } from '../ui/Sparkline'
 import { buildCheckinResultInsight } from '../core/engines/engagement/suggestions'
-import { defaultInfluenceMatrix } from '../core/engines/influence/influence'
-import { addQuest, completeQuestById } from '../core/storage/repo'
+import { computeTopLevers, defaultInfluenceMatrix } from '../core/engines/influence/influence'
+import { saveOracleScenarioDraft } from '../core/engines/influence/scenarioDraft'
+import { addQuest, completeQuestById, seedTestData } from '../core/storage/repo'
 import { createQuestFromSuggestion } from '../core/engines/engagement/quests'
 
 export function DashboardPage({
@@ -27,6 +29,7 @@ export function DashboardPage({
   activeQuest?: QuestRecord
   onQuestChange: () => Promise<void>
 }) {
+  const navigate = useNavigate()
   const [outcomeMessage, setOutcomeMessage] = useState<string>('')
 
   const analytics = useMemo(() => {
@@ -64,8 +67,47 @@ export function DashboardPage({
     return insight.bestLever ? createQuestFromSuggestion(insight.bestLever) : null
   }, [checkins])
 
+  const topLevers = useMemo(() => {
+    const baseline = checkins[0]
+    if (!baseline) return []
+    return computeTopLevers(baseline, defaultInfluenceMatrix, 3)
+  }, [checkins])
+
+  const applyLeverAsScenario = (
+    from: MetricId,
+    to: MetricId,
+    suggestedDelta: number,
+    sourceLabelRu?: string,
+  ) => {
+    saveOracleScenarioDraft({
+      baselineTs: 'latest',
+      impulses: { [from]: suggestedDelta },
+      focusMetrics: [from, to],
+      sourceLabelRu,
+    })
+    navigate('/oracle?prefill=1')
+  }
+
   if (checkins.length < 3) {
-    return <section className="page"><h1>Дашборд</h1><p>Добавьте минимум 3 чек-ина для аналитики.</p><a href="#/core">Сделать чек-ин</a></section>
+    return (
+      <section className="page">
+        <h1>Дашборд</h1>
+        <article className="empty-state panel">
+          <h2>Пуск</h2>
+          <p>60 секунд до первых инсайтов.</p>
+          <ol>
+            <li>Сделайте чек-ин и зафиксируйте базу.</li>
+            <li>Запустите сценарий и оцените рычаги.</li>
+            <li>Примите миссию на 3 дня и отслеживайте прогресс.</li>
+          </ol>
+          <div className="settings-actions">
+            <button type="button" onClick={() => navigate('/core')}>Сделать чек-ин</button>
+            <button type="button" onClick={async () => { await seedTestData(30, 42); navigate('/dashboard') }}>Сгенерировать тестовые данные (30 дней)</button>
+            <button type="button" onClick={() => navigate('/settings')}>Импортировать хранилище</button>
+          </div>
+        </article>
+      </section>
+    )
   }
 
   const volatilityLabel = analytics.volatility < 0.8 ? 'низкая' : analytics.volatility < 1.6 ? 'средняя' : 'высокая'
@@ -101,6 +143,28 @@ export function DashboardPage({
         )}
         {outcomeMessage ? <p className="chip">{outcomeMessage}</p> : null}
       </article>
+
+      <h2>Авто-рычаги (топ-3)</h2>
+      <div className="metric-cards">
+        {topLevers.map((lever) => {
+          const fromLabel = METRICS.find((item) => item.id === lever.from)?.labelRu ?? lever.from
+          const toLabel = METRICS.find((item) => item.id === lever.to)?.labelRu ?? lever.to
+          return (
+            <article className="metric-card" key={`${lever.from}-${lever.to}`}>
+              <h3>{fromLabel} → {toLabel}</h3>
+              <p>Вес связи: <strong className="mono">{lever.weight > 0 ? '+' : ''}{formatNumber(lever.weight)}</strong></p>
+              <p>Рекомендуемый импульс: <strong className="mono">{lever.suggestedDelta > 0 ? '+' : ''}{formatNumber(lever.suggestedDelta)}</strong></p>
+              <p>Ожидаемый Δ индекса: <strong className="mono">+{formatNumber(lever.expectedIndexDelta)}</strong></p>
+              <button
+                type="button"
+                onClick={() => applyLeverAsScenario(lever.from, lever.to, lever.suggestedDelta, `Авто-рычаг ${fromLabel} → ${toLabel} (${formatDateTime(Date.now())})`)}
+              >
+                Применить импульс
+              </button>
+            </article>
+          )
+        })}
+      </div>
 
       <div className="metric-cards">
         {METRICS.filter((m) => m.id !== 'cashFlow').map((metric) => {
