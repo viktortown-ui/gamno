@@ -10,12 +10,15 @@ import type { InfluenceMatrix, OracleScenario } from '../engines/influence/types
 import { completeQuest } from '../engines/engagement/quests'
 import { computeCoreState, type CoreStateSnapshot } from '../engines/stateEngine'
 import type { StateSnapshotRecord } from '../models/state'
+import { computeRegimeLayer } from '../regime/snapshot'
+import type { RegimeSnapshotRecord } from '../models/regime'
 
 export async function addCheckin(values: CheckinValues): Promise<CheckinRecord> {
   const ts = Date.now()
   const id = await db.checkins.add({ ...values, ts })
   const saved = { ...values, ts, id }
   await saveStateSnapshot(ts)
+  await saveRegimeSnapshot(ts)
   return saved
 }
 
@@ -83,6 +86,7 @@ export async function seedTestData(days = 30, seed = 42): Promise<void> {
 
   await db.checkins.bulkAdd(rows)
   await saveStateSnapshot(Date.now())
+  await saveRegimeSnapshot(Date.now())
 }
 
 function clamp(id: MetricId, value: number): number {
@@ -90,9 +94,6 @@ function clamp(id: MetricId, value: number): number {
   if (!metric) return value
   return Math.max(metric.min, Math.min(metric.max, Number(value.toFixed(metric.step < 1 ? 1 : 0))))
 }
-
-
-
 
 export async function loadInfluenceMatrix(): Promise<InfluenceMatrix> {
   const row = await db.settings.get('influence-matrix')
@@ -168,6 +169,7 @@ export async function completeQuestById(id: number): Promise<QuestRecord | undef
   const completed = completeQuest(row)
   await db.quests.put(completed)
   await saveStateSnapshot(Date.now())
+  await saveRegimeSnapshot(Date.now())
   return completed
 }
 
@@ -212,4 +214,24 @@ export async function getLatestStateSnapshot(): Promise<StateSnapshotRecord | un
 
 export async function listStateSnapshots(limit = 90): Promise<StateSnapshotRecord[]> {
   return db.stateSnapshots.orderBy('ts').reverse().limit(limit).toArray()
+}
+
+export async function computeCurrentRegimeSnapshot(ts = Date.now()): Promise<RegimeSnapshotRecord> {
+  const [checkins, stateSnapshot, activeQuest] = await Promise.all([listCheckins(), computeCurrentStateSnapshot(ts), getActiveQuest()])
+  return computeRegimeLayer(checkins, stateSnapshot, activeQuest, ts).snapshot
+}
+
+export async function saveRegimeSnapshot(ts = Date.now()): Promise<RegimeSnapshotRecord> {
+  const [checkins, stateSnapshot, activeQuest] = await Promise.all([listCheckins(), computeCurrentStateSnapshot(ts), getActiveQuest()])
+  const regimeSnapshot = computeRegimeLayer(checkins, stateSnapshot, activeQuest, ts).snapshot
+  const id = await db.regimeSnapshots.add(regimeSnapshot)
+  return { ...regimeSnapshot, id }
+}
+
+export async function getLatestRegimeSnapshot(): Promise<RegimeSnapshotRecord | undefined> {
+  return db.regimeSnapshots.orderBy('ts').last()
+}
+
+export async function listRegimeSnapshots(limit = 90): Promise<RegimeSnapshotRecord[]> {
+  return db.regimeSnapshots.orderBy('ts').reverse().limit(limit).toArray()
 }

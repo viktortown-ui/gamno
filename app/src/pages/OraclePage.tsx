@@ -18,6 +18,10 @@ import { resolveActiveMatrix } from '../core/engines/influence/weightsSource'
 import type { InfluenceMatrix, MetricVector, OracleScenario, WeightsSource } from '../core/engines/influence/types'
 import { computeIndexDay } from '../core/engines/analytics/compute'
 import { formatDateTime, formatNumber } from '../ui/format'
+import { computeCoreState } from '../core/engines/stateEngine'
+import { assessCollapseRisk } from '../core/collapse/model'
+import { regimeFromDay, getTransitionMatrix, predictNext, REGIMES } from '../core/regime/model'
+import type { RegimeId } from '../core/models/regime'
 import { buildPlaybook, propagateBySteps } from '../core/engines/influence/oracle'
 import { SparkButton } from '../ui/SparkButton'
 import { runForecastEngine, type ForecastRunConfig, type ForecastRunResult } from '../core/forecast'
@@ -181,6 +185,18 @@ export function OraclePage({ latest, onQuestChange }: { latest?: CheckinRecord; 
   const drivers = explainDriverInsights(result, baseVector, matrix, 5)
   const playbook = buildPlaybook(baseVector, result, matrix)
 
+  const baseState = computeCoreState([baseline], [], baseline.ts)
+  const scenarioState = computeCoreState([resultRecord], [], baseline.ts)
+  const baseCollapse = assessCollapseRisk(baseState, baseline)
+  const scenarioCollapse = assessCollapseRisk(scenarioState, resultRecord)
+  const collapseDelta = scenarioCollapse.pCollapse - baseCollapse.pCollapse
+  const baselineRegime = regimeFromDay({ dayIndex: baseIndex * 10, volatility: baseState.volatility * 50, stress: baseline.stress, sleepHours: baseline.sleepHours, energy: baseline.energy, mood: baseline.mood })
+  const scenarioRegime = regimeFromDay({ dayIndex: scenarioIndex * 10, volatility: scenarioState.volatility * 50, stress: resultRecord.stress, sleepHours: resultRecord.sleepHours, energy: resultRecord.energy, mood: resultRecord.mood, prevDayIndex: baseIndex * 10 })
+  const matrixRegime = getTransitionMatrix([baselineRegime, scenarioRegime])
+  const baseNext = predictNext(baselineRegime as RegimeId, matrixRegime, 1)
+  const scenarioNext = predictNext(scenarioRegime as RegimeId, matrixRegime, 1)
+  const bestSirenLever = drivers[0]
+
   const chartLabels = Array.from({ length: config.horizon }, (_, idx) => `+${idx + 1}д`)
 
   return <section className="page panel">
@@ -208,7 +224,7 @@ export function OraclePage({ latest, onQuestChange }: { latest?: CheckinRecord; 
       return <label key={id}>{m.labelRu} Δ<input type="number" value={impulses[id] ?? 0} onChange={(e) => setImpulses((p) => ({ ...p, [id]: Number(e.target.value) }))} /></label>
     })}</div></article>
 
-    <article className="summary-card panel"><h2>Результат</h2><p>Новый индекс: <strong>{formatNumber(scenarioIndex)}</strong></p><p>Δ индекса: <strong>{indexDelta > 0 ? '+' : ''}{formatNumber(indexDelta)}</strong></p><ol>{propagation.map((vector, idx) => <li key={idx}>Шаг {idx + 1}: {METRICS.map((m) => `${m.labelRu} ${formatNumber(vector[m.id])}`).join(' | ')}</li>)}</ol>
+    <article className="summary-card panel"><h2>Результат</h2><p>Новый индекс: <strong>{formatNumber(scenarioIndex)}</strong></p><p>Δ индекса: <strong>{indexDelta > 0 ? '+' : ''}{formatNumber(indexDelta)}</strong></p><p>P(collapse): <strong>{(scenarioCollapse.pCollapse * 100).toFixed(1)}%</strong> ({collapseDelta > 0 ? '+' : ''}{(collapseDelta * 100).toFixed(1)} п.п.)</p><p>Сдвиг режима next1: {REGIMES.map((regime) => `${regime.labelRu} ${((scenarioNext[regime.id].probability - baseNext[regime.id].probability) * 100).toFixed(1)}%`).join(' · ')}</p><p>Лучший рычаг для снижения Сирены: <strong>{bestSirenLever ? `${METRICS.find((m) => m.id === bestSirenLever.from)?.labelRu ?? bestSirenLever.from} → ${METRICS.find((m) => m.id === bestSirenLever.to)?.labelRu ?? bestSirenLever.to}` : 'нет'}</strong></p><ol>{propagation.map((vector, idx) => <li key={idx}>Шаг {idx + 1}: {METRICS.map((m) => `${m.labelRu} ${formatNumber(vector[m.id])}`).join(' | ')}</li>)}</ol>
       <button type="button" onClick={async () => {
         const strongest = drivers[0]
         if (!strongest) return

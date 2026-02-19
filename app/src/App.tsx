@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom'
 import type { CheckinRecord, CheckinValues } from './core/models/checkin'
 import type { QuestRecord } from './core/models/quest'
-import { getActiveQuest, getLatestCheckin, listCheckins } from './core/storage/repo'
+import { getActiveQuest, getLatestCheckin, getLatestRegimeSnapshot, listCheckins } from './core/storage/repo'
 import { CorePage } from './pages/CorePage'
 import { DashboardPage } from './pages/DashboardPage'
 import { HistoryPage } from './pages/HistoryPage'
@@ -18,6 +18,7 @@ import { INDEX_METRIC_IDS } from './core/metrics'
 import { evaluateSignals } from './core/engines/rules/evaluateSignals'
 import { forecastIndex } from './core/engines/forecast/indexForecast'
 import { getLatestForecastRun } from './repo/forecastRepo'
+import type { RegimeId } from './core/models/regime'
 
 type PageKey = 'core' | 'dashboard' | 'oracle' | 'graph' | 'history' | 'settings'
 
@@ -57,6 +58,7 @@ function DesktopApp() {
   const [appearance, setAppearance] = useState<AppearanceSettings>(() => loadAppearanceSettings())
   const [oracleForecast, setOracleForecast] = useState<number>(0)
   const [oracleConfidence, setOracleConfidence] = useState<'низкая' | 'средняя' | 'высокая'>('низкая')
+  const [missionRegime, setMissionRegime] = useState<{ regimeId: RegimeId; pCollapse: number; sirenLevel: 'green' | 'amber' | 'red' }>({ regimeId: 0, pCollapse: 0, sirenLevel: 'green' })
 
   const loadData = async () => {
     const [all, latest, currentQuest, latestForecast] = await Promise.all([listCheckins(), getLatestCheckin(), getActiveQuest(), getLatestForecastRun()])
@@ -89,6 +91,16 @@ function DesktopApp() {
     }
   }, [])
 
+
+  useEffect(() => {
+    let cancelled = false
+    void getLatestRegimeSnapshot().then((snapshot) => {
+      if (!snapshot || cancelled) return
+      setMissionRegime({ regimeId: snapshot.regimeId, pCollapse: snapshot.pCollapse, sirenLevel: snapshot.sirenLevel })
+    })
+    return () => { cancelled = true }
+  }, [checkins.length, activeQuest?.id])
+
   useEffect(() => {
     document.documentElement.dataset.theme = appearance.theme
     document.documentElement.dataset.motion = appearance.motion
@@ -98,7 +110,7 @@ function DesktopApp() {
 
   const missionSummary = useMemo(() => {
     if (!checkins.length) {
-      return { index: 0, risk: 'нет данных', forecast: 0, signals: 0, volatility: 'нет данных', confidence: 'низкая' as const }
+      return { index: 0, risk: 'нет данных', forecast: 0, signals: 0, volatility: 'нет данных', confidence: 'низкая' as const, regimeId: 0 as RegimeId, pCollapse: 0, sirenLevel: 'green' as const }
     }
 
     const indexSeries = computeIndexSeries(checkins)
@@ -122,8 +134,11 @@ function DesktopApp() {
       signals,
       volatility,
       confidence: oracleConfidence,
+      regimeId: missionRegime.regimeId,
+      pCollapse: missionRegime.pCollapse,
+      sirenLevel: missionRegime.sirenLevel,
     }
-  }, [checkins, oracleForecast, oracleConfidence])
+  }, [checkins, oracleForecast, oracleConfidence, missionRegime])
 
   return (
     <div className="layout">

@@ -1,4 +1,6 @@
 import type { QuestRecord } from '../core/models/quest'
+import { REGIMES } from '../core/regime/model'
+import type { RegimeId } from '../core/models/regime'
 import { formatNumber } from './format'
 
 function clampPercent(value: number, min: number, max: number): number {
@@ -12,6 +14,12 @@ function riskLevel(risk: string): 'low' | 'mid' | 'high' {
   return 'low'
 }
 
+function sirenBadge(level: 'green' | 'amber' | 'red'): 'low' | 'mid' | 'high' {
+  if (level === 'red') return 'high'
+  if (level === 'amber') return 'mid'
+  return 'low'
+}
+
 export function MissionStrip({
   index,
   risk,
@@ -19,6 +27,9 @@ export function MissionStrip({
   signals,
   volatility,
   confidence,
+  regimeId,
+  pCollapse,
+  sirenLevel,
   activeQuest,
 }: {
   index: number
@@ -27,12 +38,16 @@ export function MissionStrip({
   signals: number
   volatility: string
   confidence: 'низкая' | 'средняя' | 'высокая'
+  regimeId: RegimeId
+  pCollapse: number
+  sirenLevel: 'green' | 'amber' | 'red'
   activeQuest?: QuestRecord
 }) {
   const indexPct = clampPercent(index, 0, 10)
   const forecastPct = clampPercent(forecast, 0, 10)
   const signalSeverity = signals >= 3 ? 'high' : signals >= 1 ? 'mid' : 'low'
   const confidenceSeverity = confidence === 'высокая' ? 'low' : confidence === 'средняя' ? 'mid' : 'high'
+  const regime = REGIMES.find((item) => item.id === regimeId) ?? REGIMES[0]
 
   return (
     <section className="cockpit-strip mission-strip">
@@ -44,6 +59,18 @@ export function MissionStrip({
       <article>
         <span>Риск</span>
         <strong><span className={`status-badge status-badge--${riskLevel(risk)}`}>{risk}</span></strong>
+      </article>
+      <article>
+        <span>Режим</span>
+        <strong>{regime.labelRu}</strong>
+      </article>
+      <article>
+        <span>Сирена</span>
+        <strong><span className={`status-badge status-badge--${sirenBadge(sirenLevel)}`}>{sirenLevel.toUpperCase()}</span></strong>
+      </article>
+      <article>
+        <span>P(collapse)</span>
+        <strong className="mono">{(pCollapse * 100).toFixed(1)}%</strong>
       </article>
       <article>
         <span>Прогноз 7д (p50)</span>

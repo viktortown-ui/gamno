@@ -4,12 +4,15 @@ import { MetricControl } from '../components/MetricControl'
 import { DEFAULT_CHECKIN_VALUES, METRICS, type MetricConfig, type MetricId } from '../core/metrics'
 import type { CheckinRecord, CheckinValues } from '../core/models/checkin'
 import type { QuestRecord } from '../core/models/quest'
-import { addCheckin, addQuest, computeCurrentStateSnapshot, getLatestStateSnapshot, seedTestData } from '../core/storage/repo'
+import { addCheckin, addQuest, computeCurrentRegimeSnapshot, computeCurrentStateSnapshot, getLatestRegimeSnapshot, getLatestStateSnapshot, seedTestData } from '../core/storage/repo'
 import { formatNumber } from '../ui/format'
 import { buildCheckinResultInsight } from '../core/engines/engagement/suggestions'
 import { createQuestFromSuggestion } from '../core/engines/engagement/quests'
 import { defaultInfluenceMatrix } from '../core/engines/influence/influence'
 import { explainCoreState, type CoreStateSnapshot } from '../core/engines/stateEngine'
+import type { RegimeSnapshotRecord } from '../core/models/regime'
+import { REGIMES } from '../core/regime/model'
+import { assessCollapseRisk, buildDisarmProtocol } from '../core/collapse/model'
 
 type SaveState = 'idle' | 'saving' | 'saved'
 
@@ -62,14 +65,17 @@ export function CorePage({
   const [savedRecord, setSavedRecord] = useState<CheckinRecord | null>(null)
   const [errors, setErrors] = useState<Partial<Record<MetricId, string>>>({})
   const [snapshot, setSnapshot] = useState<CoreStateSnapshot | null>(null)
+  const [regimeSnapshot, setRegimeSnapshot] = useState<RegimeSnapshotRecord | null>(null)
 
   useEffect(() => {
     let cancelled = false
     const load = async () => {
-      const latestSnapshot = await getLatestStateSnapshot()
+      const [latestSnapshot, latestRegime] = await Promise.all([getLatestStateSnapshot(), getLatestRegimeSnapshot()])
       const current = latestSnapshot ?? await computeCurrentStateSnapshot()
+      const currentRegime = latestRegime ?? await computeCurrentRegimeSnapshot()
       if (!cancelled) {
         setSnapshot(current)
+        setRegimeSnapshot(currentRegime)
       }
     }
     void load()
@@ -99,8 +105,9 @@ export function CorePage({
     setSavedRecord(saved)
     setSaveState('saved')
     await onSaved()
-    const nextSnapshot = await computeCurrentStateSnapshot()
+    const [nextSnapshot, nextRegime] = await Promise.all([computeCurrentStateSnapshot(), computeCurrentRegimeSnapshot()])
     setSnapshot(nextSnapshot)
+    setRegimeSnapshot(nextRegime)
   }
 
   const resultInsight = useMemo(() => {
@@ -113,8 +120,9 @@ export function CorePage({
     const quest = createQuestFromSuggestion(resultInsight.bestLever)
     await addQuest(quest)
     await onQuestChange()
-    const nextSnapshot = await computeCurrentStateSnapshot()
+    const [nextSnapshot, nextRegime] = await Promise.all([computeCurrentStateSnapshot(), computeCurrentRegimeSnapshot()])
     setSnapshot(nextSnapshot)
+    setRegimeSnapshot(nextRegime)
   }
 
   const suggestedQuest = useMemo(() => {
@@ -147,6 +155,14 @@ export function CorePage({
   const pulseScale = snapshot ? 1 + Math.min(0.35, snapshot.volatility / 8 + snapshot.risk / 600) : 1
   const glow = snapshot ? Math.max(0.2, Math.min(0.9, snapshot.index / 10)) : 0.25
 
+  const regime = REGIMES.find((item) => item.id === regimeSnapshot?.regimeId) ?? REGIMES[0]
+  const nextLikelyIndex = regimeSnapshot?.next1?.reduce((best, value, index) => (value > (regimeSnapshot.next1?.[best] ?? 0) ? index : best), 0) ?? 0
+  const nextLikelyProb = regimeSnapshot?.next1?.[nextLikelyIndex] ?? 0
+  const nextLikelyRegime = REGIMES[nextLikelyIndex]
+  const collapse = snapshot ? assessCollapseRisk(snapshot, latest) : null
+  const sirenActions = collapse ? buildDisarmProtocol(latest, collapse, activeQuest) : []
+  const orbTone = regimeSnapshot?.regimeId === 4 ? 'rgba(255, 90, 130, 0.8)' : regimeSnapshot?.regimeId === 2 ? 'rgba(255, 183, 92, 0.8)' : 'rgba(46, 233, 210, 0.7)'
+
   return (
     <section className="page core-cockpit-page">
       <h1>Живое ядро</h1>
@@ -164,12 +180,16 @@ export function CorePage({
                 </radialGradient>
               </defs>
               <circle cx="120" cy="120" r="86" fill="url(#orbFill)" style={{ opacity: glow }} />
-              <circle cx="120" cy="120" r="98" className="core-orb__halo" style={{ transform: `scale(${pulseScale})` }} />
+              <circle cx="120" cy="120" r="98" className="core-orb__halo" style={{ transform: `scale(${pulseScale})`, stroke: orbTone }} />
               <text x="50%" y="48%" textAnchor="middle" className="core-orb__value">{formatNumber(snapshot?.index ?? 0)}</text>
               <text x="50%" y="58%" textAnchor="middle" className="core-orb__label">Индекс ядра</text>
             </svg>
           </div>
           <p>Риск: <strong>{getRiskLabel(snapshot?.risk ?? 0)}</strong> · Волатильность: <strong>{getVolatilityLabel(snapshot?.volatility ?? 0)}</strong></p>
+          <p>Режим: <strong>{regime.labelRu}</strong> · P: <strong>{((regimeSnapshot?.next1?.[regime.id] ?? 1) * 100).toFixed(1)}%</strong></p>
+          <p>Следующий вероятный: <strong>{nextLikelyRegime.labelRu}</strong> · { (nextLikelyProb * 100).toFixed(1)}%</p>
+          <div className="meter" aria-hidden="true"><div className="meter__fill" style={{ width: `${Math.round(nextLikelyProb * 100)}%`, background: orbTone }} /></div>
+          <p>P(collapse): <strong className="mono">{((regimeSnapshot?.pCollapse ?? 0) * 100).toFixed(1)}%</strong> · <span className={`status-badge status-badge--${(regimeSnapshot?.sirenLevel ?? 'green') === 'red' ? 'high' : (regimeSnapshot?.sirenLevel ?? 'green') === 'amber' ? 'mid' : 'low'}`}>{(regimeSnapshot?.sirenLevel ?? 'green').toUpperCase()}</span></p>
         </article>
 
         <article className="panel core-stats-card">
@@ -214,10 +234,19 @@ export function CorePage({
           <p>Пока данных нет. Начните с одного действия — и ядро станет живым.</p>
           <div className="settings-actions">
             <button type="button" onClick={() => navigate('/core')}>Создать чек-ин</button>
-            <button type="button" onClick={async () => { await seedTestData(30, 42); await onSaved(); const nextSnapshot = await computeCurrentStateSnapshot(); setSnapshot(nextSnapshot) }}>Сгенерировать 30 дней</button>
+            <button type="button" onClick={async () => { await seedTestData(30, 42); await onSaved(); const [nextSnapshot, nextRegime] = await Promise.all([computeCurrentStateSnapshot(), computeCurrentRegimeSnapshot()]); setSnapshot(nextSnapshot); setRegimeSnapshot(nextRegime) }}>Сгенерировать 30 дней</button>
             <button type="button" onClick={() => navigate('/settings')}>Импортировать данные</button>
           </div>
         </article>
+      ) : null}
+
+      {(regimeSnapshot?.sirenLevel === 'red') ? (
+        <section className="panel core-siren">
+          <h2>Сирена</h2>
+          <p>Порог риска превышен. Нужен протокол разрядки.</p>
+          <ul>{sirenActions.map((action) => <li key={action.what}><strong>Что сделать:</strong> {action.what}<br /><strong>Почему:</strong> {action.why}<br /><strong>Эффект:</strong> {action.effect}</li>)}</ul>
+          <button type="button" disabled={!sirenActions[0]} onClick={async () => { if (!sirenActions[0]) return; await addQuest({ createdAt: Date.now(), title: `Сирена: ${sirenActions[0].what}`, metricTarget: 'stress', delta: -1, horizonDays: 2, status: 'active', predictedIndexLift: 0.8 }); await onQuestChange() }}>Принять действие</button>
+        </section>
       ) : null}
 
       <section className="panel">

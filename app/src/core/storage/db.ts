@@ -6,6 +6,7 @@ import type { QuestRecord } from '../models/quest'
 import type { StateSnapshotRecord } from '../models/state'
 import type { LearnedMatrixRecord } from './learnedMatrix'
 import type { ForecastRunRecord } from '../../repo/forecastRepo'
+import type { RegimeSnapshotRecord } from '../models/regime'
 
 export interface AppSettingRecord {
   key: string
@@ -17,7 +18,7 @@ export interface OracleScenarioRecord extends OracleScenario {
   id?: number
 }
 
-export const schemaVersion = 6
+export const schemaVersion = 7
 
 class GamnoDb extends Dexie {
   checkins!: EntityTable<CheckinRecord, 'id'>
@@ -28,6 +29,7 @@ class GamnoDb extends Dexie {
   stateSnapshots!: EntityTable<StateSnapshotRecord, 'id'>
   learnedMatrices!: EntityTable<LearnedMatrixRecord, 'key'>
   forecastRuns!: EntityTable<ForecastRunRecord, 'id'>
+  regimeSnapshots!: EntityTable<RegimeSnapshotRecord, 'id'>
 
   constructor() {
     super('gamno-db')
@@ -45,6 +47,7 @@ class GamnoDb extends Dexie {
       stateSnapshots: '++id,ts,level',
       learnedMatrices: '&key,metricSetHash,computedAt,trainedOnDays,lags',
       forecastRuns: '++id,ts,modelType',
+      regimeSnapshots: '++id,ts,dayKey,regimeId,sirenLevel',
     })
   }
 }
