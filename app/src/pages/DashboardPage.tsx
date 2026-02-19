@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { INDEX_METRIC_IDS, METRICS, type MetricId } from '../core/metrics'
 import type { CheckinRecord } from '../core/models/checkin'
@@ -18,6 +18,7 @@ import { buildCheckinResultInsight } from '../core/engines/engagement/suggestion
 import { computeTopLevers, defaultInfluenceMatrix } from '../core/engines/influence/influence'
 import { saveOracleScenarioDraft } from '../core/engines/influence/scenarioDraft'
 import { addQuest, completeQuestById, seedTestData } from '../core/storage/repo'
+import { getLatestForecastRun } from '../repo/forecastRepo'
 import { createQuestFromSuggestion } from '../core/engines/engagement/quests'
 
 export function DashboardPage({
@@ -31,6 +32,16 @@ export function DashboardPage({
 }) {
   const navigate = useNavigate()
   const [outcomeMessage, setOutcomeMessage] = useState<string>('')
+  const [forecastTile, setForecastTile] = useState<{ p50: number; confidence: string } | null>(null)
+
+  useEffect(() => {
+    void getLatestForecastRun().then((run) => {
+      if (!run) return
+      const coverage = run.backtest.coverage
+      const confidence = coverage >= 75 ? 'высокая' : coverage >= 60 ? 'средняя' : 'низкая'
+      setForecastTile({ p50: run.index.p50[6] ?? run.index.p50.at(-1) ?? 0, confidence })
+    })
+  }, [])
 
   const analytics = useMemo(() => {
     const avg7 = computeAverages(checkins, INDEX_METRIC_IDS, 7)
@@ -116,6 +127,13 @@ export function DashboardPage({
     <section className="page">
       <h1>Дашборд</h1>
       <p>Серия: <strong className="mono">{analytics.streak}</strong> дн.</p>
+
+      <article className="summary-card panel">
+        <h2>Прогноз/Уверенность</h2>
+        <p>Прогноз p50 (7д): <strong className="mono">{formatNumber(forecastTile?.p50 ?? analytics.forecast.values.at(-1) ?? 0)}</strong></p>
+        <p>Уверенность: <span className="status-badge status-badge--mid">{forecastTile?.confidence ?? 'нет данных'}</span></p>
+        <button type="button" onClick={() => navigate('/oracle')}>Перейти к пересчёту в Оракуле</button>
+      </article>
 
       <article className="summary-card panel">
         <h2>Следующее действие</h2>

@@ -18,6 +18,7 @@ export function MissionStrip({
   forecast,
   signals,
   volatility,
+  confidence,
   activeQuest,
 }: {
   index: number
@@ -25,11 +26,13 @@ export function MissionStrip({
   forecast: number
   signals: number
   volatility: string
+  confidence: 'низкая' | 'средняя' | 'высокая'
   activeQuest?: QuestRecord
 }) {
   const indexPct = clampPercent(index, 0, 10)
   const forecastPct = clampPercent(forecast, 0, 10)
   const signalSeverity = signals >= 3 ? 'high' : signals >= 1 ? 'mid' : 'low'
+  const confidenceSeverity = confidence === 'высокая' ? 'low' : confidence === 'средняя' ? 'mid' : 'high'
 
   return (
     <section className="cockpit-strip mission-strip">
@@ -43,9 +46,13 @@ export function MissionStrip({
         <strong><span className={`status-badge status-badge--${riskLevel(risk)}`}>{risk}</span></strong>
       </article>
       <article>
-        <span>Прогноз</span>
+        <span>Прогноз 7д (p50)</span>
         <strong className="mono">{formatNumber(forecast)}</strong>
         <div className="meter" aria-hidden="true"><div className="meter__fill meter__fill--alt" style={{ width: `${forecastPct}%` }} /></div>
+      </article>
+      <article>
+        <span>Уверенность</span>
+        <strong className="mono"><span className={`status-badge status-badge--${confidenceSeverity}`}>{confidence}</span></strong>
       </article>
       <article>
         <span>Сигналы</span>

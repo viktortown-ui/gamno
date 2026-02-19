@@ -17,6 +17,7 @@ import { computeAverages, computeIndexSeries, computeVolatility } from './core/e
 import { INDEX_METRIC_IDS } from './core/metrics'
 import { evaluateSignals } from './core/engines/rules/evaluateSignals'
 import { forecastIndex } from './core/engines/forecast/indexForecast'
+import { getLatestForecastRun } from './repo/forecastRepo'
 
 type PageKey = 'core' | 'dashboard' | 'oracle' | 'graph' | 'history' | 'settings'
 
@@ -54,21 +55,33 @@ function DesktopApp() {
   const [templateValues, setTemplateValues] = useState<CheckinValues | undefined>()
   const [activeQuest, setActiveQuest] = useState<QuestRecord | undefined>()
   const [appearance, setAppearance] = useState<AppearanceSettings>(() => loadAppearanceSettings())
+  const [oracleForecast, setOracleForecast] = useState<number>(0)
+  const [oracleConfidence, setOracleConfidence] = useState<'низкая' | 'средняя' | 'высокая'>('низкая')
 
   const loadData = async () => {
-    const [all, latest, currentQuest] = await Promise.all([listCheckins(), getLatestCheckin(), getActiveQuest()])
+    const [all, latest, currentQuest, latestForecast] = await Promise.all([listCheckins(), getLatestCheckin(), getActiveQuest(), getLatestForecastRun()])
     setCheckins(all)
     setLatestCheckin(latest)
     setActiveQuest(currentQuest)
+    if (latestForecast) {
+      setOracleForecast(latestForecast.index.p50[6] ?? latestForecast.index.p50.at(-1) ?? 0)
+      const coverage = latestForecast.backtest.coverage
+      setOracleConfidence(coverage >= 75 ? 'высокая' : coverage >= 60 ? 'средняя' : 'низкая')
+    }
   }
 
   useEffect(() => {
     let cancelled = false
-    void Promise.all([listCheckins(), getLatestCheckin(), getActiveQuest()]).then(([all, latest, currentQuest]) => {
+    void Promise.all([listCheckins(), getLatestCheckin(), getActiveQuest(), getLatestForecastRun()]).then(([all, latest, currentQuest, latestForecast]) => {
       if (cancelled) return
       setCheckins(all)
       setLatestCheckin(latest)
       setActiveQuest(currentQuest)
+      if (latestForecast) {
+        setOracleForecast(latestForecast.index.p50[6] ?? latestForecast.index.p50.at(-1) ?? 0)
+        const coverage = latestForecast.backtest.coverage
+        setOracleConfidence(coverage >= 75 ? 'высокая' : coverage >= 60 ? 'средняя' : 'низкая')
+      }
     })
 
     return () => {
@@ -85,11 +98,11 @@ function DesktopApp() {
 
   const missionSummary = useMemo(() => {
     if (!checkins.length) {
-      return { index: 0, risk: 'нет данных', forecast: 0, signals: 0, volatility: 'нет данных' }
+      return { index: 0, risk: 'нет данных', forecast: 0, signals: 0, volatility: 'нет данных', confidence: 'низкая' as const }
     }
 
     const indexSeries = computeIndexSeries(checkins)
-    const forecast = forecastIndex(indexSeries)
+    const fallbackForecast = forecastIndex(indexSeries)
     const avg7 = computeAverages(checkins, INDEX_METRIC_IDS, 7)
     const riskScore = (avg7.stress ?? 0) - (avg7.sleepHours ?? 0) * 0.5
     const risk = riskScore > 3 ? 'повышенный' : riskScore > 1.5 ? 'средний' : 'низкий'
@@ -105,11 +118,12 @@ function DesktopApp() {
     return {
       index: indexSeries.at(-1) ?? 0,
       risk,
-      forecast: forecast.values.at(-1) ?? 0,
+      forecast: oracleForecast || fallbackForecast.values.at(-1) || 0,
       signals,
       volatility,
+      confidence: oracleConfidence,
     }
-  }, [checkins])
+  }, [checkins, oracleForecast, oracleConfidence])
 
   return (
     <div className="layout">

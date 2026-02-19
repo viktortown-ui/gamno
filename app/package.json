@@ -16,6 +16,7 @@
     "d3-force": "^3.0.0",
     "dexie": "^4.3.0",
     "dexie-export-import": "^4.1.4",
+    "echarts": "^6.0.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-router-dom": "^7.13.0"
