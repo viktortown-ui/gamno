@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom'
 import type { CheckinRecord, CheckinValues } from './core/models/checkin'
 import type { QuestRecord } from './core/models/quest'
-import { getActiveGoal, getActiveQuest, getLatestCheckin, getLatestRegimeSnapshot, getLatestStateSnapshot, listCheckins, listGoalEvents } from './core/storage/repo'
+import { getActiveQuest, getLatestCheckin, listCheckins } from './core/storage/repo'
 import { CorePage } from './pages/CorePage'
 import { DashboardPage } from './pages/DashboardPage'
 import { HistoryPage } from './pages/HistoryPage'
@@ -15,28 +15,20 @@ import { CommandPalette } from './ui/CommandPalette'
 import { loadAppearanceSettings, saveAppearanceSettings, type AppearanceSettings } from './ui/appearance'
 import { Starfield } from './ui/Starfield'
 import { MissionStrip } from './ui/MissionStrip'
-import { computeAverages, computeIndexSeries, computeVolatility } from './core/engines/analytics/compute'
-import { INDEX_METRIC_IDS } from './core/metrics'
-import { evaluateSignals } from './core/engines/rules/evaluateSignals'
-import { forecastIndex } from './core/engines/forecast/indexForecast'
-import { getLatestForecastRun } from './repo/forecastRepo'
-import { getLastBlackSwanRun } from './repo/blackSwanRepo'
-import type { RegimeId } from './core/models/regime'
 import { BlackSwansPage } from './pages/BlackSwansPage'
 import { SocialRadarPage } from './pages/SocialRadarPage'
 import { TimeDebtPage } from './pages/TimeDebtPage'
-import { listPeople } from './repo/peopleRepo'
-import { listRecent } from './repo/eventsRepo'
-import { computeSocialRadar } from './core/engines/socialRadar'
-import { getLastSnapshot as getLastTimeDebtSnapshot } from './repo/timeDebtRepo'
 import { AutopilotPage } from './pages/AutopilotPage'
 import { AntifragilityPage } from './pages/AntifragilityPage'
-import { getActivePolicy, getLastRun } from './repo/policyRepo'
-import { getLastSnapshot as getLastAntifragilitySnapshot } from './repo/antifragilityRepo'
+import { LaunchPage } from './pages/LaunchPage'
+import { SystemPage } from './pages/SystemPage'
+import { computeAndSaveFrame, getLastFrame, type FrameSnapshotRecord } from './repo/frameRepo'
+import { needsLaunchOnboarding } from './core/frame/launchGate'
 
-type PageKey = 'core' | 'dashboard' | 'oracle' | 'autopilot' | 'antifragility' | 'multiverse' | 'time-debt' | 'social-radar' | 'black-swans' | 'goals' | 'graph' | 'history' | 'settings'
+type PageKey = 'launch' | 'core' | 'dashboard' | 'oracle' | 'autopilot' | 'antifragility' | 'multiverse' | 'time-debt' | 'social-radar' | 'black-swans' | 'goals' | 'graph' | 'history' | 'settings' | 'system'
 
 const pageMeta: { key: PageKey; label: string }[] = [
+  { key: 'launch', label: 'Запуск' },
   { key: 'core', label: 'Живое ядро' },
   { key: 'dashboard', label: 'Дашборд' },
   { key: 'oracle', label: 'Оракул' },
@@ -50,31 +42,18 @@ const pageMeta: { key: PageKey; label: string }[] = [
   { key: 'graph', label: 'Граф' },
   { key: 'history', label: 'История' },
   { key: 'settings', label: 'Настройки' },
+  { key: 'system', label: 'Система' },
 ]
-
-function historyTrend(score: number): 'up' | 'down' | 'flat' {
-  if (score >= 70) return 'up'
-  if (score <= 45) return 'down'
-  return 'flat'
-}
 
 function DesktopOnlyGate() {
   const [isDesktop, setIsDesktop] = useState(window.innerWidth >= 1200)
-
   useEffect(() => {
     const handleResize = () => setIsDesktop(window.innerWidth >= 1200)
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
   }, [])
-
   if (isDesktop) return <DesktopApp />
-
-  return (
-    <main className="gate">
-      <h1>Только десктоп</h1>
-      <p>Откройте приложение на экране шириной не меньше 1200px.</p>
-    </main>
-  )
+  return <main className="gate"><h1>Только десктоп</h1><p>Откройте приложение на экране шириной не меньше 1200px.</p></main>
 }
 
 function DesktopApp() {
@@ -83,63 +62,19 @@ function DesktopApp() {
   const [templateValues, setTemplateValues] = useState<CheckinValues | undefined>()
   const [activeQuest, setActiveQuest] = useState<QuestRecord | undefined>()
   const [appearance, setAppearance] = useState<AppearanceSettings>(() => loadAppearanceSettings())
-  const [oracleForecast, setOracleForecast] = useState<number>(0)
-  const [oracleConfidence, setOracleConfidence] = useState<'низкая' | 'средняя' | 'высокая'>('низкая')
-  const [missionRegime, setMissionRegime] = useState<{ regimeId: RegimeId; pCollapse: number; sirenLevel: 'green' | 'amber' | 'red' }>({ regimeId: 0, pCollapse: 0, sirenLevel: 'green' })
-  const [goalSummary, setGoalSummary] = useState<{ title: string; score: number; gap: number; trend: 'up' | 'down' | null } | null>(null)
-  const [tailRisk, setTailRisk] = useState<{ pRed7d: number; esCollapse10: number } | null>(null)
-  const [socialTop3, setSocialTop3] = useState<Array<{ metric: string; text: string }>>([])
-  const [timeDebtSummary, setTimeDebtSummary] = useState<{ totalDebt: number; trend: 'up' | 'down' | 'flat' } | null>(null)
-  const [autopilotSummary, setAutopilotSummary] = useState<{ policyRu: string; nextActionRu: string } | null>(null)
-  const [recoverySummary, setRecoverySummary] = useState<{ score: number; trend: 'up' | 'down' | 'flat' } | null>(null)
+  const [frame, setFrame] = useState<FrameSnapshotRecord | undefined>()
 
   const loadData = async () => {
-    const [all, latest, currentQuest, latestForecast, activeGoal, latestState, lastBlackSwan, people, events, debt, regime, activePolicy, lastRun, antifragility] = await Promise.all([
-      listCheckins(),
-      getLatestCheckin(),
-      getActiveQuest(),
-      getLatestForecastRun(),
-      getActiveGoal(),
-      getLatestStateSnapshot(),
-      getLastBlackSwanRun(),
-      listPeople(),
-      listRecent(500),
-      getLastTimeDebtSnapshot(),
-      getLatestRegimeSnapshot(),
-      getActivePolicy(),
-      getLastRun(),
-      getLastAntifragilitySnapshot(),
-    ])
+    const [all, latest, currentQuest] = await Promise.all([listCheckins(), getLatestCheckin(), getActiveQuest()])
     setCheckins(all)
     setLatestCheckin(latest)
     setActiveQuest(currentQuest)
-    if (latestForecast) {
-      setOracleForecast(latestForecast.index.p50[6] ?? latestForecast.index.p50.at(-1) ?? 0)
-      const coverage = latestForecast.backtest.coverage
-      setOracleConfidence(coverage >= 75 ? 'высокая' : coverage >= 60 ? 'средняя' : 'низкая')
-    }
-    if (regime) setMissionRegime({ regimeId: regime.regimeId, pCollapse: regime.pCollapse, sirenLevel: regime.sirenLevel })
-    if (lastBlackSwan) setTailRisk({ pRed7d: lastBlackSwan.summary.pRed7d, esCollapse10: lastBlackSwan.summary.esCollapse10 })
-
-    setTimeDebtSummary(debt ? { totalDebt: debt.totals.totalDebt, trend: debt.totals.debtTrend } : null)
-    const radar = computeSocialRadar(all, events, people, { windowDays: 56, maxLag: 7 })
-    const top = Object.entries(radar.influencesByMetric).flatMap(([metric, items]) => items.slice(0, 1).map((item) => ({ metric, text: `${item.key} через ${item.lag} дн.` }))).slice(0, 3)
-    setSocialTop3(top)
-
-    if (activeGoal && latestState) {
-      const goalEvents = await listGoalEvents(activeGoal.id ?? 0, 2)
-      const trend = goalEvents.length >= 2 ? (goalEvents[0].goalScore >= goalEvents[1].goalScore ? 'up' : 'down') : null
-      setGoalSummary({ title: activeGoal.title, score: goalEvents[0]?.goalScore ?? 0, gap: goalEvents[0]?.goalGap ?? (latestState.index * 10 - 70), trend })
+    const lastFrame = await getLastFrame()
+    if (lastFrame) {
+      setFrame(lastFrame)
     } else {
-      setGoalSummary(null)
+      setFrame(await computeAndSaveFrame())
     }
-
-    setRecoverySummary(antifragility ? { score: antifragility.recoveryScore, trend: historyTrend(antifragility.recoveryScore) } : null)
-
-    setAutopilotSummary(activePolicy && lastRun ? {
-      policyRu: activePolicy.nameRu,
-      nextActionRu: (lastRun.chosenActionId ?? ((lastRun.outputs as { [k: string]: unknown }[] | undefined)?.[1]?.toString())) ?? 'Пересчитать автопилот',
-    } : null)
   }
 
   useEffect(() => {
@@ -150,7 +85,6 @@ function DesktopApp() {
     })
     return () => { cancelled = true }
   }, [])
-
   useEffect(() => {
     document.documentElement.dataset.theme = appearance.theme
     document.documentElement.dataset.motion = appearance.motion
@@ -159,35 +93,21 @@ function DesktopApp() {
   }, [appearance])
 
   const missionSummary = useMemo(() => {
-    if (!checkins.length) {
-      return { index: 0, risk: 'нет данных', forecast: 0, signals: 0, volatility: 'нет данных', confidence: 'низкая' as const, regimeId: 0 as RegimeId, pCollapse: 0, sirenLevel: 'green' as const }
-    }
-    const indexSeries = computeIndexSeries(checkins)
-    const fallbackForecast = forecastIndex(indexSeries)
-    const avg7 = computeAverages(checkins, INDEX_METRIC_IDS, 7)
-    const riskScore = (avg7.stress ?? 0) - (avg7.sleepHours ?? 0) * 0.5
-    const risk = riskScore > 3 ? 'повышенный' : riskScore > 1.5 ? 'средний' : 'низкий'
-    const signals = evaluateSignals({
-      energyAvg7d: avg7.energy ?? 0,
-      stressAvg7d: avg7.stress ?? 0,
-      sleepAvg7d: avg7.sleepHours ?? 0,
-      indexDelta7d: (indexSeries.at(-1) ?? 0) - (indexSeries.at(-8) ?? indexSeries.at(-1) ?? 0),
-    }).length
-    const volatilityValue = computeVolatility(checkins, 'energy', 14)
-    const volatility = volatilityValue < 0.8 ? 'низкая' : volatilityValue < 1.6 ? 'средняя' : 'высокая'
-
+    const payload = frame?.payload
     return {
-      index: indexSeries.at(-1) ?? 0,
-      risk,
-      forecast: oracleForecast || fallbackForecast.values.at(-1) || 0,
-      signals,
-      volatility,
-      confidence: oracleConfidence,
-      regimeId: missionRegime.regimeId,
-      pCollapse: missionRegime.pCollapse,
-      sirenLevel: missionRegime.sirenLevel,
+      index: payload?.stateSnapshot.index ?? 0,
+      risk: (payload?.stateSnapshot.risk ?? 0) >= 3 ? 'повышенный' : (payload?.stateSnapshot.risk ?? 0) >= 1.5 ? 'средний' : 'низкий',
+      forecast: payload?.forecastSummary.p50next7 ?? 0,
+      signals: payload?.regimeSnapshot.explainTop3.length ?? 0,
+      volatility: (payload?.stateSnapshot.volatility ?? 0) > 1.6 ? 'высокая' : (payload?.stateSnapshot.volatility ?? 0) > 0.8 ? 'средняя' : 'низкая',
+      confidence: payload?.forecastSummary.confidence ?? 'низкая' as const,
+      regimeId: (payload?.regimeSnapshot.regimeId ?? 0) as 0 | 1 | 2 | 3 | 4,
+      pCollapse: payload?.regimeSnapshot.pCollapse ?? 0,
+      sirenLevel: payload?.regimeSnapshot.sirenLevel ?? 'green' as const,
     }
-  }, [checkins, oracleForecast, oracleConfidence, missionRegime])
+  }, [frame])
+
+  const needsLaunch = needsLaunchOnboarding(checkins.length, Boolean(frame))
 
   return (
     <div className="layout">
@@ -197,9 +117,7 @@ function DesktopApp() {
         <h2>Gamno</h2>
         <nav>
           {pageMeta.map((page) => (
-            <NavLink key={page.key} className={({ isActive }) => `nav-link ${isActive ? 'nav-link--active' : ''}`} to={`/${page.key}`}>
-              {page.label}
-            </NavLink>
+            <NavLink key={page.key} className={({ isActive }) => `nav-link ${isActive ? 'nav-link--active' : ''}`} to={`/${page.key}`}>{page.label}</NavLink>
           ))}
         </nav>
       </aside>
@@ -208,16 +126,17 @@ function DesktopApp() {
         <MissionStrip
           {...missionSummary}
           activeQuest={activeQuest}
-          goalSummary={goalSummary}
-          tailRisk={tailRisk}
-          socialTop3={socialTop3}
-          debtSummary={timeDebtSummary}
-          autopilotSummary={autopilotSummary}
-          recoverySummary={recoverySummary}
+          goalSummary={frame ? { score: frame.payload.goal.goalScore, trend: null } : null}
+          tailRisk={frame ? { pRed7d: frame.payload.tailRiskSummary.pRed7d, esCollapse10: frame.payload.tailRiskSummary.esCollapse10 ?? 0 } : null}
+          socialTop3={(frame?.payload.socialSummary.topInfluencesWeek ?? []).map((text) => ({ metric: 'all', text }))}
+          debtSummary={frame ? { totalDebt: frame.payload.debt.totalDebt, trend: frame.payload.debt.trend } : null}
+          autopilotSummary={frame?.payload.autopilotSummary.policy ? { policyRu: frame.payload.autopilotSummary.policy, nextActionRu: frame.payload.autopilotSummary.nextAction ?? '—' } : null}
+          recoverySummary={frame ? { score: frame.payload.antifragility.recoveryScore, trend: 'flat' } : null}
         />
         <Routes>
-          <Route path="/" element={<Navigate to="/core" replace />} />
-          <Route path="/core" element={<CorePage onSaved={loadData} latest={latestCheckin} previous={checkins[1]} templateValues={templateValues} activeQuest={activeQuest} onQuestChange={loadData} checkins={checkins} activeGoalSummary={goalSummary} />} />
+          <Route path="/" element={<Navigate to={needsLaunch ? '/launch' : '/core'} replace />} />
+          <Route path="/launch" element={<LaunchPage frame={frame} onDone={loadData} />} />
+          <Route path="/core" element={needsLaunch ? <Navigate to="/launch" replace /> : <CorePage onSaved={loadData} latest={latestCheckin} previous={checkins[1]} templateValues={templateValues} activeQuest={activeQuest} onQuestChange={loadData} checkins={checkins} activeGoalSummary={frame ? { title: frame.payload.goal.active?.title ?? 'Цель', score: frame.payload.goal.goalScore, gap: frame.payload.goal.gap, trend: null } : null} />} />
           <Route path="/dashboard" element={<DashboardPage checkins={checkins} activeQuest={activeQuest} onQuestChange={loadData} />} />
           <Route path="/history" element={<HistoryPage checkins={checkins} onUseTemplate={setTemplateValues} onDataChanged={loadData} />} />
           <Route path="/settings" element={<SettingsPage onDataChanged={loadData} appearance={appearance} onAppearanceChange={setAppearance} />} />
@@ -230,6 +149,7 @@ function DesktopApp() {
           <Route path="/time-debt" element={<TimeDebtPage onQuestChange={loadData} />} />
           <Route path="/black-swans" element={<BlackSwansPage />} />
           <Route path="/graph" element={<GraphPage />} />
+          <Route path="/system" element={<SystemPage />} />
         </Routes>
       </main>
     </div>

@@ -1,3 +1,4 @@
+import { computeAndSaveFrame } from './frameRepo'
 import { db } from '../core/storage/db'
 import type { MetricId } from '../core/metrics'
 import type { MultiverseConfig, MultiverseRunResult } from '../core/engines/multiverse/types'
@@ -52,7 +53,9 @@ export async function deleteScenario(id: number): Promise<void> {
 
 export async function saveRun(run: MultiverseRunRecord): Promise<MultiverseRunRecord> {
   const id = await db.multiverseRuns.add(run)
-  return { ...run, id }
+  const saved = { ...run, id }
+  await computeAndSaveFrame({ afterRunId: id })
+  return saved
 }
 
 export async function listRuns(limit = 20): Promise<MultiverseRunRecord[]> {

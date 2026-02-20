@@ -1,3 +1,4 @@
+import { computeAndSaveFrame } from './frameRepo'
 import { db } from '../core/storage/db'
 import type { ForecastRunConfig } from '../core/forecast'
 import type { EtsModelType } from '../core/forecast/ets'
@@ -25,7 +26,9 @@ export interface ForecastRunRecord {
 
 export async function saveForecastRun(run: ForecastRunRecord): Promise<ForecastRunRecord> {
   const id = await db.forecastRuns.add(run)
-  return { ...run, id }
+  const saved = { ...run, id }
+  await computeAndSaveFrame({ afterRunId: id })
+  return saved
 }
 
 export async function getLatestForecastRun(): Promise<ForecastRunRecord | undefined> {
