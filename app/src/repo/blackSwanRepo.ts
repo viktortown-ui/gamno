@@ -1,3 +1,4 @@
+import { computeAndSaveFrame } from './frameRepo'
 import { db } from '../core/storage/db'
 import type { BlackSwanScenarioSpec, BlackSwanResult } from '../core/engines/blackSwan/types'
 import type { WeightsSource } from '../core/engines/influence/types'
@@ -36,7 +37,9 @@ export async function deleteBlackSwanScenario(id: number): Promise<void> { await
 
 export async function saveBlackSwanRun(run: BlackSwanRunRecord): Promise<BlackSwanRunRecord> {
   const id = await db.blackSwanRuns.add(run)
-  return { ...run, id }
+  const saved = { ...run, id }
+  await computeAndSaveFrame({ afterRunId: id })
+  return saved
 }
 export async function getLastBlackSwanRun(): Promise<BlackSwanRunRecord | undefined> { return db.blackSwanRuns.orderBy('ts').last() }
 export async function listBlackSwanRuns(limit = 20): Promise<BlackSwanRunRecord[]> { return db.blackSwanRuns.orderBy('ts').reverse().limit(limit).toArray() }

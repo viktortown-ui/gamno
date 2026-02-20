@@ -189,7 +189,7 @@ export function OraclePage({ latest, onQuestChange }: { latest?: CheckinRecord; 
   const result = propagation?.[2]
 
   if (!baseline || !baseVector || !matrix || !result) {
-    return <section className="page panel"><h1>Оракул</h1><article className="empty-state panel"><h2>Нет базовой точки для сценариев</h2><p>Сначала нужно зафиксировать состояние, чтобы прогнозировать импульсы и последствия.</p><div className="settings-actions"><SparkButton type="button" onClick={() => navigate('/core')}>Сделать чек-ин</SparkButton><SparkButton type="button" onClick={async () => { await seedTestData(30, 42); await refreshOracleData() }}>Сгенерировать тестовые данные (30 дней)</SparkButton><SparkButton type="button" onClick={() => navigate('/history')}>Выбрать базу из истории</SparkButton></div></article></section>
+    return <section className="page panel"><h1>Оракул</h1><article className="empty-state panel"><h2>Нет базовой точки для сценариев</h2><p>Сначала нужно зафиксировать состояние, чтобы прогнозировать импульсы и последствия.</p><div className="settings-actions"><SparkButton type="button" onClick={() => navigate('/launch')}>Сделать чек-ин</SparkButton><SparkButton type="button" onClick={async () => { await seedTestData(30, 42); await refreshOracleData() }}>Сгенерировать тестовые данные (30 дней)</SparkButton><SparkButton type="button" onClick={() => navigate('/launch')}>Выбрать базу из истории</SparkButton></div></article></section>
   }
 
   const baseIndex = computeIndexDay(baseline)

@@ -15,6 +15,7 @@ import type { RegimeSnapshotRecord } from '../models/regime'
 import type { GoalEventRecord, GoalRecord } from '../models/goal'
 import { computeAndSaveSnapshot as computeAndSaveTimeDebtSnapshot } from '../../repo/timeDebtRepo'
 import { computeAndSaveSnapshot as computeAndSaveAntifragilitySnapshot } from '../../repo/antifragilityRepo'
+import { computeAndSaveFrame } from '../../repo/frameRepo'
 
 export async function addCheckin(values: CheckinValues): Promise<CheckinRecord> {
   const ts = Date.now()
@@ -24,6 +25,7 @@ export async function addCheckin(values: CheckinValues): Promise<CheckinRecord> 
   await saveRegimeSnapshot(ts)
   await computeAndSaveTimeDebtSnapshot({ afterCheckinId: id })
   await computeAndSaveAntifragilitySnapshot({ afterCheckinId: id })
+  await computeAndSaveFrame({ afterCheckinId: id })
   return saved
 }
 
@@ -92,6 +94,7 @@ export async function seedTestData(days = 30, seed = 42): Promise<void> {
   await db.checkins.bulkAdd(rows)
   await saveStateSnapshot(Date.now())
   await saveRegimeSnapshot(Date.now())
+  await computeAndSaveFrame()
 }
 
 function clamp(id: MetricId, value: number): number {
@@ -148,6 +151,7 @@ export async function recomputeLearnedMatrix(params: RecomputeLearnedMatrixParam
     value: learned,
   })
 
+  await computeAndSaveFrame()
   return learned
 }
 
@@ -177,6 +181,7 @@ export async function completeQuestById(id: number): Promise<QuestRecord | undef
   await saveRegimeSnapshot(Date.now())
   await computeAndSaveTimeDebtSnapshot({ afterQuestId: id })
   await computeAndSaveAntifragilitySnapshot({ afterQuestId: id })
+  await computeAndSaveFrame({ afterQuestId: id })
   return completed
 }
 

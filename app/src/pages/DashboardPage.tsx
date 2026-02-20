@@ -112,7 +112,7 @@ export function DashboardPage({
             <li>Примите миссию на 3 дня и отслеживайте прогресс.</li>
           </ol>
           <div className="settings-actions">
-            <button type="button" onClick={() => navigate('/core')}>Сделать чек-ин</button>
+            <button type="button" onClick={() => navigate('/launch')}>Сделать чек-ин</button>
             <button type="button" onClick={async () => { await seedTestData(30, 42); navigate('/dashboard') }}>Сгенерировать тестовые данные (30 дней)</button>
             <button type="button" onClick={() => navigate('/settings')}>Импортировать хранилище</button>
           </div>

@@ -335,7 +335,7 @@ export function CorePage({
           <h2>Ядро ждёт первый сигнал</h2>
           <p>Пока данных нет. Начните с одного действия — и ядро станет живым.</p>
           <div className="settings-actions">
-            <button type="button" onClick={() => navigate('/core')}>Создать чек-ин</button>
+            <button type="button" onClick={() => navigate('/launch')}>Создать чек-ин</button>
             <button type="button" onClick={async () => { await seedTestData(30, 42); await onSaved(); const [nextSnapshot, nextRegime] = await Promise.all([computeCurrentStateSnapshot(), computeCurrentRegimeSnapshot()]); setSnapshot(nextSnapshot); setRegimeSnapshot(nextRegime) }}>Сгенерировать 30 дней</button>
             <button type="button" onClick={() => navigate('/settings')}>Импортировать данные</button>
           </div>

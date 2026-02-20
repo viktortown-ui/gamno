@@ -13,6 +13,7 @@ import type { BlackSwanRunRecord, BlackSwanScenarioRecord } from '../../repo/bla
 import type { TimeDebtSettingsRecord, TimeDebtSnapshotRecord } from '../models/timeDebt'
 import type { PolicyRecord, PolicyRunRecord } from '../../repo/policyRepo'
 import type { AntifragilitySettingsRecord, AntifragilitySnapshotRecord, ShockSessionRecord } from '../models/antifragility'
+import type { FrameSnapshotRecord } from '../../repo/frameRepo'
 
 export interface AppSettingRecord {
   key: string
@@ -24,7 +25,7 @@ export interface OracleScenarioRecord extends OracleScenario {
   id?: number
 }
 
-export const schemaVersion = 15
+export const schemaVersion = 16
 
 class GamnoDb extends Dexie {
   checkins!: EntityTable<CheckinRecord, 'id'>
@@ -52,6 +53,7 @@ class GamnoDb extends Dexie {
   antifragilitySnapshots!: EntityTable<AntifragilitySnapshotRecord, 'id'>
   shockSessions!: EntityTable<ShockSessionRecord, 'id'>
   antifragilityRules!: EntityTable<AntifragilitySettingsRecord, 'key'>
+  frameSnapshots!: EntityTable<FrameSnapshotRecord, 'id'>
 
   constructor() {
     super('gamno-db')
@@ -98,6 +100,7 @@ class GamnoDb extends Dexie {
       antifragilitySnapshots: '++id,ts,dayKey,recoveryScore,shockBudget,antifragilityScore',
       shockSessions: '++id,ts,dayKey,type,status',
       antifragilityRules: '&key,updatedAt',
+      frameSnapshots: '++id,ts,dayKey',
     })
   }
 }
