@@ -10,6 +10,7 @@ import { SettingsPage } from './pages/SettingsPage'
 import { OraclePage } from './pages/OraclePage'
 import { GraphPage } from './pages/GraphPage'
 import { GoalsPage } from './pages/GoalsPage'
+import { MultiversePage } from './pages/MultiversePage'
 import { CommandPalette } from './ui/CommandPalette'
 import { loadAppearanceSettings, saveAppearanceSettings, type AppearanceSettings } from './ui/appearance'
 import { Starfield } from './ui/Starfield'
@@ -21,12 +22,13 @@ import { forecastIndex } from './core/engines/forecast/indexForecast'
 import { getLatestForecastRun } from './repo/forecastRepo'
 import type { RegimeId } from './core/models/regime'
 
-type PageKey = 'core' | 'dashboard' | 'oracle' | 'goals' | 'graph' | 'history' | 'settings'
+type PageKey = 'core' | 'dashboard' | 'oracle' | 'multiverse' | 'goals' | 'graph' | 'history' | 'settings'
 
 const pageMeta: { key: PageKey; label: string }[] = [
   { key: 'core', label: 'Живое ядро' },
   { key: 'dashboard', label: 'Дашборд' },
   { key: 'oracle', label: 'Оракул' },
+  { key: 'multiverse', label: 'Мультивселенная' },
   { key: 'goals', label: 'Цели' },
   { key: 'graph', label: 'Граф' },
   { key: 'history', label: 'История' },
@@ -214,6 +216,7 @@ function DesktopApp() {
           <Route path="/settings" element={<SettingsPage onDataChanged={loadData} appearance={appearance} onAppearanceChange={setAppearance} />} />
           <Route path="/oracle" element={<OraclePage latest={latestCheckin} onQuestChange={loadData} />} />
           <Route path="/goals" element={<GoalsPage />} />
+          <Route path="/multiverse" element={<MultiversePage />} />
           <Route path="/graph" element={<GraphPage />} />
         </Routes>
       </main>

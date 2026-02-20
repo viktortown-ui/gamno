@@ -8,6 +8,7 @@ import type { LearnedMatrixRecord } from './learnedMatrix'
 import type { ForecastRunRecord } from '../../repo/forecastRepo'
 import type { RegimeSnapshotRecord } from '../models/regime'
 import type { GoalEventRecord, GoalRecord } from '../models/goal'
+import type { MultiverseRunRecord } from '../../repo/multiverseRepo'
 
 export interface AppSettingRecord {
   key: string
@@ -19,7 +20,7 @@ export interface OracleScenarioRecord extends OracleScenario {
   id?: number
 }
 
-export const schemaVersion = 8
+export const schemaVersion = 9
 
 class GamnoDb extends Dexie {
   checkins!: EntityTable<CheckinRecord, 'id'>
@@ -33,6 +34,7 @@ class GamnoDb extends Dexie {
   regimeSnapshots!: EntityTable<RegimeSnapshotRecord, 'id'>
   goals!: EntityTable<GoalRecord, 'id'>
   goalEvents!: EntityTable<GoalEventRecord, 'id'>
+  multiverseRuns!: EntityTable<MultiverseRunRecord, 'id'>
 
   constructor() {
     super('gamno-db')
@@ -65,6 +67,7 @@ class GamnoDb extends Dexie {
       regimeSnapshots: '++id,ts,dayKey,regimeId,sirenLevel',
       goals: '++id,createdAt,updatedAt,status',
       goalEvents: '++id,ts,goalId',
+      multiverseRuns: '++id,ts',
     })
   }
 }
