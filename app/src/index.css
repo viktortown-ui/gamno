@@ -439,3 +439,30 @@ textarea:focus-visible,
 }
 
 .mission-strip { grid-template-columns: repeat(14, minmax(0, 1fr)); margin-bottom: var(--space-2); }
+
+.primary-action {
+  background: color-mix(in srgb, var(--accent) 45%, #0b1530 55%);
+  border-color: color-mix(in srgb, var(--accent) 60%, #ffffff 40%);
+  color: var(--text-strong);
+  font-weight: 700;
+}
+
+.audit-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: var(--space-2);
+}
+
+.audit-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+button:focus-visible,
+input:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 70%, #fff 30%);
+  outline-offset: 2px;
+}

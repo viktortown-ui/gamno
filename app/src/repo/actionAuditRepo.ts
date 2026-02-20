@@ -46,3 +46,7 @@ export async function getLastActionAudit(): Promise<ActionAuditRecord | undefine
 export async function listActionAuditsByStateSeed(stateHash: string, seed: number): Promise<ActionAuditRecord[]> {
   return db.actionAudits.where('[stateHash+seed]').equals([stateHash, seed]).toArray()
 }
+
+export async function listRecentActionAudits(limit: number): Promise<ActionAuditRecord[]> {
+  return db.actionAudits.orderBy('ts').reverse().limit(limit).toArray()
+}

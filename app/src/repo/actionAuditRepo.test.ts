@@ -11,7 +11,7 @@ describe('actionAuditRepo', () => {
 
   it('writes and reads action audits and schema is v17+', async () => {
     const { schemaVersion } = await import('../core/storage/db')
-    const { saveActionAudit, getLastActionAudit, listActionAuditsByStateSeed } = await import('./actionAuditRepo')
+    const { saveActionAudit, getLastActionAudit, listActionAuditsByStateSeed, listRecentActionAudits } = await import('./actionAuditRepo')
 
     expect(schemaVersion).toBeGreaterThanOrEqual(17)
 
@@ -31,5 +31,7 @@ describe('actionAuditRepo', () => {
     expect(last?.reproToken.catalogHash).toBe('hcat')
     const byStateSeed = await listActionAuditsByStateSeed('hstate', 42)
     expect(byStateSeed.length).toBe(1)
+    const recent = await listRecentActionAudits(5)
+    expect(recent[0]?.chosenActionId).toBe('focus:deep-25')
   })
 })
