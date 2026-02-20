@@ -31,6 +31,7 @@ import { ForecastHonestyPanel } from '../ui/components/ForecastHonestyPanel'
 import { getLatestForecastRun, saveForecastRun } from '../repo/forecastRepo'
 import type { GoalRecord } from '../core/models/goal'
 import { evaluateGoalScore } from '../core/engines/goal'
+import { buildDailySeries, computeDebts, defaultTimeDebtRules } from '../core/engines/timeDebt'
 
 const presets: { title: string; impulses: Partial<Record<MetricId, number>>; focus: MetricId[] }[] = [
   { title: 'Восстановление сна', impulses: { sleepHours: 1, stress: -1 }, focus: ['sleepHours', 'stress', 'energy'] },
@@ -152,7 +153,7 @@ export function OraclePage({ latest, onQuestChange }: { latest?: CheckinRecord; 
     const result = runForecastEngine([...snapshots].reverse(), [...allCheckins].reverse(), config)
     setForecast(result)
     await saveForecastRun({
-      ts: Date.now(),
+      ts: baseline.ts + 1,
       config,
       trainedOnDays: result.trainedOnDays,
       horizons: Array.from({ length: config.horizon }, (_, idx) => idx + 1),
@@ -169,6 +170,7 @@ export function OraclePage({ latest, onQuestChange }: { latest?: CheckinRecord; 
     setIsRecomputing(false)
   }
 
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const baseline = useMemo(() => {
     if (baselineTs === 'latest') return checkins[0] ?? latest
     return checkins.find((item) => item.ts === baselineTs) ?? checkins[0] ?? latest
@@ -198,6 +200,9 @@ export function OraclePage({ latest, onQuestChange }: { latest?: CheckinRecord; 
   const baseCollapse = assessCollapseRisk(baseState, baseline)
   const scenarioCollapse = assessCollapseRisk(scenarioState, resultRecord)
   const collapseDelta = scenarioCollapse.pCollapse - baseCollapse.pCollapse
+  const baseDebts = computeDebts(buildDailySeries(checkins), [], defaultTimeDebtRules)
+  const scenarioDebts = computeDebts(buildDailySeries([{ ...resultRecord, ts: baseline.ts + 1 }, ...checkins]), [], defaultTimeDebtRules)
+  const debtDelta = (scenarioDebts.sleepDebt + scenarioDebts.recoveryDebt + scenarioDebts.focusDebt + (scenarioDebts.socialDebt ?? 0)) - (baseDebts.sleepDebt + baseDebts.recoveryDebt + baseDebts.focusDebt + (baseDebts.socialDebt ?? 0))
   const goalEffect = activeGoal ? (() => {
     const baseScore = evaluateGoalScore(activeGoal, {
       index: baseIndex,
@@ -275,6 +280,7 @@ export function OraclePage({ latest, onQuestChange }: { latest?: CheckinRecord; 
     })}</div></article>
 
     <article className="summary-card panel"><h2>Результат</h2><p>Новый индекс: <strong>{formatNumber(scenarioIndex)}</strong></p><p>Δ индекса: <strong>{indexDelta > 0 ? '+' : ''}{formatNumber(indexDelta)}</strong></p><p>P(collapse): <strong>{(scenarioCollapse.pCollapse * 100).toFixed(1)}%</strong> ({collapseDelta > 0 ? '+' : ''}{(collapseDelta * 100).toFixed(1)} п.п.)</p><p>Сдвиг режима next1: {REGIMES.map((regime) => `${regime.labelRu} ${((scenarioNext[regime.id].probability - baseNext[regime.id].probability) * 100).toFixed(1)}%`).join(' · ')}</p><p>Лучший рычаг для снижения Сирены: <strong>{bestSirenLever ? `${METRICS.find((m) => m.id === bestSirenLever.from)?.labelRu ?? bestSirenLever.from} → ${METRICS.find((m) => m.id === bestSirenLever.to)?.labelRu ?? bestSirenLever.to}` : 'нет'}</strong></p><ol>{propagation.map((vector, idx) => <li key={idx}>Шаг {idx + 1}: {METRICS.map((m) => `${m.labelRu} ${formatNumber(vector[m.id])}`).join(' | ')}</li>)}</ol>
+      <p>Эффект на долг: <strong>{debtDelta >= 0 ? '+' : ''}{debtDelta.toFixed(2)}</strong></p>
       {goalEffect ? <p>Эффект на цель: <strong>{goalEffect.delta >= 0 ? '+' : ''}{goalEffect.delta.toFixed(1)}</strong>. {goalEffect.rationale}</p> : null}
       <button type="button" onClick={async () => {
         const strongest = drivers[0]
@@ -289,7 +295,7 @@ export function OraclePage({ latest, onQuestChange }: { latest?: CheckinRecord; 
     <SparkButton type="button" onClick={async () => {
       const nameRu = window.prompt('Название сценария')
       if (!nameRu) return
-      const scenario: OracleScenario = { ts: Date.now(), nameRu, baseTs: baseline.ts, impulses, result, index: scenarioIndex, weightsSource, mix }
+      const scenario: OracleScenario = { ts: baseline.ts + 1, nameRu, baseTs: baseline.ts, impulses, result, index: scenarioIndex, weightsSource, mix }
       await addScenario(scenario)
       setSaved(await listScenarios())
     }}>Сохранить сценарий</SparkButton>

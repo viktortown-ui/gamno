@@ -24,17 +24,20 @@ import { getLastBlackSwanRun } from './repo/blackSwanRepo'
 import type { RegimeId } from './core/models/regime'
 import { BlackSwansPage } from './pages/BlackSwansPage'
 import { SocialRadarPage } from './pages/SocialRadarPage'
+import { TimeDebtPage } from './pages/TimeDebtPage'
 import { listPeople } from './repo/peopleRepo'
 import { listRecent } from './repo/eventsRepo'
 import { computeSocialRadar } from './core/engines/socialRadar'
+import { getLastSnapshot as getLastTimeDebtSnapshot } from './repo/timeDebtRepo'
 
-type PageKey = 'core' | 'dashboard' | 'oracle' | 'multiverse' | 'social-radar' | 'black-swans' | 'goals' | 'graph' | 'history' | 'settings'
+type PageKey = 'core' | 'dashboard' | 'oracle' | 'multiverse' | 'time-debt' | 'social-radar' | 'black-swans' | 'goals' | 'graph' | 'history' | 'settings'
 
 const pageMeta: { key: PageKey; label: string }[] = [
   { key: 'core', label: 'Живое ядро' },
   { key: 'dashboard', label: 'Дашборд' },
   { key: 'oracle', label: 'Оракул' },
   { key: 'multiverse', label: 'Мультивселенная' },
+  { key: 'time-debt', label: 'Долг' },
   { key: 'social-radar', label: 'Социальный радар' },
   { key: 'black-swans', label: 'Чёрные лебеди' },
   { key: 'goals', label: 'Цели' },
@@ -74,9 +77,10 @@ function DesktopApp() {
   const [goalSummary, setGoalSummary] = useState<{ title: string; score: number; gap: number; trend: 'up' | 'down' | null } | null>(null)
   const [tailRisk, setTailRisk] = useState<{ pRed7d: number; esCollapse10: number } | null>(null)
   const [socialTop3, setSocialTop3] = useState<Array<{ metric: string; text: string }>>([])
+  const [timeDebtSummary, setTimeDebtSummary] = useState<{ totalDebt: number; trend: 'up' | 'down' | 'flat' } | null>(null)
 
   const loadData = async () => {
-    const [all, latest, currentQuest, latestForecast, activeGoal, latestState, lastBlackSwan, people, events] = await Promise.all([
+    const [all, latest, currentQuest, latestForecast, activeGoal, latestState, lastBlackSwan, people, events, debt] = await Promise.all([
       listCheckins(),
       getLatestCheckin(),
       getActiveQuest(),
@@ -86,6 +90,7 @@ function DesktopApp() {
       getLastBlackSwanRun(),
       listPeople(),
       listRecent(500),
+      getLastTimeDebtSnapshot(),
     ])
     setCheckins(all)
     setLatestCheckin(latest)
@@ -97,6 +102,7 @@ function DesktopApp() {
     }
     if (lastBlackSwan) setTailRisk({ pRed7d: lastBlackSwan.summary.pRed7d, esCollapse10: lastBlackSwan.summary.esCollapse10 })
 
+    setTimeDebtSummary(debt ? { totalDebt: debt.totals.totalDebt, trend: debt.totals.debtTrend } : null)
     const radar = computeSocialRadar(all, events, people, { windowDays: 56, maxLag: 7 })
     const top = Object.entries(radar.influencesByMetric).flatMap(([metric, items]) => items.slice(0, 1).map((item) => ({ metric, text: `${item.key} через ${item.lag} дн.` }))).slice(0, 3)
     setSocialTop3(top)
@@ -113,7 +119,7 @@ function DesktopApp() {
   useEffect(() => {
     let cancelled = false
     void Promise.resolve().then(async () => {
-      const [all, latest, currentQuest, latestForecast, activeGoal, latestState, lastBlackSwan, people, events] = await Promise.all([
+      const [all, latest, currentQuest, latestForecast, activeGoal, latestState, lastBlackSwan, people, events, debt] = await Promise.all([
         listCheckins(),
         getLatestCheckin(),
         getActiveQuest(),
@@ -123,6 +129,7 @@ function DesktopApp() {
         getLastBlackSwanRun(),
         listPeople(),
         listRecent(500),
+        getLastTimeDebtSnapshot(),
       ])
       if (cancelled) return
       setCheckins(all)
@@ -134,7 +141,8 @@ function DesktopApp() {
         setOracleConfidence(coverage >= 75 ? 'высокая' : coverage >= 60 ? 'средняя' : 'низкая')
       }
       if (lastBlackSwan) setTailRisk({ pRed7d: lastBlackSwan.summary.pRed7d, esCollapse10: lastBlackSwan.summary.esCollapse10 })
-            const radar = computeSocialRadar(all, events, people, { windowDays: 56, maxLag: 7 })
+            setTimeDebtSummary(debt ? { totalDebt: debt.totals.totalDebt, trend: debt.totals.debtTrend } : null)
+    const radar = computeSocialRadar(all, events, people, { windowDays: 56, maxLag: 7 })
       const top = Object.entries(radar.influencesByMetric).flatMap(([metric, items]) => items.slice(0, 1).map((item) => ({ metric, text: `${item.key} через ${item.lag} дн.` }))).slice(0, 3)
       setSocialTop3(top)
       if (activeGoal && latestState) {
@@ -218,7 +226,7 @@ function DesktopApp() {
       </aside>
 
       <main className="content">
-        <MissionStrip {...missionSummary} activeQuest={activeQuest} goalSummary={goalSummary} tailRisk={tailRisk} socialTop3={socialTop3} />
+        <MissionStrip {...missionSummary} activeQuest={activeQuest} goalSummary={goalSummary} tailRisk={tailRisk} socialTop3={socialTop3} debtSummary={timeDebtSummary} />
         <Routes>
           <Route path="/" element={<Navigate to="/core" replace />} />
           <Route
@@ -243,6 +251,7 @@ function DesktopApp() {
           <Route path="/goals" element={<GoalsPage />} />
           <Route path="/multiverse" element={<MultiversePage />} />
           <Route path="/social-radar" element={<SocialRadarPage />} />
+          <Route path="/time-debt" element={<TimeDebtPage onQuestChange={loadData} />} />
           <Route path="/black-swans" element={<BlackSwansPage />} />
           <Route path="/graph" element={<GraphPage />} />
         </Routes>

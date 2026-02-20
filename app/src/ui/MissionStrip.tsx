@@ -34,6 +34,7 @@ export function MissionStrip({
   goalSummary,
   tailRisk,
   socialTop3,
+  debtSummary,
 }: {
   index: number
   risk: string
@@ -48,6 +49,7 @@ export function MissionStrip({
   goalSummary?: { score: number; trend: 'up' | 'down' | null } | null
   tailRisk?: { pRed7d: number; esCollapse10: number } | null
   socialTop3?: Array<{ metric: string; text: string }>
+  debtSummary?: { totalDebt: number; trend: 'up' | 'down' | 'flat' } | null
 }) {
   const indexPct = clampPercent(index, 0, 10)
   const forecastPct = clampPercent(forecast, 0, 10)
@@ -110,6 +112,10 @@ export function MissionStrip({
       <article>
         <span>Топ-3 влияния недели</span>
         <strong>{socialTop3?.length ? socialTop3.map((item) => item.text).join(' · ') : '—'}</strong>
+      </article>
+      <article>
+        <span>Долг</span>
+        <strong className="mono">{debtSummary ? `${debtSummary.totalDebt.toFixed(1)} · ${debtSummary.trend === 'up' ? '↑' : debtSummary.trend === 'down' ? '↓' : '→'}` : '—'}</strong>
       </article>
     </section>
   )

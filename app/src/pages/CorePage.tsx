@@ -18,6 +18,7 @@ import { listPeople } from '../repo/peopleRepo'
 import { listRecent } from '../repo/eventsRepo'
 import { computeSocialRadar } from '../core/engines/socialRadar'
 import { dayKeyFromTs } from '../core/utils/dayKey'
+import { getLastSnapshot as getLastTimeDebtSnapshot } from '../repo/timeDebtRepo'
 
 type SaveState = 'idle' | 'saving' | 'saved'
 
@@ -75,11 +76,12 @@ export function CorePage({
   const [regimeSnapshot, setRegimeSnapshot] = useState<RegimeSnapshotRecord | null>(null)
   const [tailRiskSummary, setTailRiskSummary] = useState<{ pRed7d: number; esCollapse10: number } | null>(null)
   const [negativeTriggers, setNegativeTriggers] = useState<Array<{ key: string; lag: number }>>([])
+  const [timeDebt, setTimeDebt] = useState<{ totalDebt: number; explainTop3: string[] } | null>(null)
 
   useEffect(() => {
     let cancelled = false
     const load = async () => {
-      const [latestSnapshot, latestRegime, lastBlackSwan, people, events] = await Promise.all([getLatestStateSnapshot(), getLatestRegimeSnapshot(), getLastBlackSwanRun(), listPeople(), listRecent(500)])
+      const [latestSnapshot, latestRegime, lastBlackSwan, people, events, debt] = await Promise.all([getLatestStateSnapshot(), getLatestRegimeSnapshot(), getLastBlackSwanRun(), listPeople(), listRecent(500), getLastTimeDebtSnapshot()])
       const current = latestSnapshot ?? await computeCurrentStateSnapshot()
       const currentRegime = latestRegime ?? await computeCurrentRegimeSnapshot()
       if (!cancelled) {
@@ -89,6 +91,7 @@ export function CorePage({
         setSnapshot(current)
         setRegimeSnapshot(currentRegime)
         setTailRiskSummary(lastBlackSwan ? { pRed7d: lastBlackSwan.summary.pRed7d, esCollapse10: lastBlackSwan.summary.esCollapse10 } : null)
+        setTimeDebt(debt ? { totalDebt: debt.totals.totalDebt, explainTop3: debt.explainTop3 } : null)
       }
     }
     void load()
@@ -245,6 +248,22 @@ export function CorePage({
 
 
         <article className="panel core-next-action">
+          <h2>Долг</h2>
+          {timeDebt ? (
+            <>
+              <p>Нагрузка на будущее: <strong>{timeDebt.totalDebt.toFixed(2)}</strong></p>
+              <p>{timeDebt.explainTop3[0] ?? 'Проверьте модуль долга.'}</p>
+              <button type="button" onClick={() => navigate('/time-debt')}>Открыть Долг</button>
+            </>
+          ) : (
+            <>
+              <p>Снимок долга пока не рассчитан.</p>
+              <button type="button" onClick={() => navigate('/time-debt')}>Рассчитать долг</button>
+            </>
+          )}
+        </article>
+
+        <article className="panel core-next-action">
           <h2>Хвостовой риск</h2>
           {tailRiskSummary ? (
             <>
@@ -300,6 +319,7 @@ export function CorePage({
           <p>Порог риска превышен. Нужен протокол разрядки.</p>
           <ul>{sirenActions.map((action) => <li key={action.what}><strong>Что сделать:</strong> {action.what}<br /><strong>Почему:</strong> {action.why}<br /><strong>Эффект:</strong> {action.effect}</li>)}</ul>
           {negativeTriggers.length ? <><h3>Вероятные триггеры</h3><ul>{negativeTriggers.map((item) => <li key={item.key}>{item.key} · через {item.lag} дня</li>)}</ul></> : null}
+          {timeDebt?.explainTop3.length ? <p>Долг среди триггеров: {timeDebt.explainTop3[0]}</p> : null}
           <button type="button" disabled={!sirenActions[0]} onClick={async () => { if (!sirenActions[0]) return; await addQuest({ createdAt: Date.now(), title: `Сирена: ${sirenActions[0].what}`, metricTarget: 'stress', delta: -1, horizonDays: 2, status: 'active', predictedIndexLift: 0.8 }); await onQuestChange() }}>Принять действие</button>
           <button type="button" onClick={() => {
             window.localStorage.setItem('gamno.multiverseDraft', JSON.stringify({ impulses: { stress: -1, sleepHours: 0.5 }, focusMetrics: ['stress', 'sleepHours', 'energy'], sourceLabelRu: 'Сирена → Мультивселенная' }))
@@ -332,6 +352,7 @@ export function CorePage({
             {saveState === 'saved' && savedRecord ? `Чек-ин сохранён` : null}
           </span>
           {saveState === 'saved' ? <button type="button" onClick={() => navigate(`/social-radar?day=${dayKeyFromTs(Date.now())}`)}>Отметить события дня</button> : null}
+          {saveState === 'saved' ? <button type="button" onClick={() => navigate('/time-debt')}>Погасить долг сегодня</button> : null}
         </div>
 
         {resultInsight ? (

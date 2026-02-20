@@ -280,7 +280,7 @@ textarea:focus-visible,
   }
 }
 
-.mission-strip { grid-template-columns: repeat(11, minmax(0, 1fr)); margin-bottom: var(--space-2); }
+.mission-strip { grid-template-columns: repeat(14, minmax(0, 1fr)); margin-bottom: var(--space-2); }
 .goals-layout { grid-template-columns: 0.9fr 1.2fr 1.1fr; }
 .result-panel { padding: var(--space-3); border: 1px solid var(--line); }
 
@@ -438,4 +438,4 @@ textarea:focus-visible,
   width: 100%;
 }
 
-.mission-strip { grid-template-columns: repeat(13, minmax(0, 1fr)); margin-bottom: var(--space-2); }
+.mission-strip { grid-template-columns: repeat(14, minmax(0, 1fr)); margin-bottom: var(--space-2); }
