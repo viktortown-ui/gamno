@@ -22,7 +22,7 @@ function quantile(values: number[], q: number): number {
   const position = (sorted.length - 1) * q
   const base = Math.floor(position)
   const rest = position - base
-  if (sorted[base + 1] === undefined) return sorted[base]
+  if (sorted[base + 1] === undefined) return sorted[base] ?? 0
   return sorted[base] + rest * (sorted[base + 1] - sorted[base])
 }
 
@@ -64,6 +64,24 @@ function impulsesByDay(config: MultiverseConfig): Map<number, Partial<Record<Met
   return map
 }
 
+function shockScale(mode: MultiverseConfig['shockMode'], rand: () => number): number {
+  if (mode === 'off') return 0
+  if (mode === 'normal') return 1
+  return rand() > 0.92 ? 3.2 : 1.2
+}
+
+function normalizeRegimeMap(paths: PathPoint[][], day: number): Record<number, number> {
+  const counts: Record<number, number> = {}
+  for (const path of paths) {
+    const regime = path[day]?.regimeId ?? path.at(-1)?.regimeId ?? 0
+    counts[regime] = (counts[regime] ?? 0) + 1
+  }
+  for (const key of Object.keys(counts)) {
+    counts[Number(key)] = Number((counts[Number(key)] / Math.max(paths.length, 1)).toFixed(4))
+  }
+  return counts
+}
+
 export function runMultiverse(config: MultiverseConfig, deps: RunMultiverseDeps = {}): MultiverseRunResult {
   const rand = mulberry32(config.seed)
   const dailyImpulses = impulsesByDay(config)
@@ -71,7 +89,7 @@ export function runMultiverse(config: MultiverseConfig, deps: RunMultiverseDeps 
 
   for (let run = 0; run < config.runs; run += 1) {
     if (deps.shouldCancel?.()) break
-    if (run % 100 === 0) deps.onProgress?.(run, config.runs)
+    if (run % 200 === 0) deps.onProgress?.(run, config.runs)
 
     let vector = { ...config.baseVector }
     let regime = config.baseRegime
@@ -79,14 +97,15 @@ export function runMultiverse(config: MultiverseConfig, deps: RunMultiverseDeps 
     const path: PathPoint[] = []
 
     for (let day = 1; day <= config.horizonDays; day += 1) {
+      const noiseScale = shockScale(config.shockMode, rand)
       const forecastNoise = config.toggles.forecastNoise && config.forecastResiduals?.length
-        ? config.forecastResiduals[Math.floor(rand() * config.forecastResiduals.length)]
+        ? (config.forecastResiduals[Math.floor(rand() * config.forecastResiduals.length)] ?? 0) * noiseScale
         : 0
       const impulses = { ...(dailyImpulses.get(day) ?? {}), ...(day === 1 ? dailyImpulses.get(0) ?? {} : {}) }
       vector = applyBoundedPropagation(vector, impulses, matrix)
-      vector.energy = clampMetric('energy', vector.energy + (forecastNoise ?? 0) * 0.06)
-      vector.mood = clampMetric('mood', vector.mood + (forecastNoise ?? 0) * 0.04)
-      vector.stress = clampMetric('stress', vector.stress - (forecastNoise ?? 0) * 0.05)
+      vector.energy = clampMetric('energy', vector.energy + forecastNoise * 0.06)
+      vector.mood = clampMetric('mood', vector.mood + forecastNoise * 0.04)
+      vector.stress = clampMetric('stress', vector.stress - forecastNoise * 0.05)
 
       if (config.toggles.stochasticRegime) {
         regime = sampleTransition(rand, regime, config.transitionMatrix)
@@ -97,7 +116,7 @@ export function runMultiverse(config: MultiverseConfig, deps: RunMultiverseDeps 
         ts: 0,
         index,
         risk: Math.max(0, 10 - index),
-        volatility: Math.abs(forecastNoise ?? 0),
+        volatility: Math.abs(forecastNoise),
         xp: 0,
         level: 0,
         entropy: 0,
@@ -145,6 +164,7 @@ export function runMultiverse(config: MultiverseConfig, deps: RunMultiverseDeps 
   const tail = summarizeTail(paths, config.indexFloor, config.baseIndex, config.basePCollapse, baseGoal)
   const sortedByWorst = [...paths].sort((a, b) => (a.at(-1)?.index ?? 0) - (b.at(-1)?.index ?? 0))
   const representativeWorstPath = sortedByWorst[Math.floor(sortedByWorst.length * 0.05)] ?? sortedByWorst[0] ?? []
+  const medianIndex = quantile(paths.map((path) => path.at(-1)?.index ?? config.baseIndex), 0.5)
 
   return {
     generatedAt: Date.now(),
@@ -156,7 +176,7 @@ export function runMultiverse(config: MultiverseConfig, deps: RunMultiverseDeps 
     },
     tail,
     representativeWorstPath,
-    hedges: rankHedges(config.baseVector, config.matrix, config.indexFloor),
+    hedges: rankHedges(config.baseVector, config.matrix, config.indexFloor, config.collapseConstraintPct),
     audit: {
       weightsSource: config.weightsSource,
       mix: config.mix,
@@ -164,10 +184,16 @@ export function runMultiverse(config: MultiverseConfig, deps: RunMultiverseDeps 
       lags: config.audit.lags,
       trainedOnDays: config.audit.trainedOnDays,
     },
-    samplePaths: [
-      paths[0] ?? [],
-      paths[Math.floor(paths.length / 2)] ?? [],
-      representativeWorstPath,
-    ],
+    samplePaths: [paths[0] ?? [], paths[Math.floor(paths.length / 2)] ?? [], representativeWorstPath],
+    trajectoryExplorer: {
+      probable: [...paths].sort((a, b) => Math.abs((a.at(-1)?.index ?? 0) - medianIndex) - Math.abs((b.at(-1)?.index ?? 0) - medianIndex)).slice(0, 5),
+      best: [...paths].sort((a, b) => (b.at(-1)?.index ?? 0) - (a.at(-1)?.index ?? 0)).slice(0, 5),
+      worst: [...paths].sort((a, b) => ((b.at(-1)?.pCollapse ?? 0) - (a.at(-1)?.pCollapse ?? 0)) || ((a.at(-1)?.index ?? 0) - (b.at(-1)?.index ?? 0))).slice(0, 5),
+    },
+    regimeMap: {
+      horizon: normalizeRegimeMap(paths, config.horizonDays - 1),
+      next1: normalizeRegimeMap(paths, 0),
+      next3: normalizeRegimeMap(paths, Math.min(2, config.horizonDays - 1)),
+    },
   }
 }

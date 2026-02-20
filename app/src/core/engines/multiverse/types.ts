@@ -13,11 +13,15 @@ export interface MultiversePlan {
   impulses: PlannedImpulse[]
 }
 
+export type ShockMode = 'off' | 'normal' | 'blackSwan'
+
 export interface MultiverseConfig {
-  horizonDays: 7 | 14 | 30
-  runs: 1000 | 5000 | 10000
+  horizonDays: 7 | 14 | 30 | 60
+  runs: 1000 | 5000 | 10000 | 25000
   seed: number
   indexFloor: number
+  collapseConstraintPct: number
+  shockMode: ShockMode
   baseVector: MetricVector
   baseIndex: number
   basePCollapse: number
@@ -58,7 +62,10 @@ export interface TailMetrics {
   expectedDeltaGoalScore: number
   expectedDeltaPCollapse: number
   probabilityIndexBelowFloorAtHorizon: number
-  cvar5Index: number
+  var5IndexLoss: number
+  cvar5IndexLoss: number
+  var5Collapse: number
+  cvar5Collapse: number
 }
 
 export interface HedgeSuggestion {
@@ -92,6 +99,16 @@ export interface MultiverseRunResult {
     trainedOnDays?: number
   }
   samplePaths: PathPoint[][]
+  trajectoryExplorer: {
+    probable: PathPoint[][]
+    best: PathPoint[][]
+    worst: PathPoint[][]
+  }
+  regimeMap: {
+    horizon: Record<number, number>
+    next1: Record<number, number>
+    next3: Record<number, number>
+  }
 }
 
 export interface RunMultiverseDeps {

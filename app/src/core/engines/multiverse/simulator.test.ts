@@ -22,6 +22,8 @@ function buildConfig(seed: number): MultiverseConfig {
     runs: 1000,
     seed,
     indexFloor: 40,
+    collapseConstraintPct: 20,
+    shockMode: 'normal',
     baseVector,
     baseIndex: 6,
     basePCollapse: 0.2,

@@ -1,17 +1,9 @@
 import { METRICS, type MetricId } from '../../metrics'
+import { valueAtRisk, conditionalVaR } from '../../risk/tail'
 import { computeIndexDay } from '../analytics/compute'
 import { applyImpulse, clampMetric } from '../influence/influence'
 import type { MetricVector } from '../influence/types'
 import type { HedgeSuggestion, PathPoint, TailMetrics } from './types'
-
-function quantile(values: number[], q: number): number {
-  const sorted = [...values].sort((a, b) => a - b)
-  const position = (sorted.length - 1) * q
-  const base = Math.floor(position)
-  const rest = position - base
-  if (sorted[base + 1] === undefined) return sorted[base]
-  return sorted[base] + rest * (sorted[base + 1] - sorted[base])
-}
 
 function clamp01(value: number): number {
   return Math.max(0, Math.min(1, value))
@@ -33,17 +25,17 @@ export function goalScoreOf(vector: MetricVector, weights?: Partial<Record<Metri
 }
 
 export function summarizeTail(paths: PathPoint[][], indexFloor: number, baseIndex: number, basePCollapse: number, baseGoal?: number): TailMetrics {
-  const last = paths.map((path) => path.at(-1)!)
+  const last = paths.map((path) => path.at(-1)).filter((v): v is PathPoint => Boolean(v))
   const horizonIndex = last.map((point) => point.index)
   const horizonGoal = last.map((point) => point.goalScore).filter((v): v is number => typeof v === 'number')
   const horizonCollapse = last.map((point) => point.pCollapse)
 
-  const redAny = paths.filter((path) => path.some((point) => point.siren === 'red')).length / paths.length
-  const floorAny = paths.filter((path) => path.some((point) => point.index < indexFloor)).length / paths.length
+  const redAny = paths.filter((path) => path.some((point) => point.siren === 'red')).length / Math.max(paths.length, 1)
+  const floorAny = paths.filter((path) => path.some((point) => point.index < indexFloor)).length / Math.max(paths.length, 1)
   const belowAtHorizon = horizonIndex.filter((value) => value < indexFloor).length / Math.max(horizonIndex.length, 1)
-  const cvarCut = quantile(horizonIndex, 0.05)
-  const tailBucket = horizonIndex.filter((value) => value <= cvarCut)
-  const cvar = tailBucket.length ? tailBucket.reduce((sum, v) => sum + v, 0) / tailBucket.length : cvarCut
+
+  const indexLosses = horizonIndex.map((value) => Math.max(0, baseIndex - value))
+  const collapseLosses = horizonCollapse.map((value) => Math.max(0, value))
 
   return {
     redSirenAny: Number(redAny.toFixed(4)),
@@ -52,11 +44,14 @@ export function summarizeTail(paths: PathPoint[][], indexFloor: number, baseInde
     expectedDeltaIndex: Number((horizonIndex.reduce((s, v) => s + v, 0) / Math.max(horizonIndex.length, 1) - baseIndex).toFixed(4)),
     expectedDeltaGoalScore: Number(((horizonGoal.length ? horizonGoal.reduce((s, v) => s + v, 0) / horizonGoal.length : baseGoal ?? 0) - (baseGoal ?? 0)).toFixed(4)),
     expectedDeltaPCollapse: Number((horizonCollapse.reduce((s, v) => s + v, 0) / Math.max(horizonCollapse.length, 1) - basePCollapse).toFixed(4)),
-    cvar5Index: Number(cvar.toFixed(4)),
+    var5IndexLoss: Number(valueAtRisk(indexLosses, 0.95).toFixed(4)),
+    cvar5IndexLoss: Number(conditionalVaR(indexLosses, 0.95).toFixed(4)),
+    var5Collapse: Number(valueAtRisk(collapseLosses, 0.95).toFixed(4)),
+    cvar5Collapse: Number(conditionalVaR(collapseLosses, 0.95).toFixed(4)),
   }
 }
 
-export function rankHedges(base: MetricVector, matrix: Record<MetricId, Partial<Record<MetricId, number>>>, indexFloor: number): HedgeSuggestion[] {
+export function rankHedges(base: MetricVector, matrix: Record<MetricId, Partial<Record<MetricId, number>>>, indexFloor: number, pCollapseConstraintPct: number): HedgeSuggestion[] {
   const baseIndex = computeIndexDay({ ...base, ts: 0 })
   const candidates = METRICS
     .filter((metric) => metric.id !== 'cashFlow')
@@ -64,12 +59,13 @@ export function rankHedges(base: MetricVector, matrix: Record<MetricId, Partial<
       const improved = applyImpulse(base, { [metric.id]: 0.5 }, matrix, 2)
       const newIndex = computeIndexDay({ ...improved, ts: 0 })
       const stressPenalty = Math.max(0, indexFloor - newIndex) - Math.max(0, indexFloor - baseIndex)
-      const riskGain = (newIndex - baseIndex) - stressPenalty
+      const collapsePenalty = Math.max(0, (pCollapseConstraintPct / 100) - 0.2) * 10
+      const riskGain = (newIndex - baseIndex) - stressPenalty - collapsePenalty
       return {
         metricId: metric.id,
         delta: 0.5,
         tailRiskImprovement: Number(riskGain.toFixed(4)),
-        noteRu: `Сдвиг «${metric.labelRu}» на +0.5 стабилизирует хвост через контур влияний.`,
+        noteRu: `Сдвиг «${metric.labelRu}» на +0.5 улучшает хвост распределения.`,
       }
     })
 
