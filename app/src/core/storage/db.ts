@@ -9,6 +9,7 @@ import type { ForecastRunRecord } from '../../repo/forecastRepo'
 import type { RegimeSnapshotRecord } from '../models/regime'
 import type { GoalEventRecord, GoalRecord } from '../models/goal'
 import type { MultiverseRunRecord } from '../../repo/multiverseRepo'
+import type { BlackSwanRunRecord, BlackSwanScenarioRecord } from '../../repo/blackSwanRepo'
 
 export interface AppSettingRecord {
   key: string
@@ -20,7 +21,7 @@ export interface OracleScenarioRecord extends OracleScenario {
   id?: number
 }
 
-export const schemaVersion = 9
+export const schemaVersion = 10
 
 class GamnoDb extends Dexie {
   checkins!: EntityTable<CheckinRecord, 'id'>
@@ -35,6 +36,8 @@ class GamnoDb extends Dexie {
   goals!: EntityTable<GoalRecord, 'id'>
   goalEvents!: EntityTable<GoalEventRecord, 'id'>
   multiverseRuns!: EntityTable<MultiverseRunRecord, 'id'>
+  blackSwanScenarios!: EntityTable<BlackSwanScenarioRecord, 'id'>
+  blackSwanRuns!: EntityTable<BlackSwanRunRecord, 'id'>
 
   constructor() {
     super('gamno-db')
@@ -68,6 +71,8 @@ class GamnoDb extends Dexie {
       goals: '++id,createdAt,updatedAt,status',
       goalEvents: '++id,ts,goalId',
       multiverseRuns: '++id,ts',
+      blackSwanScenarios: '++id,updatedAt,name',
+      blackSwanRuns: '++id,ts,baseId',
     })
   }
 }

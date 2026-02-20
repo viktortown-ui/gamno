@@ -232,6 +232,18 @@ export function OraclePage({ latest, onQuestChange }: { latest?: CheckinRecord; 
     <h1>Оракул</h1>
     <p>Сначала задайте сценарий, потом смотрите последствия.</p>
     {prefillSource ? <p className="chip">{prefillSource}</p> : null}
+
+    <div className="settings-actions">
+      <button
+        type="button"
+        onClick={() => {
+          window.localStorage.setItem('gamno.blackSwanPrefill', JSON.stringify({ baseTs: baselineTs, weightsSource, mix, horizon: 7, sims: 2000 }))
+          navigate('/black-swans')
+        }}
+      >
+        Проверить на хвостовой риск
+      </button>
+    </div>
     <div className="filters graph-filters"><span>Источник весов:</span>
       <button type="button" className={weightsSource === 'manual' ? 'filter-button filter-button--active' : 'filter-button'} onClick={() => setWeightsSource('manual')}>Manual</button>
       <button type="button" className={weightsSource === 'learned' ? 'filter-button filter-button--active' : 'filter-button'} onClick={() => setWeightsSource('learned')}>Learned</button>

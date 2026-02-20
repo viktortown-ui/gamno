@@ -32,6 +32,7 @@ export function MissionStrip({
   sirenLevel,
   activeQuest,
   goalSummary,
+  tailRisk,
 }: {
   index: number
   risk: string
@@ -44,6 +45,7 @@ export function MissionStrip({
   sirenLevel: 'green' | 'amber' | 'red'
   activeQuest?: QuestRecord
   goalSummary?: { score: number; trend: 'up' | 'down' | null } | null
+  tailRisk?: { pRed7d: number; esCollapse10: number } | null
 }) {
   const indexPct = clampPercent(index, 0, 10)
   const forecastPct = clampPercent(forecast, 0, 10)
@@ -98,6 +100,10 @@ export function MissionStrip({
       <article>
         <span>Цель</span>
         <strong className="mono">{goalSummary ? `${goalSummary.score.toFixed(1)} ${goalSummary.trend === 'up' ? '↑' : goalSummary.trend === 'down' ? '↓' : ''}` : '—'}</strong>
+      </article>
+      <article>
+        <span>Tail risk</span>
+        <strong className="mono">{tailRisk ? `P(RED,7д) ${(tailRisk.pRed7d * 100).toFixed(1)}% · ES ${(tailRisk.esCollapse10 * 100).toFixed(1)}%` : '—'}</strong>
       </article>
     </section>
   )

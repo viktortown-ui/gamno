@@ -13,6 +13,7 @@ import { explainCoreState, type CoreStateSnapshot } from '../core/engines/stateE
 import type { RegimeSnapshotRecord } from '../core/models/regime'
 import { REGIMES } from '../core/regime/model'
 import { assessCollapseRisk, buildDisarmProtocol } from '../core/collapse/model'
+import { getLastBlackSwanRun } from '../repo/blackSwanRepo'
 
 type SaveState = 'idle' | 'saving' | 'saved'
 
@@ -68,16 +69,18 @@ export function CorePage({
   const [errors, setErrors] = useState<Partial<Record<MetricId, string>>>({})
   const [snapshot, setSnapshot] = useState<CoreStateSnapshot | null>(null)
   const [regimeSnapshot, setRegimeSnapshot] = useState<RegimeSnapshotRecord | null>(null)
+  const [tailRiskSummary, setTailRiskSummary] = useState<{ pRed7d: number; esCollapse10: number } | null>(null)
 
   useEffect(() => {
     let cancelled = false
     const load = async () => {
-      const [latestSnapshot, latestRegime] = await Promise.all([getLatestStateSnapshot(), getLatestRegimeSnapshot()])
+      const [latestSnapshot, latestRegime, lastBlackSwan] = await Promise.all([getLatestStateSnapshot(), getLatestRegimeSnapshot(), getLastBlackSwanRun()])
       const current = latestSnapshot ?? await computeCurrentStateSnapshot()
       const currentRegime = latestRegime ?? await computeCurrentRegimeSnapshot()
       if (!cancelled) {
         setSnapshot(current)
         setRegimeSnapshot(currentRegime)
+        setTailRiskSummary(lastBlackSwan ? { pRed7d: lastBlackSwan.summary.pRed7d, esCollapse10: lastBlackSwan.summary.esCollapse10 } : null)
       }
     }
     void load()
@@ -231,6 +234,23 @@ export function CorePage({
           )}
         </article>
 
+
+
+        <article className="panel core-next-action">
+          <h2>Хвостовой риск</h2>
+          {tailRiskSummary ? (
+            <>
+              <p>P(RED, 7д): <strong>{(tailRiskSummary.pRed7d * 100).toFixed(1)}%</strong></p>
+              <p>ES(P(collapse), 10%): <strong>{(tailRiskSummary.esCollapse10 * 100).toFixed(1)}%</strong></p>
+              <button type="button" onClick={() => navigate('/black-swans')}>Открыть Чёрные лебеди</button>
+            </>
+          ) : (
+            <>
+              <p>Последний расчёт хвостового риска не найден.</p>
+              <button type="button" onClick={() => navigate('/black-swans')}>Проверить хвостовой риск</button>
+            </>
+          )}
+        </article>
         <article className="panel core-next-action">
           <h2>Следующий шаг</h2>
           <p><strong>{oneNextAction.title}</strong></p>
