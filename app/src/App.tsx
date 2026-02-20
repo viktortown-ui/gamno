@@ -29,13 +29,16 @@ import { listPeople } from './repo/peopleRepo'
 import { listRecent } from './repo/eventsRepo'
 import { computeSocialRadar } from './core/engines/socialRadar'
 import { getLastSnapshot as getLastTimeDebtSnapshot } from './repo/timeDebtRepo'
+import { AutopilotPage } from './pages/AutopilotPage'
+import { getActivePolicy, getLastRun } from './repo/policyRepo'
 
-type PageKey = 'core' | 'dashboard' | 'oracle' | 'multiverse' | 'time-debt' | 'social-radar' | 'black-swans' | 'goals' | 'graph' | 'history' | 'settings'
+type PageKey = 'core' | 'dashboard' | 'oracle' | 'autopilot' | 'multiverse' | 'time-debt' | 'social-radar' | 'black-swans' | 'goals' | 'graph' | 'history' | 'settings'
 
 const pageMeta: { key: PageKey; label: string }[] = [
   { key: 'core', label: 'Живое ядро' },
   { key: 'dashboard', label: 'Дашборд' },
   { key: 'oracle', label: 'Оракул' },
+  { key: 'autopilot', label: 'Автопилот' },
   { key: 'multiverse', label: 'Мультивселенная' },
   { key: 'time-debt', label: 'Долг' },
   { key: 'social-radar', label: 'Социальный радар' },
@@ -78,9 +81,10 @@ function DesktopApp() {
   const [tailRisk, setTailRisk] = useState<{ pRed7d: number; esCollapse10: number } | null>(null)
   const [socialTop3, setSocialTop3] = useState<Array<{ metric: string; text: string }>>([])
   const [timeDebtSummary, setTimeDebtSummary] = useState<{ totalDebt: number; trend: 'up' | 'down' | 'flat' } | null>(null)
+  const [autopilotSummary, setAutopilotSummary] = useState<{ policyRu: string; nextActionRu: string } | null>(null)
 
   const loadData = async () => {
-    const [all, latest, currentQuest, latestForecast, activeGoal, latestState, lastBlackSwan, people, events, debt] = await Promise.all([
+    const [all, latest, currentQuest, latestForecast, activeGoal, latestState, lastBlackSwan, people, events, debt, regime, activePolicy, lastRun] = await Promise.all([
       listCheckins(),
       getLatestCheckin(),
       getActiveQuest(),
@@ -91,6 +95,9 @@ function DesktopApp() {
       listPeople(),
       listRecent(500),
       getLastTimeDebtSnapshot(),
+      getLatestRegimeSnapshot(),
+      getActivePolicy(),
+      getLastRun(),
     ])
     setCheckins(all)
     setLatestCheckin(latest)
@@ -100,6 +107,7 @@ function DesktopApp() {
       const coverage = latestForecast.backtest.coverage
       setOracleConfidence(coverage >= 75 ? 'высокая' : coverage >= 60 ? 'средняя' : 'низкая')
     }
+    if (regime) setMissionRegime({ regimeId: regime.regimeId, pCollapse: regime.pCollapse, sirenLevel: regime.sirenLevel })
     if (lastBlackSwan) setTailRisk({ pRed7d: lastBlackSwan.summary.pRed7d, esCollapse10: lastBlackSwan.summary.esCollapse10 })
 
     setTimeDebtSummary(debt ? { totalDebt: debt.totals.totalDebt, trend: debt.totals.debtTrend } : null)
@@ -108,64 +116,27 @@ function DesktopApp() {
     setSocialTop3(top)
 
     if (activeGoal && latestState) {
-      const events = await listGoalEvents(activeGoal.id ?? 0, 2)
-      const trend = events.length >= 2 ? (events[0].goalScore >= events[1].goalScore ? 'up' : 'down') : null
-      setGoalSummary({ title: activeGoal.title, score: events[0]?.goalScore ?? 0, gap: events[0]?.goalGap ?? (latestState.index * 10 - 70), trend })
+      const goalEvents = await listGoalEvents(activeGoal.id ?? 0, 2)
+      const trend = goalEvents.length >= 2 ? (goalEvents[0].goalScore >= goalEvents[1].goalScore ? 'up' : 'down') : null
+      setGoalSummary({ title: activeGoal.title, score: goalEvents[0]?.goalScore ?? 0, gap: goalEvents[0]?.goalGap ?? (latestState.index * 10 - 70), trend })
     } else {
       setGoalSummary(null)
     }
+
+    setAutopilotSummary(activePolicy && lastRun ? {
+      policyRu: activePolicy.nameRu,
+      nextActionRu: (lastRun.chosenActionId ?? ((lastRun.outputs as { [k: string]: unknown }[] | undefined)?.[1]?.toString())) ?? 'Пересчитать автопилот',
+    } : null)
   }
 
   useEffect(() => {
     let cancelled = false
     void Promise.resolve().then(async () => {
-      const [all, latest, currentQuest, latestForecast, activeGoal, latestState, lastBlackSwan, people, events, debt] = await Promise.all([
-        listCheckins(),
-        getLatestCheckin(),
-        getActiveQuest(),
-        getLatestForecastRun(),
-        getActiveGoal(),
-        getLatestStateSnapshot(),
-        getLastBlackSwanRun(),
-        listPeople(),
-        listRecent(500),
-        getLastTimeDebtSnapshot(),
-      ])
       if (cancelled) return
-      setCheckins(all)
-      setLatestCheckin(latest)
-      setActiveQuest(currentQuest)
-      if (latestForecast) {
-        setOracleForecast(latestForecast.index.p50[6] ?? latestForecast.index.p50.at(-1) ?? 0)
-        const coverage = latestForecast.backtest.coverage
-        setOracleConfidence(coverage >= 75 ? 'высокая' : coverage >= 60 ? 'средняя' : 'низкая')
-      }
-      if (lastBlackSwan) setTailRisk({ pRed7d: lastBlackSwan.summary.pRed7d, esCollapse10: lastBlackSwan.summary.esCollapse10 })
-            setTimeDebtSummary(debt ? { totalDebt: debt.totals.totalDebt, trend: debt.totals.debtTrend } : null)
-    const radar = computeSocialRadar(all, events, people, { windowDays: 56, maxLag: 7 })
-      const top = Object.entries(radar.influencesByMetric).flatMap(([metric, items]) => items.slice(0, 1).map((item) => ({ metric, text: `${item.key} через ${item.lag} дн.` }))).slice(0, 3)
-      setSocialTop3(top)
-      if (activeGoal && latestState) {
-        const events = await listGoalEvents(activeGoal.id ?? 0, 2)
-        if (cancelled) return
-        const trend = events.length >= 2 ? (events[0].goalScore >= events[1].goalScore ? 'up' : 'down') : null
-        setGoalSummary({ title: activeGoal.title, score: events[0]?.goalScore ?? 0, gap: events[0]?.goalGap ?? (latestState.index * 10 - 70), trend })
-      } else {
-        setGoalSummary(null)
-      }
+      await loadData()
     })
-
     return () => { cancelled = true }
   }, [])
-
-  useEffect(() => {
-    let cancelled = false
-    void getLatestRegimeSnapshot().then((snapshot) => {
-      if (!snapshot || cancelled) return
-      setMissionRegime({ regimeId: snapshot.regimeId, pCollapse: snapshot.pCollapse, sirenLevel: snapshot.sirenLevel })
-    })
-    return () => { cancelled = true }
-  }, [checkins.length, activeQuest?.id])
 
   useEffect(() => {
     document.documentElement.dataset.theme = appearance.theme
@@ -178,7 +149,6 @@ function DesktopApp() {
     if (!checkins.length) {
       return { index: 0, risk: 'нет данных', forecast: 0, signals: 0, volatility: 'нет данных', confidence: 'низкая' as const, regimeId: 0 as RegimeId, pCollapse: 0, sirenLevel: 'green' as const }
     }
-
     const indexSeries = computeIndexSeries(checkins)
     const fallbackForecast = forecastIndex(indexSeries)
     const avg7 = computeAverages(checkins, INDEX_METRIC_IDS, 7)
@@ -214,11 +184,7 @@ function DesktopApp() {
         <h2>Gamno</h2>
         <nav>
           {pageMeta.map((page) => (
-            <NavLink
-              key={page.key}
-              className={({ isActive }) => `nav-link ${isActive ? 'nav-link--active' : ''}`}
-              to={`/${page.key}`}
-            >
+            <NavLink key={page.key} className={({ isActive }) => `nav-link ${isActive ? 'nav-link--active' : ''}`} to={`/${page.key}`}>
               {page.label}
             </NavLink>
           ))}
@@ -226,28 +192,23 @@ function DesktopApp() {
       </aside>
 
       <main className="content">
-        <MissionStrip {...missionSummary} activeQuest={activeQuest} goalSummary={goalSummary} tailRisk={tailRisk} socialTop3={socialTop3} debtSummary={timeDebtSummary} />
+        <MissionStrip
+          {...missionSummary}
+          activeQuest={activeQuest}
+          goalSummary={goalSummary}
+          tailRisk={tailRisk}
+          socialTop3={socialTop3}
+          debtSummary={timeDebtSummary}
+          autopilotSummary={autopilotSummary}
+        />
         <Routes>
           <Route path="/" element={<Navigate to="/core" replace />} />
-          <Route
-            path="/core"
-            element={
-              <CorePage
-                onSaved={async () => { await loadData() }}
-                latest={latestCheckin}
-                previous={checkins[1]}
-                templateValues={templateValues}
-                activeQuest={activeQuest}
-                onQuestChange={loadData}
-                checkins={checkins}
-                activeGoalSummary={goalSummary}
-              />
-            }
-          />
+          <Route path="/core" element={<CorePage onSaved={loadData} latest={latestCheckin} previous={checkins[1]} templateValues={templateValues} activeQuest={activeQuest} onQuestChange={loadData} checkins={checkins} activeGoalSummary={goalSummary} />} />
           <Route path="/dashboard" element={<DashboardPage checkins={checkins} activeQuest={activeQuest} onQuestChange={loadData} />} />
           <Route path="/history" element={<HistoryPage checkins={checkins} onUseTemplate={setTemplateValues} onDataChanged={loadData} />} />
           <Route path="/settings" element={<SettingsPage onDataChanged={loadData} appearance={appearance} onAppearanceChange={setAppearance} />} />
           <Route path="/oracle" element={<OraclePage latest={latestCheckin} onQuestChange={loadData} />} />
+          <Route path="/autopilot" element={<AutopilotPage onChanged={loadData} />} />
           <Route path="/goals" element={<GoalsPage />} />
           <Route path="/multiverse" element={<MultiversePage />} />
           <Route path="/social-radar" element={<SocialRadarPage />} />

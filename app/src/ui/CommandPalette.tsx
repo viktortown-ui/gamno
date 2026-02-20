@@ -6,6 +6,7 @@ const commands = [
   { label: 'Открыть Живое ядро', path: '/core' },
   { label: 'Создать чек-ин', path: '/core' },
   { label: 'Оракул: новый сценарий', path: '/oracle' },
+  { label: 'Открыть: Автопилот', path: '/autopilot' },
   { label: 'Открыть: Мультивселенная', path: '/multiverse' },
   { label: 'Открыть: Долг', path: '/time-debt' },
   { label: 'Открыть: Чёрные лебеди', path: '/black-swans' },

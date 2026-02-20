@@ -35,6 +35,7 @@ export function MissionStrip({
   tailRisk,
   socialTop3,
   debtSummary,
+  autopilotSummary,
 }: {
   index: number
   risk: string
@@ -50,6 +51,7 @@ export function MissionStrip({
   tailRisk?: { pRed7d: number; esCollapse10: number } | null
   socialTop3?: Array<{ metric: string; text: string }>
   debtSummary?: { totalDebt: number; trend: 'up' | 'down' | 'flat' } | null
+  autopilotSummary?: { policyRu: string; nextActionRu: string } | null
 }) {
   const indexPct = clampPercent(index, 0, 10)
   const forecastPct = clampPercent(forecast, 0, 10)
@@ -116,6 +118,11 @@ export function MissionStrip({
       <article>
         <span>Долг</span>
         <strong className="mono">{debtSummary ? `${debtSummary.totalDebt.toFixed(1)} · ${debtSummary.trend === 'up' ? '↑' : debtSummary.trend === 'down' ? '↓' : '→'}` : '—'}</strong>
+      </article>
+
+      <article>
+        <span>Автопилот</span>
+        <strong>{autopilotSummary ? `${autopilotSummary.policyRu} · ${autopilotSummary.nextActionRu}` : '—'}</strong>
       </article>
     </section>
   )

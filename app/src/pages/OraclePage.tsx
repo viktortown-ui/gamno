@@ -29,6 +29,7 @@ import { runForecastEngine, type ForecastRunConfig, type ForecastRunResult } fro
 import { FanChart } from '../ui/components/FanChart'
 import { ForecastHonestyPanel } from '../ui/components/ForecastHonestyPanel'
 import { getLatestForecastRun, saveForecastRun } from '../repo/forecastRepo'
+import { getLastRun as getLastPolicyRun } from '../repo/policyRepo'
 import type { GoalRecord } from '../core/models/goal'
 import { evaluateGoalScore } from '../core/engines/goal'
 import { buildDailySeries, computeDebts, defaultTimeDebtRules } from '../core/engines/timeDebt'
@@ -74,22 +75,25 @@ export function OraclePage({ latest, onQuestChange }: { latest?: CheckinRecord; 
   const [forecast, setForecast] = useState<ForecastRunResult | null>(null)
   const [isRecomputing, setIsRecomputing] = useState(false)
   const [activeGoal, setActiveGoal] = useState<GoalRecord | null>(null)
+  const [policyEffectBadge, setPolicyEffectBadge] = useState<string>('')
   const navigate = useNavigate()
 
   const refreshOracleData = async () => {
-    const [loadedManualMatrix, loadedScenarios, loadedCheckins, loadedLearned, latestRun, loadedGoal] = await Promise.all([
+    const [loadedManualMatrix, loadedScenarios, loadedCheckins, loadedLearned, latestRun, loadedGoal, lastPolicyRun] = await Promise.all([
       loadInfluenceMatrix(),
       listScenarios(),
       listCheckins(),
       getLearnedMatrix(),
       getLatestForecastRun(),
       getActiveGoal(),
+      getLastPolicyRun(),
     ])
     setManualMatrix(loadedManualMatrix)
     setSaved(loadedScenarios)
     setCheckins(loadedCheckins)
     setLearnedMatrix(loadedLearned?.weights ?? loadedManualMatrix)
     setActiveGoal(loadedGoal ?? null)
+    setPolicyEffectBadge(lastPolicyRun?.chosenActionId ? `Эффект на политику: ${lastPolicyRun.chosenActionId}` : '')
 
     if (latestRun) {
       setForecast({
@@ -114,14 +118,14 @@ export function OraclePage({ latest, onQuestChange }: { latest?: CheckinRecord; 
 
   useEffect(() => {
     let cancelled = false
-    void Promise.all([loadInfluenceMatrix(), listScenarios(), listCheckins(), getLearnedMatrix(), getLatestForecastRun(), getActiveGoal()]).then(([loadedManualMatrix, loadedScenarios, loadedCheckins, loadedLearned, latestRun, loadedGoal]) => {
+    void Promise.all([loadInfluenceMatrix(), listScenarios(), listCheckins(), getLearnedMatrix(), getLatestForecastRun(), getActiveGoal(), getLastPolicyRun()]).then(([loadedManualMatrix, loadedScenarios, loadedCheckins, loadedLearned, latestRun, loadedGoal, lastPolicyRun]) => {
       if (cancelled) return
       setManualMatrix(loadedManualMatrix)
       setSaved(loadedScenarios)
       setCheckins(loadedCheckins)
       setLearnedMatrix(loadedLearned?.weights ?? loadedManualMatrix)
       setActiveGoal(loadedGoal ?? null)
-    setActiveGoal(loadedGoal ?? null)
+      setPolicyEffectBadge(lastPolicyRun?.chosenActionId ? `Эффект на политику: ${lastPolicyRun.chosenActionId}` : '')
       if (latestRun) {
         setConfig(latestRun.config)
         setForecast({
@@ -235,6 +239,7 @@ export function OraclePage({ latest, onQuestChange }: { latest?: CheckinRecord; 
 
   return <section className="page panel">
     <h1>Оракул</h1>
+    {policyEffectBadge ? <p className="chip">{policyEffectBadge}</p> : null}
     <p>Сначала задайте сценарий, потом смотрите последствия.</p>
     {prefillSource ? <p className="chip">{prefillSource}</p> : null}
 
