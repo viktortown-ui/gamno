@@ -20,6 +20,7 @@ import { computeSocialRadar } from '../core/engines/socialRadar'
 import { dayKeyFromTs } from '../core/utils/dayKey'
 import { getLastSnapshot as getLastTimeDebtSnapshot } from '../repo/timeDebtRepo'
 import { getActivePolicy, getLastRun } from '../repo/policyRepo'
+import { getLastSnapshot as getLastAntifragilitySnapshot } from '../repo/antifragilityRepo'
 
 type SaveState = 'idle' | 'saving' | 'saved'
 
@@ -79,11 +80,12 @@ export function CorePage({
   const [negativeTriggers, setNegativeTriggers] = useState<Array<{ key: string; lag: number }>>([])
   const [timeDebt, setTimeDebt] = useState<{ totalDebt: number; explainTop3: string[] } | null>(null)
   const [autopilotNext, setAutopilotNext] = useState<{ policyRu: string; nextActionRu: string } | null>(null)
+  const [recoveryBlock, setRecoveryBlock] = useState<{ score: number; budget: number } | null>(null)
 
   useEffect(() => {
     let cancelled = false
     const load = async () => {
-      const [latestSnapshot, latestRegime, lastBlackSwan, people, events, debt, activePolicy, lastRun] = await Promise.all([getLatestStateSnapshot(), getLatestRegimeSnapshot(), getLastBlackSwanRun(), listPeople(), listRecent(500), getLastTimeDebtSnapshot(), getActivePolicy(), getLastRun()])
+      const [latestSnapshot, latestRegime, lastBlackSwan, people, events, debt, activePolicy, lastRun, antifragility] = await Promise.all([getLatestStateSnapshot(), getLatestRegimeSnapshot(), getLastBlackSwanRun(), listPeople(), listRecent(500), getLastTimeDebtSnapshot(), getActivePolicy(), getLastRun(), getLastAntifragilitySnapshot()])
       const current = latestSnapshot ?? await computeCurrentStateSnapshot()
       const currentRegime = latestRegime ?? await computeCurrentRegimeSnapshot()
       if (!cancelled) {
@@ -95,6 +97,7 @@ export function CorePage({
         setTailRiskSummary(lastBlackSwan ? { pRed7d: lastBlackSwan.summary.pRed7d, esCollapse10: lastBlackSwan.summary.esCollapse10 } : null)
         setTimeDebt(debt ? { totalDebt: debt.totals.totalDebt, explainTop3: debt.explainTop3 } : null)
         setAutopilotNext(activePolicy ? { policyRu: activePolicy.nameRu, nextActionRu: lastRun?.chosenActionId ?? 'Открыть Автопилот' } : null)
+        setRecoveryBlock(antifragility ? { score: antifragility.recoveryScore, budget: antifragility.shockBudget } : null)
       }
     }
     void load()
@@ -258,6 +261,22 @@ export function CorePage({
 
 
         <article className="panel core-next-action">
+          <h2>Восстановление</h2>
+          {recoveryBlock ? (
+            <>
+              <p>RecoveryScore: <strong>{recoveryBlock.score.toFixed(1)}</strong></p>
+              <p>Бюджет встрясок: <strong>{recoveryBlock.budget}</strong></p>
+              <button type="button" onClick={() => navigate('/antifragility')}>Открыть Антихрупкость</button>
+            </>
+          ) : (
+            <>
+              <p>Снимок восстановления ещё не рассчитан.</p>
+              <button type="button" onClick={() => navigate('/antifragility')}>Перейти в Антихрупкость</button>
+            </>
+          )}
+        </article>
+
+        <article className="panel core-next-action">
           <h2>Долг</h2>
           {timeDebt ? (
             <>
@@ -330,6 +349,8 @@ export function CorePage({
           <ul>{sirenActions.map((action) => <li key={action.what}><strong>Что сделать:</strong> {action.what}<br /><strong>Почему:</strong> {action.why}<br /><strong>Эффект:</strong> {action.effect}</li>)}</ul>
           {negativeTriggers.length ? <><h3>Вероятные триггеры</h3><ul>{negativeTriggers.map((item) => <li key={item.key}>{item.key} · через {item.lag} дня</li>)}</ul></> : null}
           {timeDebt?.explainTop3.length ? <p>Долг среди триггеров: {timeDebt.explainTop3[0]}</p> : null}
+          <p><strong>Только восстановление.</strong> Встряски отключены до выхода из RED.</p>
+          <button type="button" onClick={() => navigate('/time-debt')}>Открыть протокол долга</button>
           <button type="button" disabled={!sirenActions[0]} onClick={async () => { if (!sirenActions[0]) return; await addQuest({ createdAt: Date.now(), title: `Сирена: ${sirenActions[0].what}`, metricTarget: 'stress', delta: -1, horizonDays: 2, status: 'active', predictedIndexLift: 0.8 }); await onQuestChange() }}>Принять действие</button>
           <button type="button" onClick={() => {
             window.localStorage.setItem('gamno.multiverseDraft', JSON.stringify({ impulses: { stress: -1, sleepHours: 0.5 }, focusMetrics: ['stress', 'sleepHours', 'energy'], sourceLabelRu: 'Сирена → Мультивселенная' }))

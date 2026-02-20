@@ -211,6 +211,7 @@ export function MultiversePage() {
               <p>GoalScore: <strong>{branch.goalScoreEnd.toFixed(1)}</strong> ({branch.goalScoreDelta >= 0 ? '+' : ''}{branch.goalScoreDelta.toFixed(2)})</p>
               <p>Хвост: <strong>{branch.tailRiskChip}</strong></p>
               <p>Debt pressure: <strong>{(branch.expectedPCollapse.at(-1) ?? 0) > (result.quantiles.pCollapse.p50.at(-1) ?? 0) ? 'растёт' : 'снижается'}</strong></p>
+              <p>Recovery pressure: <strong>{((branch.expectedPCollapse.at(-1) ?? 0) * 100).toFixed(1)}%</strong></p>
               <ul>{branch.topDrivers.map((driver) => <li key={driver}>{driver}</li>)}</ul>
               <button type="button" onClick={() => setSelectedBranch(branch.id)}>Выбрать ветку</button>
             </article>

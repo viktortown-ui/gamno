@@ -30,15 +30,18 @@ import { listRecent } from './repo/eventsRepo'
 import { computeSocialRadar } from './core/engines/socialRadar'
 import { getLastSnapshot as getLastTimeDebtSnapshot } from './repo/timeDebtRepo'
 import { AutopilotPage } from './pages/AutopilotPage'
+import { AntifragilityPage } from './pages/AntifragilityPage'
 import { getActivePolicy, getLastRun } from './repo/policyRepo'
+import { getLastSnapshot as getLastAntifragilitySnapshot } from './repo/antifragilityRepo'
 
-type PageKey = 'core' | 'dashboard' | 'oracle' | 'autopilot' | 'multiverse' | 'time-debt' | 'social-radar' | 'black-swans' | 'goals' | 'graph' | 'history' | 'settings'
+type PageKey = 'core' | 'dashboard' | 'oracle' | 'autopilot' | 'antifragility' | 'multiverse' | 'time-debt' | 'social-radar' | 'black-swans' | 'goals' | 'graph' | 'history' | 'settings'
 
 const pageMeta: { key: PageKey; label: string }[] = [
   { key: 'core', label: 'Живое ядро' },
   { key: 'dashboard', label: 'Дашборд' },
   { key: 'oracle', label: 'Оракул' },
   { key: 'autopilot', label: 'Автопилот' },
+  { key: 'antifragility', label: 'Антихрупкость' },
   { key: 'multiverse', label: 'Мультивселенная' },
   { key: 'time-debt', label: 'Долг' },
   { key: 'social-radar', label: 'Социальный радар' },
@@ -48,6 +51,12 @@ const pageMeta: { key: PageKey; label: string }[] = [
   { key: 'history', label: 'История' },
   { key: 'settings', label: 'Настройки' },
 ]
+
+function historyTrend(score: number): 'up' | 'down' | 'flat' {
+  if (score >= 70) return 'up'
+  if (score <= 45) return 'down'
+  return 'flat'
+}
 
 function DesktopOnlyGate() {
   const [isDesktop, setIsDesktop] = useState(window.innerWidth >= 1200)
@@ -82,9 +91,10 @@ function DesktopApp() {
   const [socialTop3, setSocialTop3] = useState<Array<{ metric: string; text: string }>>([])
   const [timeDebtSummary, setTimeDebtSummary] = useState<{ totalDebt: number; trend: 'up' | 'down' | 'flat' } | null>(null)
   const [autopilotSummary, setAutopilotSummary] = useState<{ policyRu: string; nextActionRu: string } | null>(null)
+  const [recoverySummary, setRecoverySummary] = useState<{ score: number; trend: 'up' | 'down' | 'flat' } | null>(null)
 
   const loadData = async () => {
-    const [all, latest, currentQuest, latestForecast, activeGoal, latestState, lastBlackSwan, people, events, debt, regime, activePolicy, lastRun] = await Promise.all([
+    const [all, latest, currentQuest, latestForecast, activeGoal, latestState, lastBlackSwan, people, events, debt, regime, activePolicy, lastRun, antifragility] = await Promise.all([
       listCheckins(),
       getLatestCheckin(),
       getActiveQuest(),
@@ -98,6 +108,7 @@ function DesktopApp() {
       getLatestRegimeSnapshot(),
       getActivePolicy(),
       getLastRun(),
+      getLastAntifragilitySnapshot(),
     ])
     setCheckins(all)
     setLatestCheckin(latest)
@@ -122,6 +133,8 @@ function DesktopApp() {
     } else {
       setGoalSummary(null)
     }
+
+    setRecoverySummary(antifragility ? { score: antifragility.recoveryScore, trend: historyTrend(antifragility.recoveryScore) } : null)
 
     setAutopilotSummary(activePolicy && lastRun ? {
       policyRu: activePolicy.nameRu,
@@ -200,6 +213,7 @@ function DesktopApp() {
           socialTop3={socialTop3}
           debtSummary={timeDebtSummary}
           autopilotSummary={autopilotSummary}
+          recoverySummary={recoverySummary}
         />
         <Routes>
           <Route path="/" element={<Navigate to="/core" replace />} />
@@ -209,6 +223,7 @@ function DesktopApp() {
           <Route path="/settings" element={<SettingsPage onDataChanged={loadData} appearance={appearance} onAppearanceChange={setAppearance} />} />
           <Route path="/oracle" element={<OraclePage latest={latestCheckin} onQuestChange={loadData} />} />
           <Route path="/autopilot" element={<AutopilotPage onChanged={loadData} />} />
+          <Route path="/antifragility" element={<AntifragilityPage onQuestChange={loadData} />} />
           <Route path="/goals" element={<GoalsPage />} />
           <Route path="/multiverse" element={<MultiversePage />} />
           <Route path="/social-radar" element={<SocialRadarPage />} />

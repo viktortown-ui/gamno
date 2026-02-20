@@ -12,6 +12,7 @@ import type { MultiverseRunRecord, MultiverseScenarioRecord, MultiverseSettingsR
 import type { BlackSwanRunRecord, BlackSwanScenarioRecord } from '../../repo/blackSwanRepo'
 import type { TimeDebtSettingsRecord, TimeDebtSnapshotRecord } from '../models/timeDebt'
 import type { PolicyRecord, PolicyRunRecord } from '../../repo/policyRepo'
+import type { AntifragilitySettingsRecord, AntifragilitySnapshotRecord, ShockSessionRecord } from '../models/antifragility'
 
 export interface AppSettingRecord {
   key: string
@@ -23,7 +24,7 @@ export interface OracleScenarioRecord extends OracleScenario {
   id?: number
 }
 
-export const schemaVersion = 14
+export const schemaVersion = 15
 
 class GamnoDb extends Dexie {
   checkins!: EntityTable<CheckinRecord, 'id'>
@@ -48,6 +49,9 @@ class GamnoDb extends Dexie {
   timeDebtRules!: EntityTable<TimeDebtSettingsRecord, 'key'>
   policies!: EntityTable<PolicyRecord, 'id'>
   policyRuns!: EntityTable<PolicyRunRecord, 'id'>
+  antifragilitySnapshots!: EntityTable<AntifragilitySnapshotRecord, 'id'>
+  shockSessions!: EntityTable<ShockSessionRecord, 'id'>
+  antifragilityRules!: EntityTable<AntifragilitySettingsRecord, 'key'>
 
   constructor() {
     super('gamno-db')
@@ -91,6 +95,9 @@ class GamnoDb extends Dexie {
       timeDebtRules: '&key,updatedAt',
       policies: '++id,mode,updatedAt,isActive',
       policyRuns: '++id,ts,chosenPolicyId,chosenActionId',
+      antifragilitySnapshots: '++id,ts,dayKey,recoveryScore,shockBudget,antifragilityScore',
+      shockSessions: '++id,ts,dayKey,type,status',
+      antifragilityRules: '&key,updatedAt',
     })
   }
 }
