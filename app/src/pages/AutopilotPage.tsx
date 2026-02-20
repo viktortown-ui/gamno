@@ -1,22 +1,20 @@
 import { useEffect, useMemo, useState } from 'react'
-import { addQuest, getActiveGoal, getLatestCheckin, getLatestRegimeSnapshot, getLatestStateSnapshot, listCheckins, loadInfluenceMatrix, getLearnedMatrix } from '../core/storage/repo'
+import { addQuest, getActiveGoal, getLatestCheckin, getLatestRegimeSnapshot, getLatestStateSnapshot, listCheckins } from '../core/storage/repo'
 import { getLastBlackSwanRun } from '../repo/blackSwanRepo'
 import { getLastSnapshot as getLastTimeDebtSnapshot } from '../repo/timeDebtRepo'
 import { getLastSnapshot as getLastAntifragilitySnapshot } from '../repo/antifragilityRepo'
-import { buildActionLibrary, buildStateVector, evaluatePolicies, type PolicyConstraints, type PolicyMode } from '../core/engines/policy'
-import { resolveActiveMatrix } from '../core/engines/influence/weightsSource'
+import { buildStateVector, evaluatePoliciesWithAudit, type PolicyConstraints, type PolicyMode } from '../core/engines/policy'
 import { createPolicy, getActivePolicy, saveRun, setActivePolicy } from '../repo/policyRepo'
-import { METRICS } from '../core/metrics'
 
 export function AutopilotPage({ onChanged }: { onChanged: () => Promise<void> }) {
   const [mode, setMode] = useState<PolicyMode>('balanced')
   const [constraints, setConstraints] = useState<PolicyConstraints>({ maxPCollapse: 0.03, sirenCap: 0.03, maxDebtGrowth: 0.2, minRecoveryScore: 55 })
-  const [results, setResults] = useState<ReturnType<typeof evaluatePolicies>>([])
+  const [results, setResults] = useState<Awaited<ReturnType<typeof evaluatePoliciesWithAudit>>>([])
   const [audit, setAudit] = useState<{ weightsSource: 'manual' | 'learned' | 'mixed'; mix: number; tailRiskRunTs?: number; forecastConfidence: 'низкая' | 'средняя' | 'высокая' } | null>(null)
   const [lastRunTs, setLastRunTs] = useState<number | null>(null)
 
   const recompute = async () => {
-    const [latestCheckin, checkins, stateSnapshot, regimeSnapshot, debtSnapshot, activeGoal, blackSwanRun, manualMatrix, learnedMatrix, active, antifragility] = await Promise.all([
+    const [latestCheckin, checkins, stateSnapshot, regimeSnapshot, debtSnapshot, activeGoal, blackSwanRun, active, antifragility] = await Promise.all([
       getLatestCheckin(),
       listCheckins(),
       getLatestStateSnapshot(),
@@ -24,8 +22,6 @@ export function AutopilotPage({ onChanged }: { onChanged: () => Promise<void> })
       getLastTimeDebtSnapshot(),
       getActiveGoal(),
       getLastBlackSwanRun(),
-      loadInfluenceMatrix(),
-      getLearnedMatrix(),
       getActivePolicy(),
       getLastAntifragilitySnapshot(),
     ])
@@ -37,8 +33,6 @@ export function AutopilotPage({ onChanged }: { onChanged: () => Promise<void> })
 
     const weightsSource = active?.mode === 'growth' ? 'mixed' : 'manual'
     const mix = active?.mode === 'growth' ? 0.6 : 0.4
-    const matrix = resolveActiveMatrix(weightsSource, manualMatrix, learnedMatrix?.weights ?? manualMatrix, mix)
-
     const state = buildStateVector({
       latestCheckin,
       checkins,
@@ -51,28 +45,21 @@ export function AutopilotPage({ onChanged }: { onChanged: () => Promise<void> })
       shockBudget: antifragility?.shockBudget ?? 0,
     })
 
-    const baseVector = METRICS.reduce((acc, metric) => {
-      acc[metric.id] = latestCheckin[metric.id]
-      return acc
-    }, {} as Record<(typeof METRICS)[number]['id'], number>)
-
-    const actions = buildActionLibrary({
-      latestCheckin,
-      baseVector,
-      matrix,
-      activeGoal: activeGoal ?? null,
-      regimeSnapshot,
-      debtSnapshot,
+    const evaluated = await evaluatePoliciesWithAudit({
+      state,
+      constraints,
+      mode,
+      seed: 42,
+      buildId: String(import.meta.env.VITE_APP_VERSION ?? 'dev'),
+      policyVersion: '2.0-01-pr1',
     })
-
-    const evaluated = evaluatePolicies({ state, actions, constraints })
     setResults(evaluated)
 
     const run = await saveRun({
       ts: Date.now(),
       stateRef: { stateSnapshotId: stateSnapshot?.id, regimeSnapshotId: regimeSnapshot?.id, timeDebtSnapshotId: debtSnapshot?.id },
       goalRef: activeGoal?.id ? { id: activeGoal.id, title: activeGoal.title } : undefined,
-      inputs: { state, constraints, mode, actionsCount: actions.length },
+      inputs: { state, constraints, mode },
       outputs: evaluated,
       chosenPolicyId: active?.id,
       chosenActionId: undefined,
@@ -115,7 +102,7 @@ export function AutopilotPage({ onChanged }: { onChanged: () => Promise<void> })
     await addQuest({
       createdAt: Date.now(),
       title: `Автопилот: ${action.titleRu}`,
-      metricTarget: action.parameters.metricId ?? 'stress',
+      metricTarget: 'stress',
       delta: action.parameters.delta,
       horizonDays: 3,
       status: 'active',

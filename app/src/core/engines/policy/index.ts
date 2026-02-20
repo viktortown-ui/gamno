@@ -1,15 +1,19 @@
 import { computeIndexDay, computeVolatility } from '../analytics/compute'
 import { assessCollapseRisk } from '../../collapse/model'
-import { evaluateGoalScore, suggestGoalActions, type GoalActionSuggestion } from '../goal'
-import { computeTopLevers } from '../influence/influence'
-import type { InfluenceMatrix, MetricVector, WeightsSource } from '../influence/types'
+import { evaluateGoalScore } from '../goal'
+import type { MetricVector, WeightsSource } from '../influence/types'
 import type { GoalRecord } from '../../models/goal'
 import type { CheckinRecord } from '../../models/checkin'
 import type { RegimeSnapshotRecord } from '../../models/regime'
 import type { StateSnapshotRecord } from '../../models/state'
 import type { TimeDebtSnapshotRecord } from '../../models/timeDebt'
 import type { BlackSwanRunRecord } from '../../../repo/blackSwanRepo'
-import { METRICS, type MetricId } from '../../metrics'
+import { METRICS } from '../../metrics'
+import { buildCatalogHash, buildStateHash, buildWhyTopRu } from '../../actions/audit'
+import { buildUnifiedActionCatalog } from '../../actions/catalog'
+import { penaltyScore } from '../../actions/costModel'
+import type { ActionBudgetEnvelope, ActionContext, ActionCostWeights } from '../../actions/types'
+import { saveActionAudit } from '../../../repo/actionAuditRepo'
 
 export type PolicyMode = 'risk' | 'balanced' | 'growth'
 
@@ -24,8 +28,12 @@ export interface PolicyAction {
   id: string
   titleRu: string
   type: 'goal' | 'siren' | 'graph' | 'debt' | 'shock'
-  parameters: { delta: number; lag: number; horizon: number; metricId?: MetricId }
+  parameters: { delta: number; lag: number; horizon: number }
   tags: Array<'recovery' | 'goal' | 'risk' | 'shock'>
+  defaultCost: { timeMin: number; energy: number; money: number; timeDebt: number; risk: number; entropy: number }
+  domain: 'здоровье' | 'фокус' | 'карьера' | 'финансы' | 'социальное' | 'восстановление'
+  preconditions: (state: import('../../actions/types').ActionState, ctx: ActionContext) => boolean
+  effectsFn: (state: import('../../actions/types').ActionState, ctx: ActionContext) => PolicyActionEvaluation['deltas']
 }
 
 export interface PolicyStateVector {
@@ -48,6 +56,7 @@ export interface PolicyStateVector {
 export interface PolicyActionEvaluation {
   action: PolicyAction
   score: number
+  penalty?: number
   deltas: {
     goalScore: number
     index: number
@@ -100,11 +109,6 @@ function mapSiren(level: 'green' | 'amber' | 'red'): number {
   if (level === 'red') return 1
   if (level === 'amber') return 0.6
   return 0.2
-}
-
-function label(metricId?: MetricId): string {
-  if (!metricId) return 'рычаг'
-  return METRICS.find((m) => m.id === metricId)?.labelRu ?? metricId
 }
 
 export function buildStateVector(params: {
@@ -175,99 +179,32 @@ export function buildStateVector(params: {
   }
 }
 
-function fromGoalActions(actions: GoalActionSuggestion[]): PolicyAction[] {
-  return actions.map((a) => ({
-    id: `goal:${a.metricId}:${a.impulse}`,
-    titleRu: a.titleRu,
-    type: 'goal' as const,
-    parameters: { delta: a.impulse, lag: 1, horizon: 3, metricId: a.metricId },
-    tags: ['goal', a.deltaPCollapse < 0 ? 'risk' : 'recovery'],
-  }))
+
+function toActionState(state: PolicyStateVector): import('../../actions/types').ActionState {
+  return {
+    index: state.index,
+    pCollapse: state.pCollapse,
+    sirenLevel: state.sirenLevel,
+    debtTotal: state.debtTotal,
+    goalGap: state.goalGap,
+    recoveryScore: state.recoveryScore,
+    shockBudget: state.shockBudget,
+    entropy: state.entropy,
+  }
 }
 
-export function buildActionLibrary(params: {
-  latestCheckin: CheckinRecord
-  baseVector: MetricVector
-  matrix: InfluenceMatrix
-  activeGoal: GoalRecord | null
-  regimeSnapshot?: RegimeSnapshotRecord
-  debtSnapshot?: TimeDebtSnapshotRecord
-}): PolicyAction[] {
-  const { latestCheckin, baseVector, matrix, activeGoal, regimeSnapshot, debtSnapshot } = params
-  const actions: PolicyAction[] = []
-
-  if (activeGoal) {
-    const goalActions = suggestGoalActions(activeGoal, {
-      index: computeIndexDay(latestCheckin),
-      pCollapse: regimeSnapshot?.pCollapse ?? 0.2,
-      entropy: 0,
-      drift: 0,
-      stats: { strength: latestCheckin.health * 10, intelligence: latestCheckin.focus * 10, wisdom: latestCheckin.mood * 10, dexterity: latestCheckin.energy * 10 },
-      metrics: baseVector,
-    }, matrix)
-    actions.push(...fromGoalActions(goalActions))
-  }
-
-  if ((regimeSnapshot?.sirenLevel ?? 'green') !== 'green') {
-    actions.push(
-      {
-        id: 'siren:discharge',
-        titleRu: 'Разрядка нагрузки: убрать интенсивные задачи на сегодня',
-        type: 'siren' as const,
-        parameters: { delta: -1, lag: 0, horizon: 2 },
-        tags: ['risk', 'recovery'],
-      },
-      {
-        id: 'siren:sleep',
-        titleRu: 'Стабилизировать сон и закрыть день раньше',
-        type: 'siren' as const,
-        parameters: { delta: -1, lag: 0, horizon: 2 },
-        tags: ['risk', 'recovery'],
-      },
-    )
-  }
-
-  const levers = computeTopLevers(baseVector, matrix, 3)
-  actions.push(...levers.map((lever) => ({
-    id: `graph:${lever.from}:${lever.to}`,
-    titleRu: `Рычаг ${label(lever.from)} → ${label(lever.to)}`,
-    type: 'graph' as const,
-    parameters: { delta: lever.suggestedDelta, lag: 1, horizon: 3, metricId: lever.from },
-    tags: ['goal'] as Array<'goal'>,
-  })))
-
-  const debtTop = debtSnapshot?.protocolActions.slice(0, 2) ?? []
-  actions.push(...debtTop.map((item) => ({
-    id: `debt:${item.actionId}`,
+export function buildActionLibrary(): PolicyAction[] {
+  return buildUnifiedActionCatalog().map((item) => ({
+    id: item.id,
     titleRu: item.titleRu,
-    type: 'debt' as const,
-    parameters: { delta: 1, lag: 0, horizon: 3 },
-    tags: ['recovery', 'risk'] as Array<'recovery' | 'risk'>,
-  })))
-
-  if ((regimeSnapshot?.sirenLevel ?? 'green') === 'green' && (debtSnapshot?.totals.totalDebt ?? 0) < 1.8) {
-    actions.push({
-      id: 'shock:micro-focus',
-      titleRu: 'Контролируемая микровстряска фокуса на 20 минут',
-      type: 'shock',
-      parameters: { delta: 1, lag: 0, horizon: 3, metricId: 'focus' },
-      tags: ['goal', 'shock'],
-    })
-  }
-
-  return actions.filter((item, idx, arr) => arr.findIndex((v) => v.id === item.id) === idx)
-}
-
-function estimateActionDelta(action: PolicyAction, base: PolicyStateVector): PolicyActionEvaluation['deltas'] {
-  const baseSign = action.type === 'siren' || action.type === 'debt' ? -1 : 1
-  const gain = action.type === 'graph' ? 0.35 : action.type === 'goal' ? 0.28 : action.type === 'shock' ? 0.22 : 0.18
-  const index = Number((baseSign * gain * action.parameters.delta).toFixed(3))
-  const pCollapse = Number(((-baseSign * gain * 0.08 * action.parameters.delta) + (action.type === 'graph' && base.sirenLevel > 0.6 ? 0.012 : 0)).toFixed(4))
-  const goalScore = Number((index * 8 - pCollapse * 50).toFixed(2))
-  const debt = Number(((action.type === 'debt' ? -0.45 : action.type === 'siren' ? -0.2 : action.type === 'shock' ? 0.08 : 0.15) * Math.abs(action.parameters.delta)).toFixed(3))
-  const tailRisk = Number((pCollapse * 1.1 + (action.type === 'graph' || action.type === 'shock' ? 0.01 : -0.005)).toFixed(4))
-  const sirenRisk = Number((pCollapse * 1.5 + (action.type === 'siren' ? -0.04 : 0.01)).toFixed(4))
-  return { goalScore, index, pCollapse, tailRisk, debt, sirenRisk }
+    type: item.tags.includes('shock') ? 'shock' : item.tags.includes('risk') ? 'siren' : 'goal',
+    parameters: { delta: 1, lag: 0, horizon: 1 },
+    tags: [...item.tags],
+    defaultCost: item.defaultCost,
+    domain: item.domain,
+    preconditions: item.preconditions,
+    effectsFn: item.effectsFn,
+  }))
 }
 
 function scoreAction(params: { mode: PolicyMode; deltas: PolicyActionEvaluation['deltas']; state: PolicyStateVector }): number {
@@ -303,30 +240,56 @@ function withinConstraints(evaluation: PolicyActionEvaluation, constraints: Poli
   if (evaluation.deltas.debt > constraints.maxDebtGrowth) return false
   return true
 }
-
 export function evaluatePolicies(params: {
   state: PolicyStateVector
   actions: PolicyAction[]
   constraints: PolicyConstraints
+  seed?: number
 }): PolicyResult[] {
-  const { state, actions, constraints } = params
+  const { state, actions, constraints, seed = 0 } = params
   const modes: PolicyMode[] = ['risk', 'balanced', 'growth']
-  return modes.map((mode) => {
-    const evaluated = actions.map((action) => {
-      const deltas = estimateActionDelta(action, state)
-      const score = scoreAction({ mode, deltas, state })
-      return {
-        action,
-        deltas,
-        score,
-        reasonsRu: reasons(action, deltas, mode),
-      }
-    })
+  const baseState = toActionState(state)
+
+  const costWeights: Record<PolicyMode, ActionCostWeights> = {
+    risk: { timeMin: 0.01, energy: 0.04, money: 0.001, timeDebt: 2.5, risk: 6.5, entropy: 1.8 },
+    balanced: { timeMin: 0.02, energy: 0.05, money: 0.0012, timeDebt: 1.8, risk: 4.2, entropy: 1.4 },
+    growth: { timeMin: 0.015, energy: 0.03, money: 0.0008, timeDebt: 1.2, risk: 2.4, entropy: 0.8 },
+  }
+
+  const budget: ActionBudgetEnvelope = {
+    maxTimeMin: 90,
+    maxEnergy: 35,
+    maxMoney: 5000,
+    maxTimeDebt: 0.25,
+    maxRisk: modeBudgetRisk(state.sirenLevel),
+    maxEntropy: 0.2,
+  }
+
+  const modeResults = modes.map((mode) => {
+    const ctx: ActionContext = { seed, mode }
+    const evaluated = actions
+      .filter((action) => action.preconditions(baseState, ctx))
+      .map((action) => {
+        const deltas = action.effectsFn(baseState, ctx)
+        const baseScore = scoreAction({ mode, deltas, state })
+        const penalty = penaltyScore(action.defaultCost, costWeights[mode], budget)
+        const score = Number((baseScore - penalty).toFixed(3))
+        return {
+          action,
+          deltas,
+          score,
+          penalty,
+          reasonsRu: reasons(action, deltas, mode),
+        }
+      })
       .filter((item) => withinConstraints(item, constraints))
       .filter((item) => (mode === 'risk' ? !item.action.tags.includes('shock') : true))
       .filter((item) => (mode === 'growth' && item.action.tags.includes('shock') ? (state.sirenLevel <= 0.2 && state.shockBudget > 0 && state.recoveryScore >= constraints.minRecoveryScore) : true))
-      .sort((a, b) => b.score - a.score || a.action.id.localeCompare(b.action.id))
-      .slice(0, 3)
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score
+        return a.action.id.localeCompare(b.action.id)
+      })
+      .slice(0, 5)
 
     const fallback = evaluated[0] ?? {
       action: {
@@ -335,9 +298,14 @@ export function evaluatePolicies(params: {
         type: 'risk' === mode ? 'siren' : 'debt',
         parameters: { delta: 0, lag: 1, horizon: 1 },
         tags: ['risk'],
+        defaultCost: { timeMin: 0, energy: 0, money: 0, timeDebt: 0, risk: 0, entropy: 0 },
+        domain: 'восстановление',
+        preconditions: () => true,
+        effectsFn: () => ({ goalScore: 0, index: 0, pCollapse: 0, tailRisk: 0, debt: 0, sirenRisk: 0 }),
       } as PolicyAction,
       deltas: { goalScore: 0, index: 0, pCollapse: 0, tailRisk: 0, debt: 0, sirenRisk: 0 },
       score: 0,
+      penalty: 0,
       reasonsRu: ['Действия не прошли ограничения.', 'Снизьте жёсткость лимитов.', 'Пересчёт доступен после обновления состояния.'],
     }
 
@@ -348,4 +316,49 @@ export function evaluatePolicies(params: {
       best: fallback,
     }
   })
+
+  return modeResults
+}
+
+function modeBudgetRisk(sirenLevel: number): number {
+  if (sirenLevel >= 1) return 0.03
+  if (sirenLevel >= 0.6) return 0.05
+  return 0.12
+}
+
+export async function evaluatePoliciesWithAudit(params: {
+  state: PolicyStateVector
+  constraints: PolicyConstraints
+  mode: PolicyMode
+  seed: number
+  buildId: string
+  policyVersion: string
+}): Promise<PolicyResult[]> {
+  const actions = buildActionLibrary()
+  const evaluated = evaluatePolicies({ state: params.state, actions, constraints: params.constraints, seed: params.seed })
+  const selected = evaluated.find((item) => item.mode === params.mode) ?? evaluated[0]
+  const stateHash = buildStateHash(toActionState(params.state))
+  const topCandidates = selected.ranked.slice(0, 5).map((item) => ({ actionId: item.action.id, score: item.score, penalty: Number(item.penalty ?? 0) }))
+  const catalogHash = buildCatalogHash(actions)
+
+  if (selected) {
+    await saveActionAudit({
+      ts: Date.now(),
+      chosenActionId: selected.best.action.id,
+      stateHash,
+      seed: params.seed,
+      reproToken: {
+        buildId: params.buildId,
+        seed: params.seed,
+        stateHash,
+        catalogHash,
+        policyVersion: params.policyVersion,
+      },
+      topCandidates,
+      whyTopRu: buildWhyTopRu(selected.best.reasonsRu),
+      modelHealth: { placeholder: true },
+    })
+  }
+
+  return evaluated
 }

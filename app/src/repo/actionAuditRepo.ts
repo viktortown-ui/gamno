@@ -1,0 +1,33 @@
+import { db } from '../core/storage/db'
+import type { ReproToken } from '../core/actions/audit'
+
+export interface ActionAuditCandidateCompact {
+  actionId: string
+  score: number
+  penalty: number
+}
+
+export interface ActionAuditRecord {
+  id?: number
+  ts: number
+  chosenActionId: string
+  stateHash: string
+  seed: number
+  reproToken: ReproToken
+  topCandidates: ActionAuditCandidateCompact[]
+  whyTopRu: string[]
+  modelHealth: Record<string, unknown>
+}
+
+export async function saveActionAudit(record: ActionAuditRecord): Promise<ActionAuditRecord> {
+  const id = await db.actionAudits.add(record)
+  return { ...record, id }
+}
+
+export async function getLastActionAudit(): Promise<ActionAuditRecord | undefined> {
+  return db.actionAudits.orderBy('ts').last()
+}
+
+export async function listActionAuditsByStateSeed(stateHash: string, seed: number): Promise<ActionAuditRecord[]> {
+  return db.actionAudits.where('[stateHash+seed]').equals([stateHash, seed]).toArray()
+}

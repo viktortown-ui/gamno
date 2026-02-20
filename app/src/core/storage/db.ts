@@ -14,6 +14,7 @@ import type { TimeDebtSettingsRecord, TimeDebtSnapshotRecord } from '../models/t
 import type { PolicyRecord, PolicyRunRecord } from '../../repo/policyRepo'
 import type { AntifragilitySettingsRecord, AntifragilitySnapshotRecord, ShockSessionRecord } from '../models/antifragility'
 import type { FrameSnapshotRecord } from '../../repo/frameRepo'
+import type { ActionAuditRecord } from '../../repo/actionAuditRepo'
 
 export interface AppSettingRecord {
   key: string
@@ -25,7 +26,7 @@ export interface OracleScenarioRecord extends OracleScenario {
   id?: number
 }
 
-export const schemaVersion = 16
+export const schemaVersion = 17
 
 class GamnoDb extends Dexie {
   checkins!: EntityTable<CheckinRecord, 'id'>
@@ -54,6 +55,7 @@ class GamnoDb extends Dexie {
   shockSessions!: EntityTable<ShockSessionRecord, 'id'>
   antifragilityRules!: EntityTable<AntifragilitySettingsRecord, 'key'>
   frameSnapshots!: EntityTable<FrameSnapshotRecord, 'id'>
+  actionAudits!: EntityTable<ActionAuditRecord, 'id'>
 
   constructor() {
     super('gamno-db')
@@ -72,6 +74,35 @@ class GamnoDb extends Dexie {
       learnedMatrices: '&key,metricSetHash,computedAt,trainedOnDays,lags',
       forecastRuns: '++id,ts,modelType',
       regimeSnapshots: '++id,ts,dayKey,regimeId,sirenLevel',
+    })
+
+    this.version(16).stores({
+      checkins: '++id,ts',
+      events: '++id,ts,dayKey,type,personId',
+      people: '++id,nameAlias,updatedAt',
+      settings: '&key,updatedAt',
+      scenarios: '++id,ts,nameRu',
+      quests: '++id,createdAt,status',
+      stateSnapshots: '++id,ts,level',
+      learnedMatrices: '&key,metricSetHash,computedAt,trainedOnDays,lags',
+      forecastRuns: '++id,ts,modelType',
+      regimeSnapshots: '++id,ts,dayKey,regimeId,sirenLevel',
+      goals: '++id,createdAt,updatedAt,status',
+      goalEvents: '++id,ts,goalId',
+      multiverseScenarios: '++id,updatedAt,nameRu',
+      multiverseRuns: '++id,ts',
+      multiverseSettings: '&key,updatedAt',
+      blackSwanScenarios: '++id,updatedAt,name',
+      blackSwanRuns: '++id,ts,baseId',
+      socialInsights: '++id,computedAt,windowDays,maxLag',
+      timeDebtSnapshots: '++id,ts,dayKey',
+      timeDebtRules: '&key,updatedAt',
+      policies: '++id,mode,updatedAt,isActive',
+      policyRuns: '++id,ts,chosenPolicyId,chosenActionId',
+      antifragilitySnapshots: '++id,ts,dayKey,recoveryScore,shockBudget,antifragilityScore',
+      shockSessions: '++id,ts,dayKey,type,status',
+      antifragilityRules: '&key,updatedAt',
+      frameSnapshots: '++id,ts,dayKey',
     })
 
     this.version(schemaVersion).stores({
@@ -101,6 +132,7 @@ class GamnoDb extends Dexie {
       shockSessions: '++id,ts,dayKey,type,status',
       antifragilityRules: '&key,updatedAt',
       frameSnapshots: '++id,ts,dayKey',
+      actionAudits: '++id,ts,chosenActionId,stateHash,seed,[stateHash+seed],[ts+chosenActionId]',
     })
   }
 }
