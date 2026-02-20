@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { addQuest, getActiveGoal, getLatestCheckin, getLatestRegimeSnapshot, getLatestStateSnapshot, listCheckins, loadInfluenceMatrix, getLearnedMatrix } from '../core/storage/repo'
 import { getLastBlackSwanRun } from '../repo/blackSwanRepo'
 import { getLastSnapshot as getLastTimeDebtSnapshot } from '../repo/timeDebtRepo'
+import { getLastSnapshot as getLastAntifragilitySnapshot } from '../repo/antifragilityRepo'
 import { buildActionLibrary, buildStateVector, evaluatePolicies, type PolicyConstraints, type PolicyMode } from '../core/engines/policy'
 import { resolveActiveMatrix } from '../core/engines/influence/weightsSource'
 import { createPolicy, getActivePolicy, saveRun, setActivePolicy } from '../repo/policyRepo'
@@ -9,13 +10,13 @@ import { METRICS } from '../core/metrics'
 
 export function AutopilotPage({ onChanged }: { onChanged: () => Promise<void> }) {
   const [mode, setMode] = useState<PolicyMode>('balanced')
-  const [constraints, setConstraints] = useState<PolicyConstraints>({ maxPCollapse: 0.03, sirenCap: 0.03, maxDebtGrowth: 0.2 })
+  const [constraints, setConstraints] = useState<PolicyConstraints>({ maxPCollapse: 0.03, sirenCap: 0.03, maxDebtGrowth: 0.2, minRecoveryScore: 55 })
   const [results, setResults] = useState<ReturnType<typeof evaluatePolicies>>([])
   const [audit, setAudit] = useState<{ weightsSource: 'manual' | 'learned' | 'mixed'; mix: number; tailRiskRunTs?: number; forecastConfidence: 'низкая' | 'средняя' | 'высокая' } | null>(null)
   const [lastRunTs, setLastRunTs] = useState<number | null>(null)
 
   const recompute = async () => {
-    const [latestCheckin, checkins, stateSnapshot, regimeSnapshot, debtSnapshot, activeGoal, blackSwanRun, manualMatrix, learnedMatrix, active] = await Promise.all([
+    const [latestCheckin, checkins, stateSnapshot, regimeSnapshot, debtSnapshot, activeGoal, blackSwanRun, manualMatrix, learnedMatrix, active, antifragility] = await Promise.all([
       getLatestCheckin(),
       listCheckins(),
       getLatestStateSnapshot(),
@@ -26,6 +27,7 @@ export function AutopilotPage({ onChanged }: { onChanged: () => Promise<void> })
       loadInfluenceMatrix(),
       getLearnedMatrix(),
       getActivePolicy(),
+      getLastAntifragilitySnapshot(),
     ])
 
     if (!latestCheckin) {
@@ -45,6 +47,8 @@ export function AutopilotPage({ onChanged }: { onChanged: () => Promise<void> })
       timeDebtSnapshot: debtSnapshot,
       activeGoal: activeGoal ?? null,
       blackSwanRun,
+      recoveryScore: antifragility?.recoveryScore ?? 0,
+      shockBudget: antifragility?.shockBudget ?? 0,
     })
 
     const baseVector = METRICS.reduce((acc, metric) => {
@@ -86,7 +90,7 @@ export function AutopilotPage({ onChanged }: { onChanged: () => Promise<void> })
   useEffect(() => {
     void recompute()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [constraints.maxDebtGrowth, constraints.maxPCollapse, constraints.sirenCap, mode])
+  }, [constraints.maxDebtGrowth, constraints.maxPCollapse, constraints.sirenCap, constraints.minRecoveryScore, mode])
 
   const selected = useMemo(() => results.find((item) => item.mode === mode), [results, mode])
 
@@ -154,6 +158,9 @@ export function AutopilotPage({ onChanged }: { onChanged: () => Promise<void> })
         </label>
         <label>Макс. рост долга
           <input type="number" step="0.01" value={constraints.maxDebtGrowth} onChange={(e) => setConstraints((prev) => ({ ...prev, maxDebtGrowth: Number(e.target.value) || 0 }))} />
+        </label>
+        <label>Минимум RecoveryScore для встрясок
+          <input type="number" step="1" value={constraints.minRecoveryScore} onChange={(e) => setConstraints((prev) => ({ ...prev, minRecoveryScore: Number(e.target.value) || 0 }))} />
         </label>
       </article>
 

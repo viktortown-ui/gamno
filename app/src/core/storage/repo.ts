@@ -14,6 +14,7 @@ import { computeRegimeLayer } from '../regime/snapshot'
 import type { RegimeSnapshotRecord } from '../models/regime'
 import type { GoalEventRecord, GoalRecord } from '../models/goal'
 import { computeAndSaveSnapshot as computeAndSaveTimeDebtSnapshot } from '../../repo/timeDebtRepo'
+import { computeAndSaveSnapshot as computeAndSaveAntifragilitySnapshot } from '../../repo/antifragilityRepo'
 
 export async function addCheckin(values: CheckinValues): Promise<CheckinRecord> {
   const ts = Date.now()
@@ -22,6 +23,7 @@ export async function addCheckin(values: CheckinValues): Promise<CheckinRecord> 
   await saveStateSnapshot(ts)
   await saveRegimeSnapshot(ts)
   await computeAndSaveTimeDebtSnapshot({ afterCheckinId: id })
+  await computeAndSaveAntifragilitySnapshot({ afterCheckinId: id })
   return saved
 }
 
@@ -174,6 +176,7 @@ export async function completeQuestById(id: number): Promise<QuestRecord | undef
   await saveStateSnapshot(Date.now())
   await saveRegimeSnapshot(Date.now())
   await computeAndSaveTimeDebtSnapshot({ afterQuestId: id })
+  await computeAndSaveAntifragilitySnapshot({ afterQuestId: id })
   return completed
 }
 

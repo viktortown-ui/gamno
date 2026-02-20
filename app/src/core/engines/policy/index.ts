@@ -17,14 +17,15 @@ export interface PolicyConstraints {
   maxPCollapse: number
   sirenCap: number
   maxDebtGrowth: number
+  minRecoveryScore: number
 }
 
 export interface PolicyAction {
   id: string
   titleRu: string
-  type: 'goal' | 'siren' | 'graph' | 'debt'
+  type: 'goal' | 'siren' | 'graph' | 'debt' | 'shock'
   parameters: { delta: number; lag: number; horizon: number; metricId?: MetricId }
-  tags: Array<'recovery' | 'goal' | 'risk'>
+  tags: Array<'recovery' | 'goal' | 'risk' | 'shock'>
 }
 
 export interface PolicyStateVector {
@@ -40,6 +41,8 @@ export interface PolicyStateVector {
   goalScore: number
   goalGap: number
   tailRisk: { cvar: number; expectedShortfall: number; source: 'black-swan' | 'proxy' }
+  recoveryScore: number
+  shockBudget: number
 }
 
 export interface PolicyActionEvaluation {
@@ -112,8 +115,10 @@ export function buildStateVector(params: {
   timeDebtSnapshot?: TimeDebtSnapshotRecord
   activeGoal: GoalRecord | null
   blackSwanRun?: BlackSwanRunRecord
+  recoveryScore?: number
+  shockBudget?: number
 }): PolicyStateVector {
-  const { latestCheckin, checkins, stateSnapshot, regimeSnapshot, timeDebtSnapshot, activeGoal, blackSwanRun } = params
+  const { latestCheckin, checkins, stateSnapshot, regimeSnapshot, timeDebtSnapshot, activeGoal, blackSwanRun, recoveryScore, shockBudget } = params
   const metrics = toMetricVector(latestCheckin)
   const index = stateSnapshot?.index ?? computeIndexDay(latestCheckin)
   const volatility = stateSnapshot?.volatility ?? computeVolatility(checkins, 'energy', 14)
@@ -165,6 +170,8 @@ export function buildStateVector(params: {
     goalScore: goalScore.goalScore,
     goalGap: goalScore.goalGap,
     tailRisk: tailFromBlackSwan,
+    recoveryScore: recoveryScore ?? 0,
+    shockBudget: shockBudget ?? 0,
   }
 }
 
@@ -238,17 +245,27 @@ export function buildActionLibrary(params: {
     tags: ['recovery', 'risk'] as Array<'recovery' | 'risk'>,
   })))
 
+  if ((regimeSnapshot?.sirenLevel ?? 'green') === 'green' && (debtSnapshot?.totals.totalDebt ?? 0) < 1.8) {
+    actions.push({
+      id: 'shock:micro-focus',
+      titleRu: 'Контролируемая микровстряска фокуса на 20 минут',
+      type: 'shock',
+      parameters: { delta: 1, lag: 0, horizon: 3, metricId: 'focus' },
+      tags: ['goal', 'shock'],
+    })
+  }
+
   return actions.filter((item, idx, arr) => arr.findIndex((v) => v.id === item.id) === idx)
 }
 
 function estimateActionDelta(action: PolicyAction, base: PolicyStateVector): PolicyActionEvaluation['deltas'] {
   const baseSign = action.type === 'siren' || action.type === 'debt' ? -1 : 1
-  const gain = action.type === 'graph' ? 0.35 : action.type === 'goal' ? 0.28 : 0.18
+  const gain = action.type === 'graph' ? 0.35 : action.type === 'goal' ? 0.28 : action.type === 'shock' ? 0.22 : 0.18
   const index = Number((baseSign * gain * action.parameters.delta).toFixed(3))
   const pCollapse = Number(((-baseSign * gain * 0.08 * action.parameters.delta) + (action.type === 'graph' && base.sirenLevel > 0.6 ? 0.012 : 0)).toFixed(4))
   const goalScore = Number((index * 8 - pCollapse * 50).toFixed(2))
-  const debt = Number(((action.type === 'debt' ? -0.45 : action.type === 'siren' ? -0.2 : 0.15) * Math.abs(action.parameters.delta)).toFixed(3))
-  const tailRisk = Number((pCollapse * 1.1 + (action.type === 'graph' ? 0.01 : -0.005)).toFixed(4))
+  const debt = Number(((action.type === 'debt' ? -0.45 : action.type === 'siren' ? -0.2 : action.type === 'shock' ? 0.08 : 0.15) * Math.abs(action.parameters.delta)).toFixed(3))
+  const tailRisk = Number((pCollapse * 1.1 + (action.type === 'graph' || action.type === 'shock' ? 0.01 : -0.005)).toFixed(4))
   const sirenRisk = Number((pCollapse * 1.5 + (action.type === 'siren' ? -0.04 : 0.01)).toFixed(4))
   return { goalScore, index, pCollapse, tailRisk, debt, sirenRisk }
 }
@@ -276,6 +293,7 @@ function reasons(action: PolicyAction, deltas: PolicyActionEvaluation['deltas'],
   ]
   if (action.type === 'siren') reasonsList[2] = 'Приоритет — снять нагрузку Сирены до безопасного уровня.'
   if (action.type === 'debt') reasonsList[2] = 'Сокращает долг и поддерживает устойчивость на горизонте 3 дней.'
+  if (action.type === 'shock') reasonsList[2] = 'Контролируемая встряска допустима только в зелёном состоянии.'
   return reasonsList
 }
 
@@ -304,7 +322,9 @@ export function evaluatePolicies(params: {
         reasonsRu: reasons(action, deltas, mode),
       }
     })
-      .filter((item) => (mode === 'risk' ? withinConstraints(item, constraints) : true))
+      .filter((item) => withinConstraints(item, constraints))
+      .filter((item) => (mode === 'risk' ? !item.action.tags.includes('shock') : true))
+      .filter((item) => (mode === 'growth' && item.action.tags.includes('shock') ? (state.sirenLevel <= 0.2 && state.shockBudget > 0 && state.recoveryScore >= constraints.minRecoveryScore) : true))
       .sort((a, b) => b.score - a.score || a.action.id.localeCompare(b.action.id))
       .slice(0, 3)
 

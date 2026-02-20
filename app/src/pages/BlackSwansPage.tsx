@@ -126,6 +126,7 @@ export function BlackSwansPage() {
       <div className="multiverse-grid">
         <article className="summary-card panel"><h2>Tail-risk</h2><p>Prob(Siren RED хотя бы раз): <strong>{(result.tail.probEverRed * 100).toFixed(1)}%</strong></p><p>Prob(P(collapse) ≥ {threshold.toFixed(2)}) конец: <strong>{(result.tail.probThresholdEnd * 100).toFixed(1)}%</strong></p><p>Prob(P(collapse) ≥ {threshold.toFixed(2)}) хотя бы раз: <strong>{(result.tail.probThresholdEver * 100).toFixed(1)}%</strong></p><p>CVaR Index α=0.10: <strong>{result.tail.esCoreIndex.toFixed(2)}</strong></p><p>CVaR P(collapse) α=0.10: <strong>{result.tail.esCollapse.toFixed(3)}</strong></p></article>
         <article className="summary-card panel"><h2>Margin of Safety</h2><p>Чтобы держать RED ≤ 10%, приоритетные рычаги:</p><ol>{result.recommendations.map((r) => <li key={r.metricId}><strong>{r.actionRu}</strong><br />Index Δ p10/p50/p90: {r.effectIndex.p10.toFixed(2)} / {r.effectIndex.p50.toFixed(2)} / {r.effectIndex.p90.toFixed(2)}<br />P(collapse) Δ p10/p50/p90: {r.effectCollapse.p10.toFixed(3)} / {r.effectCollapse.p50.toFixed(3)} / {r.effectCollapse.p90.toFixed(3)}</li>)}</ol><p>{result.noteRu}</p></article>
+        {result.tail.probEverRed > 0.1 ? <article className="summary-card panel"><h2>Буферы вместо встрясок</h2><p>Хвостовой риск высокий: переходите в Антихрупкость и применяйте только буферы восстановления.</p><button type="button" onClick={() => navigate('/antifragility')}>Открыть Антихрупкость</button></article> : null}
       </div>
     </> : null}
   </section>

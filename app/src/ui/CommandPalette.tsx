@@ -7,6 +7,7 @@ const commands = [
   { label: 'Создать чек-ин', path: '/core' },
   { label: 'Оракул: новый сценарий', path: '/oracle' },
   { label: 'Открыть: Автопилот', path: '/autopilot' },
+  { label: 'Открыть: Антихрупкость', path: '/antifragility' },
   { label: 'Открыть: Мультивселенная', path: '/multiverse' },
   { label: 'Открыть: Долг', path: '/time-debt' },
   { label: 'Открыть: Чёрные лебеди', path: '/black-swans' },

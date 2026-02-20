@@ -20,6 +20,7 @@ const constraints: PolicyConstraints = {
   maxPCollapse: 0.02,
   sirenCap: 0.02,
   maxDebtGrowth: 0.2,
+  minRecoveryScore: 55,
 }
 
 describe('policy engine', () => {
@@ -60,6 +61,7 @@ describe('policy engine', () => {
         maxPCollapse: -1,
         sirenCap: -1,
         maxDebtGrowth: -1,
+        minRecoveryScore: 0,
       },
     })
 

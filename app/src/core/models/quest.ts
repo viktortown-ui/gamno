@@ -13,4 +13,5 @@ export interface QuestRecord {
   xpEarned?: number
   outcomeRu?: string
   goalId?: number
+  shockType?: string
 }
