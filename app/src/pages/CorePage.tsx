@@ -50,6 +50,7 @@ export function CorePage({
   activeQuest,
   onQuestChange,
   checkins,
+  activeGoalSummary,
 }: {
   onSaved: () => Promise<void>
   latest?: CheckinRecord
@@ -58,6 +59,7 @@ export function CorePage({
   activeQuest?: QuestRecord
   onQuestChange: () => Promise<void>
   checkins: CheckinRecord[]
+  activeGoalSummary?: { title: string; score: number; gap: number; trend: 'up' | 'down' | null } | null
 }) {
   const navigate = useNavigate()
   const [values, setValues] = useState<CheckinValues>(templateValues ?? DEFAULT_CHECKIN_VALUES)
@@ -209,6 +211,24 @@ export function CorePage({
           </ul>
           <p>XP: <strong className="mono">{snapshot?.xp ?? 0}</strong> · Уровень: <strong className="mono">{snapshot?.level ?? 1}</strong></p>
           <p>Энтропия: <strong className="mono">{formatNumber(snapshot?.entropy ?? 0)}</strong> · Дрифт: <strong className="mono">{(snapshot?.drift ?? 0) > 0 ? '+' : ''}{formatNumber(snapshot?.drift ?? 0)}</strong></p>
+        </article>
+
+
+        <article className="panel core-next-action">
+          <h2>Активная цель</h2>
+          {activeGoalSummary ? (
+            <>
+              <p><strong>{activeGoalSummary.title}</strong></p>
+              <p>Индекс цели: <strong>{activeGoalSummary.score.toFixed(1)}</strong> {activeGoalSummary.trend ? (activeGoalSummary.trend === 'up' ? '↑' : '↓') : ''}</p>
+              <p>Разрыв: <strong>{activeGoalSummary.gap >= 0 ? '+' : ''}{activeGoalSummary.gap.toFixed(1)}</strong></p>
+              <button type="button" onClick={() => navigate('/goals')}>Открыть цели</button>
+            </>
+          ) : (
+            <>
+              <p>Активная цель не задана.</p>
+              <button type="button" onClick={() => navigate('/goals')}>Создать цель</button>
+            </>
+          )}
         </article>
 
         <article className="panel core-next-action">

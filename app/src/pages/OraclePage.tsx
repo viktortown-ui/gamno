@@ -5,6 +5,7 @@ import type { CheckinRecord } from '../core/models/checkin'
 import {
   addQuest,
   addScenario,
+  getActiveGoal,
   getLearnedMatrix,
   listCheckins,
   listScenarios,
@@ -28,6 +29,8 @@ import { runForecastEngine, type ForecastRunConfig, type ForecastRunResult } fro
 import { FanChart } from '../ui/components/FanChart'
 import { ForecastHonestyPanel } from '../ui/components/ForecastHonestyPanel'
 import { getLatestForecastRun, saveForecastRun } from '../repo/forecastRepo'
+import type { GoalRecord } from '../core/models/goal'
+import { evaluateGoalScore } from '../core/engines/goal'
 
 const presets: { title: string; impulses: Partial<Record<MetricId, number>>; focus: MetricId[] }[] = [
   { title: 'Восстановление сна', impulses: { sleepHours: 1, stress: -1 }, focus: ['sleepHours', 'stress', 'energy'] },
@@ -69,20 +72,23 @@ export function OraclePage({ latest, onQuestChange }: { latest?: CheckinRecord; 
   const [config, setConfig] = useState<ForecastRunConfig>(defaultConfig)
   const [forecast, setForecast] = useState<ForecastRunResult | null>(null)
   const [isRecomputing, setIsRecomputing] = useState(false)
+  const [activeGoal, setActiveGoal] = useState<GoalRecord | null>(null)
   const navigate = useNavigate()
 
   const refreshOracleData = async () => {
-    const [loadedManualMatrix, loadedScenarios, loadedCheckins, loadedLearned, latestRun] = await Promise.all([
+    const [loadedManualMatrix, loadedScenarios, loadedCheckins, loadedLearned, latestRun, loadedGoal] = await Promise.all([
       loadInfluenceMatrix(),
       listScenarios(),
       listCheckins(),
       getLearnedMatrix(),
       getLatestForecastRun(),
+      getActiveGoal(),
     ])
     setManualMatrix(loadedManualMatrix)
     setSaved(loadedScenarios)
     setCheckins(loadedCheckins)
     setLearnedMatrix(loadedLearned?.weights ?? loadedManualMatrix)
+    setActiveGoal(loadedGoal ?? null)
 
     if (latestRun) {
       setForecast({
@@ -107,12 +113,14 @@ export function OraclePage({ latest, onQuestChange }: { latest?: CheckinRecord; 
 
   useEffect(() => {
     let cancelled = false
-    void Promise.all([loadInfluenceMatrix(), listScenarios(), listCheckins(), getLearnedMatrix(), getLatestForecastRun()]).then(([loadedManualMatrix, loadedScenarios, loadedCheckins, loadedLearned, latestRun]) => {
+    void Promise.all([loadInfluenceMatrix(), listScenarios(), listCheckins(), getLearnedMatrix(), getLatestForecastRun(), getActiveGoal()]).then(([loadedManualMatrix, loadedScenarios, loadedCheckins, loadedLearned, latestRun, loadedGoal]) => {
       if (cancelled) return
       setManualMatrix(loadedManualMatrix)
       setSaved(loadedScenarios)
       setCheckins(loadedCheckins)
       setLearnedMatrix(loadedLearned?.weights ?? loadedManualMatrix)
+      setActiveGoal(loadedGoal ?? null)
+    setActiveGoal(loadedGoal ?? null)
       if (latestRun) {
         setConfig(latestRun.config)
         setForecast({
@@ -190,6 +198,27 @@ export function OraclePage({ latest, onQuestChange }: { latest?: CheckinRecord; 
   const baseCollapse = assessCollapseRisk(baseState, baseline)
   const scenarioCollapse = assessCollapseRisk(scenarioState, resultRecord)
   const collapseDelta = scenarioCollapse.pCollapse - baseCollapse.pCollapse
+  const goalEffect = activeGoal ? (() => {
+    const baseScore = evaluateGoalScore(activeGoal, {
+      index: baseIndex,
+      pCollapse: baseCollapse.pCollapse,
+      entropy: baseState.entropy,
+      drift: baseState.drift,
+      stats: baseState.stats,
+      metrics: baseVector,
+      forecast: forecast ? { p10: forecast.index.p10.at(-1), p50: forecast.index.p50.at(-1), p90: forecast.index.p90.at(-1) } : undefined,
+    })
+    const scenarioScore = evaluateGoalScore(activeGoal, {
+      index: scenarioIndex,
+      pCollapse: scenarioCollapse.pCollapse,
+      entropy: scenarioState.entropy,
+      drift: scenarioState.drift,
+      stats: scenarioState.stats,
+      metrics: result,
+      forecast: forecast ? { p10: forecast.index.p10.at(-1), p50: forecast.index.p50.at(-1), p90: forecast.index.p90.at(-1) } : undefined,
+    })
+    return { delta: scenarioScore.goalScore - baseScore.goalScore, rationale: scenarioScore.explainTop3[0]?.textRu ?? 'Оценка выполнена по активной цели.' }
+  })() : null
   const baselineRegime = regimeFromDay({ dayIndex: baseIndex * 10, volatility: baseState.volatility * 50, stress: baseline.stress, sleepHours: baseline.sleepHours, energy: baseline.energy, mood: baseline.mood })
   const scenarioRegime = regimeFromDay({ dayIndex: scenarioIndex * 10, volatility: scenarioState.volatility * 50, stress: resultRecord.stress, sleepHours: resultRecord.sleepHours, energy: resultRecord.energy, mood: resultRecord.mood, prevDayIndex: baseIndex * 10 })
   const matrixRegime = getTransitionMatrix([baselineRegime, scenarioRegime])
@@ -225,13 +254,14 @@ export function OraclePage({ latest, onQuestChange }: { latest?: CheckinRecord; 
     })}</div></article>
 
     <article className="summary-card panel"><h2>Результат</h2><p>Новый индекс: <strong>{formatNumber(scenarioIndex)}</strong></p><p>Δ индекса: <strong>{indexDelta > 0 ? '+' : ''}{formatNumber(indexDelta)}</strong></p><p>P(collapse): <strong>{(scenarioCollapse.pCollapse * 100).toFixed(1)}%</strong> ({collapseDelta > 0 ? '+' : ''}{(collapseDelta * 100).toFixed(1)} п.п.)</p><p>Сдвиг режима next1: {REGIMES.map((regime) => `${regime.labelRu} ${((scenarioNext[regime.id].probability - baseNext[regime.id].probability) * 100).toFixed(1)}%`).join(' · ')}</p><p>Лучший рычаг для снижения Сирены: <strong>{bestSirenLever ? `${METRICS.find((m) => m.id === bestSirenLever.from)?.labelRu ?? bestSirenLever.from} → ${METRICS.find((m) => m.id === bestSirenLever.to)?.labelRu ?? bestSirenLever.to}` : 'нет'}</strong></p><ol>{propagation.map((vector, idx) => <li key={idx}>Шаг {idx + 1}: {METRICS.map((m) => `${m.labelRu} ${formatNumber(vector[m.id])}`).join(' | ')}</li>)}</ol>
+      {goalEffect ? <p>Эффект на цель: <strong>{goalEffect.delta >= 0 ? '+' : ''}{goalEffect.delta.toFixed(1)}</strong>. {goalEffect.rationale}</p> : null}
       <button type="button" onClick={async () => {
         const strongest = drivers[0]
         if (!strongest) return
         const questTitle = `План на 3 дня: усилить ${METRICS.find((m) => m.id === strongest.from)?.labelRu ?? strongest.from}`
-        await addQuest({ createdAt: Date.now(), title: questTitle, metricTarget: strongest.from, delta: 1, horizonDays: 3, status: 'active', predictedIndexLift: Math.max(0.3, indexDelta) })
-        setPlanSummary(`Миссия создана: ${questTitle}. Источник весов: ${weightsSource}.`) ; await onQuestChange()
-      }}>Принять план на 3 дня</button>{planSummary ? <p className="chip">{planSummary}</p> : null}</article></div>
+        await addQuest({ createdAt: Date.now(), title: questTitle, metricTarget: strongest.from, delta: 1, horizonDays: 3, status: 'active', predictedIndexLift: Math.max(0.3, indexDelta), goalId: activeGoal?.id })
+        setPlanSummary(`План под цель принят: ${questTitle}. Источник весов: ${weightsSource}.`) ; await onQuestChange()
+      }}>Принять план под цель</button>{planSummary ? <p className="chip">{planSummary}</p> : null}</article></div>
 
     <div className="oracle-grid"><article className="summary-card panel"><h2>Почему так</h2><ul>{drivers.map((driver) => <li key={`${driver.from}-${driver.to}`}>{driver.text} ({formatNumber(driver.strength)})</li>)}</ul></article><article className="summary-card panel"><h2>Плейбук</h2><ol>{playbook.map((item) => <li key={item}>{item}</li>)}</ol></article></div>
 

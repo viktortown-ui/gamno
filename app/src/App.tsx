@@ -2,13 +2,14 @@ import { useEffect, useMemo, useState } from 'react'
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom'
 import type { CheckinRecord, CheckinValues } from './core/models/checkin'
 import type { QuestRecord } from './core/models/quest'
-import { getActiveQuest, getLatestCheckin, getLatestRegimeSnapshot, listCheckins } from './core/storage/repo'
+import { getActiveGoal, getActiveQuest, getLatestCheckin, getLatestRegimeSnapshot, getLatestStateSnapshot, listCheckins, listGoalEvents } from './core/storage/repo'
 import { CorePage } from './pages/CorePage'
 import { DashboardPage } from './pages/DashboardPage'
 import { HistoryPage } from './pages/HistoryPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { OraclePage } from './pages/OraclePage'
 import { GraphPage } from './pages/GraphPage'
+import { GoalsPage } from './pages/GoalsPage'
 import { CommandPalette } from './ui/CommandPalette'
 import { loadAppearanceSettings, saveAppearanceSettings, type AppearanceSettings } from './ui/appearance'
 import { Starfield } from './ui/Starfield'
@@ -20,12 +21,13 @@ import { forecastIndex } from './core/engines/forecast/indexForecast'
 import { getLatestForecastRun } from './repo/forecastRepo'
 import type { RegimeId } from './core/models/regime'
 
-type PageKey = 'core' | 'dashboard' | 'oracle' | 'graph' | 'history' | 'settings'
+type PageKey = 'core' | 'dashboard' | 'oracle' | 'goals' | 'graph' | 'history' | 'settings'
 
 const pageMeta: { key: PageKey; label: string }[] = [
   { key: 'core', label: 'Живое ядро' },
   { key: 'dashboard', label: 'Дашборд' },
   { key: 'oracle', label: 'Оракул' },
+  { key: 'goals', label: 'Цели' },
   { key: 'graph', label: 'Граф' },
   { key: 'history', label: 'История' },
   { key: 'settings', label: 'Настройки' },
@@ -59,9 +61,17 @@ function DesktopApp() {
   const [oracleForecast, setOracleForecast] = useState<number>(0)
   const [oracleConfidence, setOracleConfidence] = useState<'низкая' | 'средняя' | 'высокая'>('низкая')
   const [missionRegime, setMissionRegime] = useState<{ regimeId: RegimeId; pCollapse: number; sirenLevel: 'green' | 'amber' | 'red' }>({ regimeId: 0, pCollapse: 0, sirenLevel: 'green' })
+  const [goalSummary, setGoalSummary] = useState<{ title: string; score: number; gap: number; trend: 'up' | 'down' | null } | null>(null)
 
   const loadData = async () => {
-    const [all, latest, currentQuest, latestForecast] = await Promise.all([listCheckins(), getLatestCheckin(), getActiveQuest(), getLatestForecastRun()])
+    const [all, latest, currentQuest, latestForecast, activeGoal, latestState] = await Promise.all([
+      listCheckins(),
+      getLatestCheckin(),
+      getActiveQuest(),
+      getLatestForecastRun(),
+      getActiveGoal(),
+      getLatestStateSnapshot(),
+    ])
     setCheckins(all)
     setLatestCheckin(latest)
     setActiveQuest(currentQuest)
@@ -70,11 +80,27 @@ function DesktopApp() {
       const coverage = latestForecast.backtest.coverage
       setOracleConfidence(coverage >= 75 ? 'высокая' : coverage >= 60 ? 'средняя' : 'низкая')
     }
+
+    if (activeGoal && latestState) {
+      const events = await listGoalEvents(activeGoal.id ?? 0, 2)
+      const trend = events.length >= 2 ? (events[0].goalScore >= events[1].goalScore ? 'up' : 'down') : null
+      setGoalSummary({ title: activeGoal.title, score: events[0]?.goalScore ?? 0, gap: events[0]?.goalGap ?? (latestState.index * 10 - 70), trend })
+    } else {
+      setGoalSummary(null)
+    }
   }
 
   useEffect(() => {
     let cancelled = false
-    void Promise.all([listCheckins(), getLatestCheckin(), getActiveQuest(), getLatestForecastRun()]).then(([all, latest, currentQuest, latestForecast]) => {
+    void Promise.resolve().then(async () => {
+      const [all, latest, currentQuest, latestForecast, activeGoal, latestState] = await Promise.all([
+        listCheckins(),
+        getLatestCheckin(),
+        getActiveQuest(),
+        getLatestForecastRun(),
+        getActiveGoal(),
+        getLatestStateSnapshot(),
+      ])
       if (cancelled) return
       setCheckins(all)
       setLatestCheckin(latest)
@@ -84,13 +110,18 @@ function DesktopApp() {
         const coverage = latestForecast.backtest.coverage
         setOracleConfidence(coverage >= 75 ? 'высокая' : coverage >= 60 ? 'средняя' : 'низкая')
       }
+      if (activeGoal && latestState) {
+        const events = await listGoalEvents(activeGoal.id ?? 0, 2)
+        if (cancelled) return
+        const trend = events.length >= 2 ? (events[0].goalScore >= events[1].goalScore ? 'up' : 'down') : null
+        setGoalSummary({ title: activeGoal.title, score: events[0]?.goalScore ?? 0, gap: events[0]?.goalGap ?? (latestState.index * 10 - 70), trend })
+      } else {
+        setGoalSummary(null)
+      }
     })
 
-    return () => {
-      cancelled = true
-    }
+    return () => { cancelled = true }
   }, [])
-
 
   useEffect(() => {
     let cancelled = false
@@ -160,7 +191,7 @@ function DesktopApp() {
       </aside>
 
       <main className="content">
-        <MissionStrip {...missionSummary} activeQuest={activeQuest} />
+        <MissionStrip {...missionSummary} activeQuest={activeQuest} goalSummary={goalSummary} />
         <Routes>
           <Route path="/" element={<Navigate to="/core" replace />} />
           <Route
@@ -174,6 +205,7 @@ function DesktopApp() {
                 activeQuest={activeQuest}
                 onQuestChange={loadData}
                 checkins={checkins}
+                activeGoalSummary={goalSummary}
               />
             }
           />
@@ -181,6 +213,7 @@ function DesktopApp() {
           <Route path="/history" element={<HistoryPage checkins={checkins} onUseTemplate={setTemplateValues} onDataChanged={loadData} />} />
           <Route path="/settings" element={<SettingsPage onDataChanged={loadData} appearance={appearance} onAppearanceChange={setAppearance} />} />
           <Route path="/oracle" element={<OraclePage latest={latestCheckin} onQuestChange={loadData} />} />
+          <Route path="/goals" element={<GoalsPage />} />
           <Route path="/graph" element={<GraphPage />} />
         </Routes>
       </main>

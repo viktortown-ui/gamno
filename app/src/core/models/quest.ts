@@ -12,4 +12,5 @@ export interface QuestRecord {
   completedAt?: number
   xpEarned?: number
   outcomeRu?: string
+  goalId?: number
 }

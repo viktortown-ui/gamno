@@ -12,6 +12,7 @@ import { computeCoreState, type CoreStateSnapshot } from '../engines/stateEngine
 import type { StateSnapshotRecord } from '../models/state'
 import { computeRegimeLayer } from '../regime/snapshot'
 import type { RegimeSnapshotRecord } from '../models/regime'
+import type { GoalEventRecord, GoalRecord } from '../models/goal'
 
 export async function addCheckin(values: CheckinValues): Promise<CheckinRecord> {
   const ts = Date.now()
@@ -234,4 +235,64 @@ export async function getLatestRegimeSnapshot(): Promise<RegimeSnapshotRecord | 
 
 export async function listRegimeSnapshots(limit = 90): Promise<RegimeSnapshotRecord[]> {
   return db.regimeSnapshots.orderBy('ts').reverse().limit(limit).toArray()
+}
+
+
+export async function createGoal(goal: Omit<GoalRecord, 'id' | 'createdAt' | 'updatedAt'>): Promise<GoalRecord> {
+  const now = Date.now()
+  const record: GoalRecord = { ...goal, createdAt: now, updatedAt: now }
+  const id = await db.goals.add(record)
+  return { ...record, id }
+}
+
+export async function updateGoal(id: number, patch: Partial<Omit<GoalRecord, 'id' | 'createdAt'>>): Promise<GoalRecord | undefined> {
+  const row = await db.goals.get(id)
+  if (!row) return undefined
+  const updated: GoalRecord = { ...row, ...patch, updatedAt: Date.now(), id }
+  await db.goals.put(updated)
+  return updated
+}
+
+export async function listGoals(): Promise<GoalRecord[]> {
+  return db.goals.orderBy('updatedAt').reverse().toArray()
+}
+
+export async function getActiveGoal(): Promise<GoalRecord | undefined> {
+  const manual = await db.settings.get('active-goal-id')
+  const activeId = typeof manual?.value === 'number' ? manual.value : undefined
+  if (typeof activeId === 'number') {
+    const byId = await db.goals.get(activeId)
+    if (byId && byId.status === 'active') return byId
+  }
+  return db.goals.where('status').equals('active').last()
+}
+
+export async function setActiveGoal(id: number): Promise<GoalRecord | undefined> {
+  const all = await db.goals.toArray()
+  const now = Date.now()
+  const target = all.find((item) => item.id === id)
+  if (!target) return undefined
+
+  await Promise.all(all.map(async (item) => {
+    if (!item.id) return
+    const nextStatus = item.id === id ? 'active' : (item.status === 'active' ? 'paused' : item.status)
+    if (nextStatus === item.status && item.id !== id) return
+    await db.goals.put({ ...item, status: nextStatus, updatedAt: now })
+  }))
+
+  await db.settings.put({ key: 'active-goal-id', value: id, updatedAt: now })
+  const updated = await db.goals.get(id)
+  return updated
+}
+
+
+export async function addGoalEvent(event: Omit<GoalEventRecord, 'id' | 'ts'> & { ts?: number }): Promise<GoalEventRecord> {
+  const record: GoalEventRecord = { ...event, ts: event.ts ?? Date.now() }
+  const id = await db.goalEvents.add(record)
+  return { ...record, id }
+}
+
+export async function listGoalEvents(goalId: number, limit = 30): Promise<GoalEventRecord[]> {
+  const rows = await db.goalEvents.where('goalId').equals(goalId).toArray()
+  return rows.sort((a, b) => b.ts - a.ts).slice(0, limit)
 }
