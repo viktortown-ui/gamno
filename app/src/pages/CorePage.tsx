@@ -14,6 +14,10 @@ import type { RegimeSnapshotRecord } from '../core/models/regime'
 import { REGIMES } from '../core/regime/model'
 import { assessCollapseRisk, buildDisarmProtocol } from '../core/collapse/model'
 import { getLastBlackSwanRun } from '../repo/blackSwanRepo'
+import { listPeople } from '../repo/peopleRepo'
+import { listRecent } from '../repo/eventsRepo'
+import { computeSocialRadar } from '../core/engines/socialRadar'
+import { dayKeyFromTs } from '../core/utils/dayKey'
 
 type SaveState = 'idle' | 'saving' | 'saved'
 
@@ -70,14 +74,18 @@ export function CorePage({
   const [snapshot, setSnapshot] = useState<CoreStateSnapshot | null>(null)
   const [regimeSnapshot, setRegimeSnapshot] = useState<RegimeSnapshotRecord | null>(null)
   const [tailRiskSummary, setTailRiskSummary] = useState<{ pRed7d: number; esCollapse10: number } | null>(null)
+  const [negativeTriggers, setNegativeTriggers] = useState<Array<{ key: string; lag: number }>>([])
 
   useEffect(() => {
     let cancelled = false
     const load = async () => {
-      const [latestSnapshot, latestRegime, lastBlackSwan] = await Promise.all([getLatestStateSnapshot(), getLatestRegimeSnapshot(), getLastBlackSwanRun()])
+      const [latestSnapshot, latestRegime, lastBlackSwan, people, events] = await Promise.all([getLatestStateSnapshot(), getLatestRegimeSnapshot(), getLastBlackSwanRun(), listPeople(), listRecent(500)])
       const current = latestSnapshot ?? await computeCurrentStateSnapshot()
       const currentRegime = latestRegime ?? await computeCurrentRegimeSnapshot()
       if (!cancelled) {
+        const radar = computeSocialRadar(checkins, events, people, { windowDays: 56, maxLag: 7 })
+        const stressNeg = (radar.influencesByMetric.stress ?? []).filter((item) => item.sign === 'negative').slice(0, 3).map((item) => ({ key: item.key, lag: item.lag }))
+        setNegativeTriggers(stressNeg)
         setSnapshot(current)
         setRegimeSnapshot(currentRegime)
         setTailRiskSummary(lastBlackSwan ? { pRed7d: lastBlackSwan.summary.pRed7d, esCollapse10: lastBlackSwan.summary.esCollapse10 } : null)
@@ -87,7 +95,7 @@ export function CorePage({
     return () => {
       cancelled = true
     }
-  }, [latest?.ts, activeQuest?.id, checkins.length])
+  }, [latest?.ts, activeQuest?.id, checkins, checkins.length])
 
   const updateValue = (id: MetricId, value: number) => {
     const metric = METRICS.find((item) => item.id === id)
@@ -258,6 +266,12 @@ export function CorePage({
           <button type="button" onClick={() => navigate(oneNextAction.ctaPath)}>{oneNextAction.ctaLabel}</button>
         </article>
 
+        <article className="panel core-next-action">
+          <h2>Топ-3 влияния недели</h2>
+          <p>Проверьте лаговые связи событий и контактов с метриками.</p>
+          <button type="button" onClick={() => navigate('/social-radar')}>Открыть Социальный радар</button>
+        </article>
+
         <article className="panel core-explain">
           <h2>Почему ядро такое</h2>
           <ul>
@@ -285,6 +299,7 @@ export function CorePage({
           <h2>Сирена</h2>
           <p>Порог риска превышен. Нужен протокол разрядки.</p>
           <ul>{sirenActions.map((action) => <li key={action.what}><strong>Что сделать:</strong> {action.what}<br /><strong>Почему:</strong> {action.why}<br /><strong>Эффект:</strong> {action.effect}</li>)}</ul>
+          {negativeTriggers.length ? <><h3>Вероятные триггеры</h3><ul>{negativeTriggers.map((item) => <li key={item.key}>{item.key} · через {item.lag} дня</li>)}</ul></> : null}
           <button type="button" disabled={!sirenActions[0]} onClick={async () => { if (!sirenActions[0]) return; await addQuest({ createdAt: Date.now(), title: `Сирена: ${sirenActions[0].what}`, metricTarget: 'stress', delta: -1, horizonDays: 2, status: 'active', predictedIndexLift: 0.8 }); await onQuestChange() }}>Принять действие</button>
         </section>
       ) : null}
@@ -312,6 +327,7 @@ export function CorePage({
             {saveState === 'saving' ? 'Сохранение…' : null}
             {saveState === 'saved' && savedRecord ? `Чек-ин сохранён` : null}
           </span>
+          {saveState === 'saved' ? <button type="button" onClick={() => navigate(`/social-radar?day=${dayKeyFromTs(Date.now())}`)}>Отметить события дня</button> : null}
         </div>
 
         {resultInsight ? (

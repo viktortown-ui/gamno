@@ -5,10 +5,7 @@ import type { CoreStateSnapshot } from '../engines/stateEngine'
 import type { RegimeSnapshotRecord } from '../models/regime'
 import { buildRegimeSeriesFromCheckins, explainRegime, getTransitionMatrix, predictNext, REGIMES } from './model'
 import { assessCollapseRisk, buildDisarmProtocol, type CollapseAction } from '../collapse/model'
-
-function dayKeyFromTs(ts: number): string {
-  return new Date(ts).toISOString().slice(0, 10)
-}
+import { dayKeyFromTs } from '../utils/dayKey'
 
 export interface RegimeLayerState {
   snapshot: RegimeSnapshotRecord

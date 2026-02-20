@@ -1,6 +1,6 @@
 import { Dexie, type EntityTable } from 'dexie'
 import type { CheckinRecord } from '../models/checkin'
-import type { AppEventRecord } from '../models/event'
+import type { SocialEventRecord, PersonRecord, SocialInsightRecord } from '../models/socialRadar'
 import type { OracleScenario } from '../engines/influence/types'
 import type { QuestRecord } from '../models/quest'
 import type { StateSnapshotRecord } from '../models/state'
@@ -21,11 +21,12 @@ export interface OracleScenarioRecord extends OracleScenario {
   id?: number
 }
 
-export const schemaVersion = 10
+export const schemaVersion = 11
 
 class GamnoDb extends Dexie {
   checkins!: EntityTable<CheckinRecord, 'id'>
-  events!: EntityTable<AppEventRecord, 'id'>
+  events!: EntityTable<SocialEventRecord, 'id'>
+  people!: EntityTable<PersonRecord, 'id'>
   settings!: EntityTable<AppSettingRecord, 'key'>
   scenarios!: EntityTable<OracleScenarioRecord, 'id'>
   quests!: EntityTable<QuestRecord, 'id'>
@@ -38,6 +39,7 @@ class GamnoDb extends Dexie {
   multiverseRuns!: EntityTable<MultiverseRunRecord, 'id'>
   blackSwanScenarios!: EntityTable<BlackSwanScenarioRecord, 'id'>
   blackSwanRuns!: EntityTable<BlackSwanRunRecord, 'id'>
+  socialInsights!: EntityTable<SocialInsightRecord, 'id'>
 
   constructor() {
     super('gamno-db')
@@ -60,7 +62,8 @@ class GamnoDb extends Dexie {
 
     this.version(schemaVersion).stores({
       checkins: '++id,ts',
-      events: '++id,ts,type',
+      events: '++id,ts,dayKey,type,personId',
+      people: '++id,nameAlias,updatedAt',
       settings: '&key,updatedAt',
       scenarios: '++id,ts,nameRu',
       quests: '++id,createdAt,status',
@@ -73,6 +76,7 @@ class GamnoDb extends Dexie {
       multiverseRuns: '++id,ts',
       blackSwanScenarios: '++id,updatedAt,name',
       blackSwanRuns: '++id,ts,baseId',
+      socialInsights: '++id,computedAt,windowDays,maxLag',
     })
   }
 }

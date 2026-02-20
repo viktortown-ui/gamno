@@ -33,6 +33,7 @@ export function MissionStrip({
   activeQuest,
   goalSummary,
   tailRisk,
+  socialTop3,
 }: {
   index: number
   risk: string
@@ -46,6 +47,7 @@ export function MissionStrip({
   activeQuest?: QuestRecord
   goalSummary?: { score: number; trend: 'up' | 'down' | null } | null
   tailRisk?: { pRed7d: number; esCollapse10: number } | null
+  socialTop3?: Array<{ metric: string; text: string }>
 }) {
   const indexPct = clampPercent(index, 0, 10)
   const forecastPct = clampPercent(forecast, 0, 10)
@@ -104,6 +106,10 @@ export function MissionStrip({
       <article>
         <span>Tail risk</span>
         <strong className="mono">{tailRisk ? `P(RED,7д) ${(tailRisk.pRed7d * 100).toFixed(1)}% · ES ${(tailRisk.esCollapse10 * 100).toFixed(1)}%` : '—'}</strong>
+      </article>
+      <article>
+        <span>Топ-3 влияния недели</span>
+        <strong>{socialTop3?.length ? socialTop3.map((item) => item.text).join(' · ') : '—'}</strong>
       </article>
     </section>
   )
