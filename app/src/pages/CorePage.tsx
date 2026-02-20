@@ -19,6 +19,7 @@ import { listRecent } from '../repo/eventsRepo'
 import { computeSocialRadar } from '../core/engines/socialRadar'
 import { dayKeyFromTs } from '../core/utils/dayKey'
 import { getLastSnapshot as getLastTimeDebtSnapshot } from '../repo/timeDebtRepo'
+import { getActivePolicy, getLastRun } from '../repo/policyRepo'
 
 type SaveState = 'idle' | 'saving' | 'saved'
 
@@ -77,11 +78,12 @@ export function CorePage({
   const [tailRiskSummary, setTailRiskSummary] = useState<{ pRed7d: number; esCollapse10: number } | null>(null)
   const [negativeTriggers, setNegativeTriggers] = useState<Array<{ key: string; lag: number }>>([])
   const [timeDebt, setTimeDebt] = useState<{ totalDebt: number; explainTop3: string[] } | null>(null)
+  const [autopilotNext, setAutopilotNext] = useState<{ policyRu: string; nextActionRu: string } | null>(null)
 
   useEffect(() => {
     let cancelled = false
     const load = async () => {
-      const [latestSnapshot, latestRegime, lastBlackSwan, people, events, debt] = await Promise.all([getLatestStateSnapshot(), getLatestRegimeSnapshot(), getLastBlackSwanRun(), listPeople(), listRecent(500), getLastTimeDebtSnapshot()])
+      const [latestSnapshot, latestRegime, lastBlackSwan, people, events, debt, activePolicy, lastRun] = await Promise.all([getLatestStateSnapshot(), getLatestRegimeSnapshot(), getLastBlackSwanRun(), listPeople(), listRecent(500), getLastTimeDebtSnapshot(), getActivePolicy(), getLastRun()])
       const current = latestSnapshot ?? await computeCurrentStateSnapshot()
       const currentRegime = latestRegime ?? await computeCurrentRegimeSnapshot()
       if (!cancelled) {
@@ -92,6 +94,7 @@ export function CorePage({
         setRegimeSnapshot(currentRegime)
         setTailRiskSummary(lastBlackSwan ? { pRed7d: lastBlackSwan.summary.pRed7d, esCollapse10: lastBlackSwan.summary.esCollapse10 } : null)
         setTimeDebt(debt ? { totalDebt: debt.totals.totalDebt, explainTop3: debt.explainTop3 } : null)
+        setAutopilotNext(activePolicy ? { policyRu: activePolicy.nameRu, nextActionRu: lastRun?.chosenActionId ?? 'Открыть Автопилот' } : null)
       }
     }
     void load()
@@ -147,21 +150,28 @@ export function CorePage({
     return insight.bestLever ? createQuestFromSuggestion(insight.bestLever) : null
   }, [latest, previous])
 
-  const oneNextAction = activeQuest
+  const oneNextAction = autopilotNext
     ? {
-      title: activeQuest.title,
-      hint: `Ожидаемый рост индекса: +${formatNumber(activeQuest.predictedIndexLift)}.`,
-      ctaLabel: 'Принять миссию',
-      ctaPath: '/dashboard',
+      title: `Автопилот: ${autopilotNext.nextActionRu}`,
+      hint: `Активная политика: ${autopilotNext.policyRu}.`,
+      ctaLabel: 'Открыть автопилот',
+      ctaPath: '/autopilot',
     }
-    : {
-      title: suggestedQuest?.title ?? 'Новый сценарий поможет выбрать самый сильный рычаг дня.',
-      hint: suggestedQuest
-        ? `Рекомендованный шаг: ${suggestedQuest.metricTarget} ${suggestedQuest.delta > 0 ? '+' : ''}${formatNumber(suggestedQuest.delta)}.`
-        : 'Соберите свежий чек-ин и получите персональное предложение.',
-      ctaLabel: 'Перейти к оракулу',
-      ctaPath: '/oracle',
-    }
+    : activeQuest
+      ? {
+        title: activeQuest.title,
+        hint: `Ожидаемый рост индекса: +${formatNumber(activeQuest.predictedIndexLift)}.`,
+        ctaLabel: 'Принять миссию',
+        ctaPath: '/dashboard',
+      }
+      : {
+        title: suggestedQuest?.title ?? 'Новый сценарий поможет выбрать самый сильный рычаг дня.',
+        hint: suggestedQuest
+          ? `Рекомендованный шаг: ${suggestedQuest.metricTarget} ${suggestedQuest.delta > 0 ? '+' : ''}${formatNumber(suggestedQuest.delta)}.`
+          : 'Соберите свежий чек-ин и получите персональное предложение.',
+        ctaLabel: 'Перейти к оракулу',
+        ctaPath: '/oracle',
+      }
 
   const contributors = useMemo(
     () => explainCoreState(latest, previous, activeQuest),

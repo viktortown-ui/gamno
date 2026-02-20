@@ -11,6 +11,7 @@ import type { GoalEventRecord, GoalRecord } from '../models/goal'
 import type { MultiverseRunRecord, MultiverseScenarioRecord, MultiverseSettingsRecord } from '../../repo/multiverseRepo'
 import type { BlackSwanRunRecord, BlackSwanScenarioRecord } from '../../repo/blackSwanRepo'
 import type { TimeDebtSettingsRecord, TimeDebtSnapshotRecord } from '../models/timeDebt'
+import type { PolicyRecord, PolicyRunRecord } from '../../repo/policyRepo'
 
 export interface AppSettingRecord {
   key: string
@@ -22,7 +23,7 @@ export interface OracleScenarioRecord extends OracleScenario {
   id?: number
 }
 
-export const schemaVersion = 13
+export const schemaVersion = 14
 
 class GamnoDb extends Dexie {
   checkins!: EntityTable<CheckinRecord, 'id'>
@@ -45,6 +46,8 @@ class GamnoDb extends Dexie {
   socialInsights!: EntityTable<SocialInsightRecord, 'id'>
   timeDebtSnapshots!: EntityTable<TimeDebtSnapshotRecord, 'id'>
   timeDebtRules!: EntityTable<TimeDebtSettingsRecord, 'key'>
+  policies!: EntityTable<PolicyRecord, 'id'>
+  policyRuns!: EntityTable<PolicyRunRecord, 'id'>
 
   constructor() {
     super('gamno-db')
@@ -86,6 +89,8 @@ class GamnoDb extends Dexie {
       socialInsights: '++id,computedAt,windowDays,maxLag',
       timeDebtSnapshots: '++id,ts,dayKey',
       timeDebtRules: '&key,updatedAt',
+      policies: '++id,mode,updatedAt,isActive',
+      policyRuns: '++id,ts,chosenPolicyId,chosenActionId',
     })
   }
 }
