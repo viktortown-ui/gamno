@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { NavLink, Navigate, Route, Routes } from 'react-router-dom'
+import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import type { CheckinRecord, CheckinValues } from './core/models/checkin'
 import type { QuestRecord } from './core/models/quest'
 import { getActiveQuest, getLatestCheckin, listCheckins } from './core/storage/repo'
@@ -20,17 +20,16 @@ import { SocialRadarPage } from './pages/SocialRadarPage'
 import { TimeDebtPage } from './pages/TimeDebtPage'
 import { AutopilotPage } from './pages/AutopilotPage'
 import { AntifragilityPage } from './pages/AntifragilityPage'
-import { LaunchPage } from './pages/LaunchPage'
+import { StartPage } from './pages/StartPage'
 import { SystemPage } from './pages/SystemPage'
 import { WorldPage } from './pages/WorldPage'
 import { computeAndSaveFrame, getLastFrame, type FrameSnapshotRecord } from './repo/frameRepo'
-import { needsLaunchOnboarding } from './core/frame/launchGate'
 
-type PageKey = 'launch' | 'world' | 'core' | 'dashboard' | 'oracle' | 'autopilot' | 'antifragility' | 'multiverse' | 'time-debt' | 'social-radar' | 'black-swans' | 'goals' | 'graph' | 'history' | 'settings' | 'system'
+type PageKey = 'start' | 'world' | 'core' | 'dashboard' | 'oracle' | 'autopilot' | 'antifragility' | 'multiverse' | 'time-debt' | 'social-radar' | 'black-swans' | 'goals' | 'graph' | 'history' | 'settings' | 'system'
 
 const pageMeta: { key: PageKey; label: string }[] = [
-  { key: 'launch', label: 'Запуск' },
-  { key: 'world', label: 'Карта мира' },
+  { key: 'start', label: 'Запуск' },
+  { key: 'world', label: 'Мир' },
   { key: 'core', label: 'Живое ядро' },
   { key: 'dashboard', label: 'Дашборд' },
   { key: 'oracle', label: 'Оракул' },
@@ -59,12 +58,16 @@ function DesktopOnlyGate() {
 }
 
 function DesktopApp() {
+  const navigate = useNavigate()
+  const location = useLocation()
   const [checkins, setCheckins] = useState<CheckinRecord[]>([])
   const [latestCheckin, setLatestCheckin] = useState<CheckinRecord | undefined>()
   const [templateValues, setTemplateValues] = useState<CheckinValues | undefined>()
   const [activeQuest, setActiveQuest] = useState<QuestRecord | undefined>()
   const [appearance, setAppearance] = useState<AppearanceSettings>(() => loadAppearanceSettings())
   const [frame, setFrame] = useState<FrameSnapshotRecord | undefined>()
+  const [hintsEnabled, setHintsEnabled] = useState(false)
+  const [bootstrapped, setBootstrapped] = useState(false)
 
   const loadData = async () => {
     const [all, latest, currentQuest] = await Promise.all([listCheckins(), getLatestCheckin(), getActiveQuest()])
@@ -84,6 +87,7 @@ function DesktopApp() {
     void Promise.resolve().then(async () => {
       if (cancelled) return
       await loadData()
+      if (!cancelled) setBootstrapped(true)
     })
     return () => { cancelled = true }
   }, [])
@@ -109,17 +113,27 @@ function DesktopApp() {
     }
   }, [frame])
 
-  const needsLaunch = needsLaunchOnboarding(checkins.length, Boolean(frame))
+  const hasSeenStart = typeof window !== 'undefined' && window.localStorage.getItem('hasSeenStart') === '1'
+  const shouldAutoStart = bootstrapped && (!hasSeenStart || checkins.length === 0 || !frame)
+
+  useEffect(() => {
+    if (checkins.length > 0) window.localStorage.setItem('hasSeenStart', '1')
+  }, [checkins.length])
+
+  useEffect(() => {
+    if (!shouldAutoStart || location.pathname === '/start') return
+    navigate('/start', { replace: true })
+  }, [location.pathname, navigate, shouldAutoStart])
 
   return (
-    <div className="layout">
+    <div className={`layout ${hintsEnabled && location.pathname === '/start' ? 'layout--hints' : ''}`.trim()}>
       <Starfield />
       <CommandPalette />
       <aside className="sidebar panel">
         <h2>Gamno</h2>
         <nav>
           {pageMeta.map((page) => (
-            <NavLink key={page.key} className={({ isActive }) => `nav-link ${isActive ? 'nav-link--active' : ''}`} to={`/${page.key}`}>{page.label}</NavLink>
+            <NavLink key={page.key} className={({ isActive }) => `nav-link ${isActive ? 'nav-link--active' : ''}`} to={`/${page.key}`} data-help-target={page.key === 'world' ? 'nav-world' : page.key === 'start' ? 'nav-start' : undefined}>{page.label}</NavLink>
           ))}
         </nav>
       </aside>
@@ -136,11 +150,12 @@ function DesktopApp() {
           recoverySummary={frame ? { score: frame.payload.antifragility.recoveryScore, trend: 'flat' } : null}
         />
         <Routes>
-          <Route path="/" element={<Navigate to={needsLaunch ? '/launch' : '/world'} replace />} />
-          <Route path="/launch" element={<LaunchPage frame={frame} onDone={loadData} />} />
+          <Route path="/" element={<Navigate to={shouldAutoStart ? '/start' : '/world'} replace />} />
+          <Route path="/start" element={<StartPage onDone={loadData} hintsEnabled={hintsEnabled} onHintsChange={setHintsEnabled} />} />
+          <Route path="/launch" element={<Navigate to="/start" replace />} />
           <Route path="/world" element={<WorldPage />} />
           <Route path="/map" element={<Navigate to="/world" replace />} />
-          <Route path="/core" element={needsLaunch ? <Navigate to="/launch" replace /> : <CorePage onSaved={loadData} latest={latestCheckin} previous={checkins[1]} templateValues={templateValues} activeQuest={activeQuest} onQuestChange={loadData} checkins={checkins} activeGoalSummary={frame ? { title: frame.payload.goal.active?.title ?? 'Цель', score: frame.payload.goal.goalScore, gap: frame.payload.goal.gap, trend: null } : null} />} />
+          <Route path="/core" element={<CorePage onSaved={loadData} latest={latestCheckin} previous={checkins[1]} templateValues={templateValues} activeQuest={activeQuest} onQuestChange={loadData} checkins={checkins} activeGoalSummary={frame ? { title: frame.payload.goal.active?.title ?? 'Цель', score: frame.payload.goal.goalScore, gap: frame.payload.goal.gap, trend: null } : null} />} />
           <Route path="/dashboard" element={<DashboardPage checkins={checkins} activeQuest={activeQuest} onQuestChange={loadData} />} />
           <Route path="/history" element={<HistoryPage checkins={checkins} onUseTemplate={setTemplateValues} onDataChanged={loadData} />} />
           <Route path="/settings" element={<SettingsPage onDataChanged={loadData} appearance={appearance} onAppearanceChange={setAppearance} />} />

@@ -174,12 +174,6 @@ export function WorldPage() {
         ))}
       </div>
 
-      <div className="world-replay panel">
-        <label htmlFor="world-replay">Replay ({frames.length}): {new Date((frames[timelineIndex]?.ts ?? replayFrame.ts)).toLocaleString('ru-RU')}</label>
-        <input id="world-replay" type="range" min={0} max={Math.max(0, frames.length - 1)} value={Math.min(timelineIndex, Math.max(0, frames.length - 1))} onChange={(event) => setTimelineIndex(Number(event.currentTarget.value))} />
-        <p className="mono">snapshot: {worldMapSnapshot?.id ?? '—'}</p>
-      </div>
-
       <div className="world-stage">
         {worldMapSnapshot ? (
           <WorldMapView

@@ -59,8 +59,8 @@ async function flush(): Promise<void> {
 }
 
 describe('WorldPage', () => {
-  it('supports deep-link planet panel and deterministic replay scrub', async () => {
-    window.location.hash = '#/world?planet=planet:core:0'
+  it('supports deep-link planet panel and hash dismiss with stable HUD', async () => {
+    window.location.hash = '#/world'
     const { WorldPage } = await import('./WorldPage')
     const container = document.createElement('div')
     document.body.appendChild(container)
@@ -69,32 +69,30 @@ describe('WorldPage', () => {
     await act(async () => { root.render(<WorldPage />) })
     await act(async () => { await flush() })
 
-    expect(container.querySelector('.planet-panel')).toBeTruthy()
-
-    const slider = container.querySelector<HTMLInputElement>('#world-replay')
-    expect(slider).toBeTruthy()
-
-    const initialSnapshotLine = container.querySelector('.world-replay .mono')?.textContent
-    await act(async () => {
-      if (slider) {
-        slider.value = '0'
-        slider.dispatchEvent(new Event('input', { bubbles: true }))
-        slider.dispatchEvent(new Event('change', { bubbles: true }))
-      }
-      await flush()
-    })
-    await act(async () => {
-      if (slider) {
-        slider.value = '1'
-        slider.dispatchEvent(new Event('input', { bubbles: true }))
-        slider.dispatchEvent(new Event('change', { bubbles: true }))
-      }
-      await flush()
-    })
+    expect(container.querySelector('.planet-panel')).toBeFalsy()
 
     expect(runWorldMapInWorkerMock).toHaveBeenCalled()
-    const finalSnapshotLine = container.querySelector('.world-replay .mono')?.textContent
-    expect(finalSnapshotLine).toBe(initialSnapshotLine)
+    const hudText = container.querySelector('.world-hud')?.textContent ?? ''
+    expect(hudText).toContain('Режим')
+    expect(hudText).toContain('P(collapse)')
+    expect(hudText).toContain('ES(97.5)')
+
+    const pick = container.querySelector('button')
+    await act(async () => {
+      pick?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      window.dispatchEvent(new HashChangeEvent('hashchange'))
+      await flush()
+    })
+
+    expect(container.querySelector('.planet-panel')).toBeTruthy()
+    expect(window.location.hash).toContain('planet=planet%3Acore%3A0')
+    await act(async () => {
+      window.location.hash = '#/world'
+      window.dispatchEvent(new HashChangeEvent('hashchange'))
+      await flush()
+    })
+
+    expect(container.querySelector('.planet-panel')).toBeFalsy()
 
     await act(async () => { root.unmount() })
     container.remove()
