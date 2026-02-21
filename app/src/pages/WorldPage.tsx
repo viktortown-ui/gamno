@@ -50,7 +50,7 @@ function setHashPlanetId(planetId: string | null): void {
   window.location.hash = query ? `${WORLD_ROUTE}?${query}` : WORLD_ROUTE
 }
 
-export function WorldPage() {
+export function WorldPage({ uiVariant = 'instrument' }: { uiVariant?: 'instrument' | 'cinematic' }) {
   const navigate = useNavigate()
   const [worldMapSnapshot, setWorldMapSnapshot] = useState<WorldMapSnapshot | null>(null)
   const [frames, setFrames] = useState<Array<{ ts: number; payload: FrameSnapshot }>>([])
@@ -215,8 +215,9 @@ export function WorldPage() {
         {worldMapSnapshot ? (
           <WorldMapView
             snapshot={worldMapSnapshot}
+            uiVariant={uiVariant}
             selectedPlanetId={selectedPlanetId}
-            showNeighborLabels={false}
+            showNeighborLabels
             fxEvents={fxEvents}
             onPlanetSelect={(planetId, origin) => {
               if (origin) lastOriginRef.current = origin
@@ -236,7 +237,7 @@ export function WorldPage() {
         ) : null}
       </div>
 
-      <aside className="world-action-rail panel" aria-label="Action rail">
+      <aside className={`world-action-rail world-action-rail--${uiVariant} panel`.trim()} aria-label="Action rail">
         <div className="world-hud-grid" role="list" aria-label="Сигналы cockpit">
           {hudSignals.map((signal) => (
             <span key={signal.key} role="listitem"><strong>{signal.label}</strong> {signal.value}</span>

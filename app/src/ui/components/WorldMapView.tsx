@@ -17,6 +17,7 @@ interface WorldMapViewProps {
   selectedPlanetId?: string | null
   showNeighborLabels?: boolean
   fxEvents?: WorldFxEvent[]
+  uiVariant?: 'instrument' | 'cinematic'
 }
 
 interface PointerData {
@@ -40,7 +41,17 @@ function center(a: PointerData, b: PointerData): { x: number; y: number } {
   return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
 }
 
-export function WorldMapView({ snapshot, onPlanetSelect, selectedPlanetId, showNeighborLabels = true, fxEvents = [] }: WorldMapViewProps) {
+function dustField(snapshot: WorldMapSnapshot): Array<{ key: string; x: number; y: number; r: number; alpha: number }> {
+  const dots = Math.max(24, Math.floor((snapshot.viewport.width * snapshot.viewport.height) / 45000))
+  return Array.from({ length: dots }, (_, index) => {
+    const seed = index + 1
+    const x = Number((((Math.sin(seed * 12.9898) + 1) / 2) * snapshot.viewport.width).toFixed(2))
+    const y = Number((((Math.sin(seed * 78.233) + 1) / 2) * snapshot.viewport.height).toFixed(2))
+    return { key: `dust:${index}`, x, y, r: 0.6 + ((index % 4) * 0.3), alpha: 0.12 + ((index % 5) * 0.03) }
+  })
+}
+
+export function WorldMapView({ snapshot, onPlanetSelect, selectedPlanetId, showNeighborLabels = true, fxEvents = [], uiVariant = 'instrument' }: WorldMapViewProps) {
   const planets = useMemo(() => [...snapshot.planets].sort((a, b) => (a.order - b.order) || a.id.localeCompare(b.id, 'ru')), [snapshot.planets])
   const [internalSelectedId, setInternalSelectedId] = useState<string | null>(null)
   const [focusedId, setFocusedId] = useState<string>(planets[0]?.id ?? '')
@@ -85,17 +96,17 @@ export function WorldMapView({ snapshot, onPlanetSelect, selectedPlanetId, showN
 
   const stormIntensity = useMemo(() => {
     if (reducedMotion) return 0
-    return fxEvents
-      .filter((item) => item.type === 'storm')
-      .reduce((max, item) => Math.max(max, item.intensity), 0)
-  }, [fxEvents, reducedMotion])
+    const baseRisk = Math.min(1, Math.max(snapshot.metrics.risk, snapshot.metrics.esCollapse10, snapshot.metrics.failProbability))
+    const fxStorm = fxEvents.filter((item) => item.type === 'storm').reduce((max, item) => Math.max(max, item.intensity), 0)
+    const sirenBoost = snapshot.metrics.sirenLevel === 'red' ? 0.35 : snapshot.metrics.sirenLevel === 'amber' ? 0.2 : 0.08
+    return Math.min(1, baseRisk * 0.6 + fxStorm * 0.5 + sirenBoost)
+  }, [fxEvents, reducedMotion, snapshot.metrics])
 
   const safeModeIntensity = useMemo(() => {
     if (reducedMotion) return 0
-    return fxEvents
-      .filter((item) => item.type === 'safe')
-      .reduce((max, item) => Math.max(max, item.intensity), 0)
-  }, [fxEvents, reducedMotion])
+    const fxSafe = fxEvents.filter((item) => item.type === 'safe').reduce((max, item) => Math.max(max, item.intensity), 0)
+    return snapshot.metrics.safeMode ? Math.max(0.48, fxSafe) : fxSafe
+  }, [fxEvents, reducedMotion, snapshot.metrics.safeMode])
 
   const selectedId = selectedPlanetId ?? internalSelectedId
   const visibleLabelIds = useMemo(() => {
@@ -111,6 +122,8 @@ export function WorldMapView({ snapshot, onPlanetSelect, selectedPlanetId, showN
     }
     return ids
   }, [planets, selectedId, showNeighborLabels])
+
+  const dust = useMemo(() => (reducedMotion ? [] : dustField(snapshot)), [reducedMotion, snapshot])
 
   const selectPlanet = (id: string | null, origin?: HTMLElement | null) => {
     setInternalSelectedId(id)
@@ -222,8 +235,9 @@ export function WorldMapView({ snapshot, onPlanetSelect, selectedPlanetId, showN
 
   return (
     <div
-      className={`world-map ${stormIntensity > 0 ? 'world-map--storm' : ''} ${safeModeIntensity > 0 ? 'world-map--safe' : ''} ${reducedMotion ? 'world-map--reduced-motion' : ''}`.trim()}
-      style={{ '--storm-alpha': String(Math.min(0.42, 0.08 + stormIntensity * 0.28)), '--safe-alpha': String(Math.min(0.34, 0.1 + safeModeIntensity * 0.2)) } as CSSProperties}
+      data-ui-variant={uiVariant}
+      className={`world-map world-map--${uiVariant} ${stormIntensity > 0 ? 'world-map--storm' : ''} ${safeModeIntensity > 0 ? 'world-map--safe' : ''} ${reducedMotion ? 'world-map--reduced-motion' : ''}`.trim()}
+      style={{ '--storm-alpha': String(Math.min(0.56, 0.08 + stormIntensity * 0.38)), '--safe-alpha': String(Math.min(0.42, 0.08 + safeModeIntensity * 0.3)) } as CSSProperties}
       role="region"
       aria-label="Карта мира"
     >
@@ -236,6 +250,13 @@ export function WorldMapView({ snapshot, onPlanetSelect, selectedPlanetId, showN
         onPointerCancel={handlePointerEnd}
         onWheel={handleWheel}
       >
+        <defs>
+          <radialGradient id="planet-shade" cx="30%" cy="28%">
+            <stop offset="0%" stopColor="rgba(255,255,255,0.85)" />
+            <stop offset="42%" stopColor="rgba(130,174,255,0.86)" />
+            <stop offset="100%" stopColor="rgba(32,52,102,0.95)" />
+          </radialGradient>
+        </defs>
         <g transform={`translate(${transform.translateX} ${transform.translateY}) scale(${transform.scale})`}>
           {snapshot.rings.map((ring) => (
             <circle
@@ -245,14 +266,14 @@ export function WorldMapView({ snapshot, onPlanetSelect, selectedPlanetId, showN
               cy={snapshot.center.y}
               r={ring.radius}
               fill="none"
-              stroke="rgba(143, 107, 255, 0.4)"
+              stroke={uiVariant === 'cinematic' ? 'rgba(143, 107, 255, 0.24)' : 'rgba(143, 107, 255, 0.36)'}
               strokeWidth={ring.width}
               aria-label={`Орбита ${ring.domainId}`}
             />
           ))}
 
-          {snapshot.domains.map((domain) => (
-            <text key={`label:${domain.id}`} x={snapshot.center.x + domain.orbitRadius + 12} y={snapshot.center.y} fill="var(--muted)" fontSize={11}>{domain.labelRu}</text>
+          {dust.map((item) => (
+            <circle key={item.key} cx={item.x} cy={item.y} r={item.r} fill={`rgba(205,225,255,${item.alpha})`} className="world-map__dust" />
           ))}
 
           {planets.map((planet) => {
@@ -260,39 +281,24 @@ export function WorldMapView({ snapshot, onPlanetSelect, selectedPlanetId, showN
             const planetFx = fxByPlanet.get(planet.id) ?? []
             const pulse = planetFx.find((item) => item.type === 'pulse')
             const burst = planetFx.find((item) => item.type === 'burst')
-            const burstParticles = burst
-              ? Array.from({ length: 6 }, (_, index) => {
-                const angle = (Math.PI * 2 * index) / 6
-                const distance = planet.radius + 8 + burst.intensity * 10
-                return {
-                  key: `${planet.id}:spark:${index}`,
-                  x: planet.x + Math.cos(angle) * distance,
-                  y: planet.y + Math.sin(angle) * distance,
-                  r: Math.max(1.4, 2.6 - burst.intensity),
-                }
-              })
-              : []
+            const emphasis = Math.min(1.15, Math.max(0.5, planet.importance + planet.metrics.risk * 0.45 + planet.metrics.budgetPressure * 0.3))
             return (
               <g key={planet.id} id={`svg-${planet.id}`}>
-                {planet.renderHints.drawTailGlow ? (
-                  <circle cx={planet.x} cy={planet.y} r={planet.radius + 8} fill="rgba(46, 233, 210, 0.1)" />
-                ) : null}
-                {pulse ? <circle cx={planet.x} cy={planet.y} r={planet.radius + 10 + pulse.intensity * 8} fill="none" stroke="rgba(67, 243, 208, 0.7)" strokeWidth={1.5 + pulse.intensity * 1.5} /> : null}
-                {burst ? <circle cx={planet.x} cy={planet.y} r={planet.radius + 4 + burst.intensity * 6} fill="rgba(125, 255, 186, 0.25)" /> : null}
-                {burstParticles.map((spark) => (
-                  <circle key={spark.key} cx={spark.x} cy={spark.y} r={spark.r} fill="rgba(155, 255, 203, 0.7)" />
-                ))}
+                <circle cx={planet.x} cy={planet.y} r={planet.radius + 5 + emphasis * 4} fill={planet.renderHints.drawTailGlow ? 'rgba(60, 255, 214, 0.16)' : 'rgba(111, 162, 255, 0.11)'} />
+                {pulse ? <circle cx={planet.x} cy={planet.y} r={planet.radius + 10 + pulse.intensity * 8} fill="none" stroke="rgba(67, 243, 208, 0.7)" strokeWidth={1.5 + pulse.intensity * 1.5} className="world-map__pulse" /> : null}
+                {burst ? <circle cx={planet.x} cy={planet.y} r={planet.radius + 4 + burst.intensity * 6} fill="rgba(125, 255, 186, 0.25)" className="world-map__pulse" /> : null}
                 <circle
                   cx={planet.x}
                   cy={planet.y}
-                  r={planet.radius}
-                  fill={selected ? 'rgba(67, 243, 208, 0.68)' : 'rgba(95, 138, 255, 0.7)'}
-                  stroke={planet.renderHints.hasStorm ? 'rgba(255, 132, 132, 0.9)' : 'rgba(234, 241, 255, 0.8)'}
-                  strokeWidth={selected ? 3 : 1.5}
+                  r={planet.radius + emphasis * 1.3}
+                  fill="url(#planet-shade)"
+                  stroke={planet.renderHints.hasStorm ? 'rgba(255, 154, 154, 0.9)' : 'rgba(240, 246, 255, 0.7)'}
+                  strokeWidth={selected ? 2.4 : 1.3}
                   onClick={() => selectPlanet(planet.id)}
                   aria-labelledby={`label:${planet.id}`}
                 />
-                {visibleLabelIds.has(planet.id) ? <text id={`label:${planet.id}`} x={planet.x} y={planet.y + 4} textAnchor="middle" fontSize={10} fill="#fff">{planet.labelRu}</text> : null}
+                {selected ? <circle cx={planet.x} cy={planet.y} r={planet.radius + 10} fill="none" stroke="rgba(101, 252, 224, 0.9)" strokeWidth={2.2} className="world-map__pulse" /> : null}
+                {visibleLabelIds.has(planet.id) ? <text id={`label:${planet.id}`} x={planet.x} y={planet.y - planet.radius - 10} textAnchor="middle" fontSize={11} fill="#f6fbff">{planet.labelRu}</text> : null}
               </g>
             )
           })}
