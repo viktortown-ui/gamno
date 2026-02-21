@@ -16,6 +16,31 @@ vi.mock('../core/workers/tailBacktestClient', () => ({
   }),
 }))
 
+
+
+vi.mock('../core/workers/worldMapClient', () => ({
+  createWorldMapWorker: vi.fn(() => ({ terminate: vi.fn(), onmessage: null })),
+  runWorldMapInWorker: vi.fn((worker: { onmessage: ((ev: { data: unknown }) => void) | null }) => {
+    worker.onmessage?.({
+      data: {
+        type: 'done',
+        result: {
+          id: 'world-map:2026-01-15:12:1100x540',
+          ts: 1730000000000,
+          seed: 12,
+          viewport: { width: 1100, height: 540, padding: 24 },
+          center: { x: 550, y: 270 },
+          metrics: { level: 4, risk: 0.5, esCollapse10: 0.2, failProbability: 0.2, budgetPressure: 0.1, safeMode: false, sirenLevel: 'green' },
+          rings: [],
+          storms: [],
+          domains: [],
+          planets: [],
+        },
+      },
+    })
+  }),
+}))
+
 vi.mock('../core/storage/db', () => ({
   schemaVersion: 9,
   db: {

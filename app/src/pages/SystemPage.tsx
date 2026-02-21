@@ -8,6 +8,9 @@ import { useEffect, useState } from 'react'
 import { evaluateModelHealth, type ModelHealthSnapshot } from '../core/engines/analytics/modelHealth'
 import { createTailBacktestWorker, runTailBacktestInWorker, type TailBacktestWorkerMessage } from '../core/workers/tailBacktestClient'
 import { CalibrationTrustCard } from '../ui/components/CalibrationTrust'
+import { createWorldMapWorker, runWorldMapInWorker, type WorldMapWorkerMessage } from '../core/workers/worldMapClient'
+import type { WorldMapSnapshot } from '../core/worldMap/types'
+import { WorldMapView } from '../ui/components/WorldMapView'
 
 interface SystemStats {
   frameTs?: number
@@ -32,9 +35,15 @@ function resolveTailBacktest(worker: Worker, payload: Parameters<typeof runTailB
 
 export function SystemPage() {
   const [stats, setStats] = useState<SystemStats>({ counts: {}, health: null, safeModeTriggers: [], tailRiskPanel: [] })
+  const [worldMapSnapshot, setWorldMapSnapshot] = useState<WorldMapSnapshot | null>(null)
 
   useEffect(() => {
     const worker = createTailBacktestWorker(() => undefined)
+    const worldMapWorker = createWorldMapWorker((message: WorldMapWorkerMessage) => {
+      if (message.type === 'done') {
+        setWorldMapSnapshot(message.result)
+      }
+    })
 
     void Promise.all([
       getLastFrame(),
@@ -163,11 +172,20 @@ export function SystemPage() {
           note: topTailSignal ? `${topTailSignal.policyMode}/H${topTailSignal.horizonDays}` : 'нет данных',
         },
       ]
+
+      if (frame) {
+        runWorldMapInWorker(worldMapWorker, {
+          frame: frame.payload,
+          seed: 12,
+          viewport: { width: 1100, height: 540, padding: 24 },
+        })
+      }
       setStats({ frameTs: frame?.ts, forecastTs: forecast?.ts, blackSwanTs: blackSwan?.ts, multiverseTs: multiverse?.ts, counts: { checkins, events, frames, runs }, health, safeModeTriggers, tailRiskPanel })
     })
 
     return () => {
       worker.terminate()
+      worldMapWorker.terminate()
     }
   }, [])
 
@@ -217,6 +235,11 @@ export function SystemPage() {
               ))}
             </ul>
           ) : <p>Триггеры Safe Mode пока не зафиксированы.</p>}
+        </section>
+
+        <section className="panel" aria-label="World map">
+          <h2>Карта мира (SVG)</h2>
+          {worldMapSnapshot ? <WorldMapView snapshot={worldMapSnapshot} /> : <p>Карта мира готовится…</p>}
         </section>
 
         <div className="settings-actions">
