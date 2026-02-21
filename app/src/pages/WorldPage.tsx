@@ -167,7 +167,7 @@ export function WorldPage() {
     : []
 
   return (
-    <section className="world-page" aria-label="World cockpit">
+    <section className="world-page" aria-label="Кокпит мира">
       <div className="world-hud panel" role="list" aria-label="Сигналы cockpit">
         {hudSignals.map((signal) => (
           <span key={signal.key} role="listitem"><strong>{signal.label}</strong>: {signal.value}</span>

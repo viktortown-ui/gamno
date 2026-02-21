@@ -249,6 +249,18 @@ export function WorldMapView({ snapshot, onPlanetSelect, selectedPlanetId, showN
             const planetFx = fxByPlanet.get(planet.id) ?? []
             const pulse = planetFx.find((item) => item.type === 'pulse')
             const burst = planetFx.find((item) => item.type === 'burst')
+            const burstParticles = burst
+              ? Array.from({ length: 6 }, (_, index) => {
+                const angle = (Math.PI * 2 * index) / 6
+                const distance = planet.radius + 8 + burst.intensity * 10
+                return {
+                  key: `${planet.id}:spark:${index}`,
+                  x: planet.x + Math.cos(angle) * distance,
+                  y: planet.y + Math.sin(angle) * distance,
+                  r: Math.max(1.4, 2.6 - burst.intensity),
+                }
+              })
+              : []
             return (
               <g key={planet.id} id={`svg-${planet.id}`}>
                 {planet.renderHints.drawTailGlow ? (
@@ -256,6 +268,9 @@ export function WorldMapView({ snapshot, onPlanetSelect, selectedPlanetId, showN
                 ) : null}
                 {pulse ? <circle cx={planet.x} cy={planet.y} r={planet.radius + 10 + pulse.intensity * 8} fill="none" stroke="rgba(67, 243, 208, 0.7)" strokeWidth={1.5 + pulse.intensity * 1.5} /> : null}
                 {burst ? <circle cx={planet.x} cy={planet.y} r={planet.radius + 4 + burst.intensity * 6} fill="rgba(125, 255, 186, 0.25)" /> : null}
+                {burstParticles.map((spark) => (
+                  <circle key={spark.key} cx={spark.x} cy={spark.y} r={spark.r} fill="rgba(155, 255, 203, 0.7)" />
+                ))}
                 <circle
                   cx={planet.x}
                   cy={planet.y}
