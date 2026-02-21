@@ -86,7 +86,7 @@ describe('WorldPage', () => {
     await act(async () => { root.render(<WorldPage />) })
     await act(async () => { await flush() })
 
-    expect(container.querySelector('.world-hud')?.textContent ?? '').toContain('P(collapse)')
+    expect(container.querySelector('.world-hud-grid')?.textContent ?? '').toContain('P(collapse)')
     expect(container.querySelector('.planet-panel')).toBeFalsy()
 
     await act(async () => {

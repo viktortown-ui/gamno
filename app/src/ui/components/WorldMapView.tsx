@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import type { CSSProperties } from 'react'
 import type { KeyboardEvent, PointerEvent as ReactPointerEvent, WheelEvent } from 'react'
 import type { WorldMapPlanet, WorldMapSnapshot } from '../../core/worldMap/types'
 import { createPanZoomState, panBy, pinchTransform, zoomAroundPoint, type PanZoomState } from './worldMapPanZoom'
 
 interface WorldFxEvent {
   key: string
-  type: 'pulse' | 'burst' | 'storm'
+  type: 'pulse' | 'burst' | 'storm' | 'safe'
   planetId?: string
   intensity: number
 }
@@ -86,6 +87,13 @@ export function WorldMapView({ snapshot, onPlanetSelect, selectedPlanetId, showN
     if (reducedMotion) return 0
     return fxEvents
       .filter((item) => item.type === 'storm')
+      .reduce((max, item) => Math.max(max, item.intensity), 0)
+  }, [fxEvents, reducedMotion])
+
+  const safeModeIntensity = useMemo(() => {
+    if (reducedMotion) return 0
+    return fxEvents
+      .filter((item) => item.type === 'safe')
       .reduce((max, item) => Math.max(max, item.intensity), 0)
   }, [fxEvents, reducedMotion])
 
@@ -213,7 +221,12 @@ export function WorldMapView({ snapshot, onPlanetSelect, selectedPlanetId, showN
   }
 
   return (
-    <div className="world-map" role="region" aria-label="Карта мира">
+    <div
+      className={`world-map ${stormIntensity > 0 ? 'world-map--storm' : ''} ${safeModeIntensity > 0 ? 'world-map--safe' : ''} ${reducedMotion ? 'world-map--reduced-motion' : ''}`.trim()}
+      style={{ '--storm-alpha': String(Math.min(0.42, 0.08 + stormIntensity * 0.28)), '--safe-alpha': String(Math.min(0.34, 0.1 + safeModeIntensity * 0.2)) } as CSSProperties}
+      role="region"
+      aria-label="Карта мира"
+    >
       <svg
         viewBox={`0 0 ${snapshot.viewport.width} ${snapshot.viewport.height}`}
         className="world-map__svg"
@@ -237,8 +250,6 @@ export function WorldMapView({ snapshot, onPlanetSelect, selectedPlanetId, showN
               aria-label={`Орбита ${ring.domainId}`}
             />
           ))}
-
-          {stormIntensity > 0 ? <rect x={0} y={0} width={snapshot.viewport.width} height={snapshot.viewport.height} fill={`rgba(255,90,90,${Math.min(0.22, 0.08 + stormIntensity * 0.18)})`} /> : null}
 
           {snapshot.domains.map((domain) => (
             <text key={`label:${domain.id}`} x={snapshot.center.x + domain.orbitRadius + 12} y={snapshot.center.y} fill="var(--muted)" fontSize={11}>{domain.labelRu}</text>

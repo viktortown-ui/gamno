@@ -3,7 +3,7 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { buildWorldMapSnapshot } from '../../core/worldMap/buildWorldMapSnapshot'
 import type { FrameSnapshot } from '../../core/frame/frameEngine'
 import { WorldMapView } from './WorldMapView'
@@ -40,19 +40,78 @@ const frame: FrameSnapshot = {
 
 const snapshot = buildWorldMapSnapshot(frame, 12, { width: 1100, height: 540, padding: 24 })
 
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
+
 describe('WorldMapView', () => {
   it('renders deterministic snapshot content and stable ids', async () => {
     const container = document.createElement('div')
     const root = createRoot(container)
 
     await act(async () => {
-      root.render(<WorldMapView snapshot={snapshot} />)
+      root.render(<WorldMapView snapshot={snapshot} selectedPlanetId={snapshot.planets[0]?.id} />)
     })
 
     expect(container.querySelector('svg')).not.toBeNull()
     expect(container.querySelectorAll('circle[id^="svg-ring:"]').length).toBe(snapshot.rings.length)
     expect(container.querySelectorAll('g[id^="svg-planet:"]').length).toBe(snapshot.planets.length)
     expect(container.textContent).toContain('Ядро')
+  })
+
+  it('shows labels only for selected planet when neighbor labels are disabled', async () => {
+    const container = document.createElement('div')
+    const root = createRoot(container)
+
+    await act(async () => {
+      root.render(<WorldMapView snapshot={snapshot} selectedPlanetId={snapshot.planets[0]?.id} showNeighborLabels={false} />)
+    })
+
+    const renderedPlanetLabels = [...container.querySelectorAll('text[id^="label:planet:"]')]
+    expect(renderedPlanetLabels).toHaveLength(1)
+    expect(renderedPlanetLabels[0]?.textContent).toBe(snapshot.planets[0]?.labelRu)
+
+    await act(async () => {
+      root.unmount()
+    })
+    container.remove()
+  })
+
+  it('disables FX classes under prefers-reduced-motion', async () => {
+    const media = {
+      matches: true,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+    }
+    vi.stubGlobal('matchMedia', vi.fn(() => media))
+
+    const container = document.createElement('div')
+    const root = createRoot(container)
+
+    await act(async () => {
+      root.render(
+        <WorldMapView
+          snapshot={snapshot}
+          selectedPlanetId={snapshot.planets[0]?.id}
+          fxEvents={[
+            { key: 'storm:global', type: 'storm', intensity: 1 },
+            { key: 'safe:global', type: 'safe', intensity: 1 },
+          ]}
+        />,
+      )
+    })
+
+    const map = container.querySelector('.world-map')
+    expect(map?.classList.contains('world-map--reduced-motion')).toBe(true)
+    expect(map?.classList.contains('world-map--storm')).toBe(false)
+    expect(map?.classList.contains('world-map--safe')).toBe(false)
+
+    await act(async () => {
+      root.unmount()
+    })
+    container.remove()
   })
 
   it('supports roving tabindex and keyboard selection', async () => {

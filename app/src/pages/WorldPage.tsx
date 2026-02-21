@@ -173,6 +173,20 @@ export function WorldPage() {
     }
   }, [horizonSummary])
 
+  const topActions = useMemo(() => {
+    const catalog = buildUnifiedActionCatalog()
+    const actionMap = new Map(catalog.map((item) => [item.id, item]))
+    return horizonSummary
+      .filter((item) => item.horizonDays === 7)
+      .sort(sortLevers)
+      .slice(0, 3)
+      .map((item) => ({
+        id: item.actionId,
+        titleRu: actionMap.get(item.actionId)?.titleRu ?? item.actionId,
+        failRate: item.stats.failRate,
+      }))
+  }, [horizonSummary])
+
   const hudSignals = mapFrameToHudSignals({
     frame: currentFrame,
     mode: policyMode,
@@ -197,20 +211,6 @@ export function WorldPage() {
 
   return (
     <section className="world-page" aria-label="Кокпит мира">
-      <div className="world-hud panel" role="list" aria-label="Сигналы cockpit">
-        {hudSignals.map((signal) => (
-          <span key={signal.key} role="listitem"><strong>{signal.label}</strong>: {signal.value}</span>
-        ))}
-      </div>
-
-      <section className="world-next-action panel" aria-label="Следующий шаг">
-        <strong>Что делать дальше?</strong>
-        <button type="button" className="start-primary" onClick={handleNextAction}>
-          {frames.length === 0 || !bestAction ? 'First check-in' : `Next Action: ${bestAction.titleRu}`}
-        </button>
-        <p className="mono">Почему: {lastActionReason}</p>
-      </section>
-
       <div className="world-stage">
         {worldMapSnapshot ? (
           <WorldMapView
@@ -235,6 +235,29 @@ export function WorldPage() {
           />
         ) : null}
       </div>
+
+      <aside className="world-action-rail panel" aria-label="Action rail">
+        <div className="world-hud-grid" role="list" aria-label="Сигналы cockpit">
+          {hudSignals.map((signal) => (
+            <span key={signal.key} role="listitem"><strong>{signal.label}</strong> {signal.value}</span>
+          ))}
+        </div>
+        <div className="world-action-rail__primary">
+          <strong>Следующий шаг</strong>
+          <button type="button" className="start-primary" onClick={handleNextAction}>
+            {frames.length === 0 || !bestAction ? 'First check-in' : `Next Action: ${bestAction.titleRu}`}
+          </button>
+          <p className="mono">Почему: {lastActionReason}</p>
+        </div>
+        <details className="world-action-rail__details">
+          <summary>Подробнее</summary>
+          <ul>
+            {topActions.map((action) => (
+              <li key={action.id}><strong>{action.titleRu}</strong> · failRate {(action.failRate * 100).toFixed(1)}%</li>
+            ))}
+          </ul>
+        </details>
+      </aside>
     </section>
   )
 }

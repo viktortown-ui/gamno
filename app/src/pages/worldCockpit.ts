@@ -10,7 +10,7 @@ export interface HudSignal {
 
 export interface WorldFxEvent {
   key: string
-  type: 'pulse' | 'burst' | 'storm'
+  type: 'pulse' | 'burst' | 'storm' | 'safe'
   planetId?: string
   intensity: number
 }
@@ -115,5 +115,10 @@ export function buildWorldFxEvents(input: {
     ? [{ key: 'storm:global', type: 'storm' as const, intensity: Number(Math.min(1, stormDelta * 4).toFixed(3)) }]
     : []
 
-  return [...pulses, ...bursts, ...storm]
+
+  const safe = (current.regimeSnapshot?.disarmProtocol?.length ?? 0) > 0
+    ? [{ key: 'safe:global', type: 'safe' as const, intensity: 0.85 }]
+    : []
+
+  return [...pulses, ...bursts, ...storm, ...safe]
 }
