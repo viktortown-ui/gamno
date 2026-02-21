@@ -1,6 +1,7 @@
 import type { CheckinRecord } from '../../models/checkin'
 import type { InfluenceMatrix, WeightsSource } from '../influence/types'
 import type { MetricId } from '../../metrics'
+import type { TailRiskSummary } from '../../risk/tailRisk'
 
 export interface DailyMetricShock {
   metricId: MetricId
@@ -52,7 +53,15 @@ export interface BlackSwanResult {
   pCollapse: QuantileSeries
   days: number[]
   histogram: Array<{ bucket: string; value: number }>
-  tail: { probEverRed: number; probThresholdEnd: number; probThresholdEver: number; esCoreIndex: number; esCollapse: number }
+  tail: {
+    probEverRed: number
+    probThresholdEnd: number
+    probThresholdEver: number
+    esCoreIndex: number
+    esCollapse: number
+    coreIndexTail: TailRiskSummary
+    collapseTail: TailRiskSummary
+  }
   topDrivers: Array<{ metricId: MetricId; labelRu: string; delta: number }>
   recommendations: Array<{ metricId: MetricId; actionRu: string; delta: number; effectIndex: { p10: number; p50: number; p90: number }; effectCollapse: { p10: number; p50: number; p90: number } }>
   noteRu: string

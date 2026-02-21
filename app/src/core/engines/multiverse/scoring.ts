@@ -1,5 +1,5 @@
 import { METRICS, type MetricId } from '../../metrics'
-import { valueAtRisk, conditionalVaR } from '../../risk/tail'
+import { computeTailRisk } from '../../risk/tailRisk'
 import { computeIndexDay } from '../analytics/compute'
 import { applyImpulse, clampMetric } from '../influence/influence'
 import type { MetricVector } from '../influence/types'
@@ -36,6 +36,8 @@ export function summarizeTail(paths: PathPoint[][], indexFloor: number, baseInde
 
   const indexLosses = horizonIndex.map((value) => Math.max(0, baseIndex - value))
   const collapseLosses = horizonCollapse.map((value) => Math.max(0, value))
+  const indexLossTail = computeTailRisk(indexLosses, 0.95)
+  const collapseTail = computeTailRisk(collapseLosses, 0.95)
 
   return {
     redSirenAny: Number(redAny.toFixed(4)),
@@ -44,10 +46,12 @@ export function summarizeTail(paths: PathPoint[][], indexFloor: number, baseInde
     expectedDeltaIndex: Number((horizonIndex.reduce((s, v) => s + v, 0) / Math.max(horizonIndex.length, 1) - baseIndex).toFixed(4)),
     expectedDeltaGoalScore: Number(((horizonGoal.length ? horizonGoal.reduce((s, v) => s + v, 0) / horizonGoal.length : baseGoal ?? 0) - (baseGoal ?? 0)).toFixed(4)),
     expectedDeltaPCollapse: Number((horizonCollapse.reduce((s, v) => s + v, 0) / Math.max(horizonCollapse.length, 1) - basePCollapse).toFixed(4)),
-    var5IndexLoss: Number(valueAtRisk(indexLosses, 0.95).toFixed(4)),
-    cvar5IndexLoss: Number(conditionalVaR(indexLosses, 0.95).toFixed(4)),
-    var5Collapse: Number(valueAtRisk(collapseLosses, 0.95).toFixed(4)),
-    cvar5Collapse: Number(conditionalVaR(collapseLosses, 0.95).toFixed(4)),
+    var5IndexLoss: Number(indexLossTail.var.toFixed(4)),
+    cvar5IndexLoss: Number(indexLossTail.es.toFixed(4)),
+    var5Collapse: Number(collapseTail.var.toFixed(4)),
+    cvar5Collapse: Number(collapseTail.es.toFixed(4)),
+    indexLossTail: { ...indexLossTail, var: Number(indexLossTail.var.toFixed(4)), es: Number(indexLossTail.es.toFixed(4)), tailMean: Number(indexLossTail.tailMean.toFixed(4)), tailMass: Number(indexLossTail.tailMass.toFixed(6)) },
+    collapseTail: { ...collapseTail, var: Number(collapseTail.var.toFixed(4)), es: Number(collapseTail.es.toFixed(4)), tailMean: Number(collapseTail.tailMean.toFixed(4)), tailMass: Number(collapseTail.tailMass.toFixed(6)) },
   }
 }
 

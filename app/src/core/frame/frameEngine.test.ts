@@ -14,4 +14,40 @@ describe('frameEngine', () => {
     expect(diff).toHaveLength(3)
     expect(diff[0]).toContain('Индекс')
   })
+
+  it('tail summary flows from run payload into frame audit snapshot', () => {
+    const frame = buildFrameSnapshot({
+      nowTs: 3000,
+      blackSwan: {
+        ts: 2999,
+        horizon: 7,
+        sims: 500,
+        seed: 1,
+        weightsSource: 'manual',
+        mix: 0,
+        summary: { pRed7d: 0.2, esCollapse10: 0.41, sirenLevel: 'red', probEverRed: 0.2, probThresholdEnd: 0.1, esCoreIndex: 4 },
+        payload: {
+          days: [1],
+          coreIndex: { p10: [4], p50: [5], p90: [6] },
+          pCollapse: { p10: [0.1], p50: [0.2], p90: [0.3] },
+          histogram: [],
+          tail: {
+            probEverRed: 0.2,
+            probThresholdEnd: 0.1,
+            probThresholdEver: 0.3,
+            esCoreIndex: 4,
+            esCollapse: 0.41,
+            coreIndexTail: { alpha: 0.9, var: 4, es: 3.5, tailMean: 3.5, tailMass: 0.2, n: 10, method: 'linear-interpolated', warnings: [] },
+            collapseTail: { alpha: 0.9, var: 0.35, es: 0.41, tailMean: 0.41, tailMass: 0.2, n: 10, method: 'linear-interpolated', warnings: [] },
+          },
+          topDrivers: [],
+          recommendations: [],
+          noteRu: 'test',
+        },
+      },
+    } as never)
+
+    expect(frame.tailRiskSummary.collapseTail?.es).toBe(0.41)
+    expect(frame.tailRiskSummary.collapseTail?.method).toBe('linear-interpolated')
+  })
 })

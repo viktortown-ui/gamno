@@ -1,5 +1,6 @@
 import type { MetricId } from '../../metrics'
 import type { RegimeId } from '../../models/regime'
+import type { TailRiskSummary } from '../../risk/tailRisk'
 import type { InfluenceMatrix, MetricVector, WeightsSource } from '../influence/types'
 
 export interface PlannedImpulse {
@@ -66,6 +67,8 @@ export interface TailMetrics {
   cvar5IndexLoss: number
   var5Collapse: number
   cvar5Collapse: number
+  indexLossTail: TailRiskSummary
+  collapseTail: TailRiskSummary
 }
 
 export interface HedgeSuggestion {

@@ -53,6 +53,8 @@ describe('multiverseRepo', () => {
         cvar5IndexLoss: 4,
         var5Collapse: 0.3,
         cvar5Collapse: 0.4,
+        indexLossTail: { alpha: 0.95, var: 3, es: 4, tailMean: 4, tailMass: 0.05, n: 100, method: 'linear-interpolated', warnings: [] },
+        collapseTail: { alpha: 0.95, var: 0.3, es: 0.4, tailMean: 0.4, tailMass: 0.05, n: 100, method: 'linear-interpolated', warnings: [] },
       },
       quantiles: { days: [1], index: { p10: [1], p50: [2], p90: [3] }, pCollapse: { p10: [0.1], p50: [0.2], p90: [0.3] } },
       samplePaths: [[]],

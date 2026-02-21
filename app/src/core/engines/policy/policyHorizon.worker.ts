@@ -120,7 +120,7 @@ function evaluateTailSignal(baseState: ActionState, horizon: PolicyHorizon, seed
   ]
 
   const multiverseTail = summarizeTail(quickPaths, 40, baseState.index, baseState.pCollapse)
-  return Number(((blackSwan.tail.esCollapse + multiverseTail.cvar5Collapse) / 2).toFixed(4))
+  return Number(((blackSwan.tail.collapseTail.es + multiverseTail.collapseTail.es) / 2).toFixed(4))
 }
 
 function runActionRollout(paramsInput: {
