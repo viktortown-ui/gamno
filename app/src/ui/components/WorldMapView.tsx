@@ -5,7 +5,8 @@ import { createPanZoomState, panBy, pinchTransform, zoomAroundPoint, type PanZoo
 
 interface WorldMapViewProps {
   snapshot: WorldMapSnapshot
-  onPlanetSelect?: (planetId: string | null) => void
+  onPlanetSelect?: (planetId: string | null, origin?: HTMLElement | null) => void
+  selectedPlanetId?: string | null
 }
 
 interface PointerData {
@@ -29,9 +30,9 @@ function center(a: PointerData, b: PointerData): { x: number; y: number } {
   return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
 }
 
-export function WorldMapView({ snapshot, onPlanetSelect }: WorldMapViewProps) {
+export function WorldMapView({ snapshot, onPlanetSelect, selectedPlanetId }: WorldMapViewProps) {
   const planets = useMemo(() => [...snapshot.planets].sort((a, b) => (a.order - b.order) || a.id.localeCompare(b.id, 'ru')), [snapshot.planets])
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [internalSelectedId, setInternalSelectedId] = useState<string | null>(null)
   const [focusedId, setFocusedId] = useState<string>(planets[0]?.id ?? '')
   const [transform, setTransform] = useState<PanZoomState>(() => createPanZoomState())
   const [isPanning, setIsPanning] = useState(false)
@@ -46,9 +47,12 @@ export function WorldMapView({ snapshot, onPlanetSelect }: WorldMapViewProps) {
     if (active && document.activeElement !== active) active.focus()
   }, [focusedId])
 
-  const selectPlanet = (id: string | null) => {
-    setSelectedId(id)
-    onPlanetSelect?.(id)
+
+  const selectedId = selectedPlanetId ?? internalSelectedId
+
+  const selectPlanet = (id: string | null, origin?: HTMLElement | null) => {
+    setInternalSelectedId(id)
+    onPlanetSelect?.(id, origin)
   }
 
   const handlePointerDown = (event: ReactPointerEvent<SVGSVGElement>) => {
@@ -142,7 +146,7 @@ export function WorldMapView({ snapshot, onPlanetSelect }: WorldMapViewProps) {
     }
     if (event.key === 'Enter') {
       event.preventDefault()
-      selectPlanet(planet.id)
+      selectPlanet(planet.id, event.currentTarget)
       return
     }
     if (event.key === 'Escape') {
@@ -225,7 +229,7 @@ export function WorldMapView({ snapshot, onPlanetSelect }: WorldMapViewProps) {
               }}
               onFocus={() => setFocusedId(planet.id)}
               onKeyDown={(event) => handlePlanetKey(event, planet)}
-              onClick={() => selectPlanet(planet.id)}
+              onClick={(event) => selectPlanet(planet.id, event.currentTarget)}
             >
               <span className="world-map__sr">{planet.labelRu}</span>
             </button>

@@ -4,13 +4,17 @@ import { getLastFrame } from '../repo/frameRepo'
 import { getLatestForecastRun } from '../repo/forecastRepo'
 import { getLastBlackSwanRun } from '../repo/blackSwanRepo'
 import { getLastRun as getLastMultiverseRun } from '../repo/multiverseRepo'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { evaluateModelHealth, type ModelHealthSnapshot } from '../core/engines/analytics/modelHealth'
 import { createTailBacktestWorker, runTailBacktestInWorker, type TailBacktestWorkerMessage } from '../core/workers/tailBacktestClient'
 import { CalibrationTrustCard } from '../ui/components/CalibrationTrust'
 import { createWorldMapWorker, runWorldMapInWorker, type WorldMapWorkerMessage } from '../core/workers/worldMapClient'
 import type { WorldMapSnapshot } from '../core/worldMap/types'
 import { WorldMapView } from '../ui/components/WorldMapView'
+import { buildUnifiedActionCatalog } from '../core/actions/catalog'
+import { PlanetPanel, type PlanetLever } from '../ui/components/PlanetPanel'
+import type { ActionDomain } from '../core/actions/types'
+import type { HorizonAuditSummaryRecord } from '../repo/actionAuditRepo'
 
 interface SystemStats {
   frameTs?: number
@@ -33,9 +37,67 @@ function resolveTailBacktest(worker: Worker, payload: Parameters<typeof runTailB
   })
 }
 
+function getHashPlanetId(): string | null {
+  const hash = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : window.location.hash
+  const [path, query] = hash.split('?')
+  if (path !== '/system' || !query) return null
+  const params = new URLSearchParams(query)
+  return params.get('planet')
+}
+
+function setHashPlanetId(planetId: string | null): void {
+  const hash = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : window.location.hash
+  const [pathPart] = hash.split('?')
+  const path = pathPart || '/system'
+  const params = new URLSearchParams(hash.split('?')[1] ?? '')
+  if (planetId) params.set('planet', planetId)
+  else params.delete('planet')
+  const next = params.toString()
+  window.location.hash = next ? `${path}?${next}` : path
+}
+
+const DOMAIN_BY_PLANET: Record<string, ActionDomain> = {
+  core: 'фокус',
+  risk: 'восстановление',
+  mission: 'карьера',
+  stability: 'финансы',
+  forecast: 'фокус',
+  social: 'социальное',
+}
+
+function sortLevers(a: HorizonAuditSummaryRecord, b: HorizonAuditSummaryRecord): number {
+  return (b.stats.p50 - a.stats.p50)
+    || (b.stats.p90 - a.stats.p90)
+    || ((a.stats.es97_5 ?? Number.POSITIVE_INFINITY) - (b.stats.es97_5 ?? Number.POSITIVE_INFINITY))
+    || (a.stats.failRate - b.stats.failRate)
+    || a.policyMode.localeCompare(b.policyMode)
+    || a.actionId.localeCompare(b.actionId)
+}
+
 export function SystemPage() {
   const [stats, setStats] = useState<SystemStats>({ counts: {}, health: null, safeModeTriggers: [], tailRiskPanel: [] })
   const [worldMapSnapshot, setWorldMapSnapshot] = useState<WorldMapSnapshot | null>(null)
+  const [horizonSummary, setHorizonSummary] = useState<HorizonAuditSummaryRecord[]>([])
+  const [whyTopRu, setWhyTopRu] = useState<string[]>([])
+  const [debtProtocol, setDebtProtocol] = useState<string[]>([])
+  const [selectedPlanetId, setSelectedPlanetId] = useState<string | null>(() => getHashPlanetId())
+  const lastOriginRef = useRef<HTMLElement | null>(null)
+  const prevSelectedRef = useRef<string | null>(selectedPlanetId)
+
+  useEffect(() => {
+    const syncFromHash = () => setSelectedPlanetId(getHashPlanetId())
+    window.addEventListener('hashchange', syncFromHash)
+    return () => window.removeEventListener('hashchange', syncFromHash)
+  }, [])
+
+  useEffect(() => {
+    const prev = prevSelectedRef.current
+    if (prev && !selectedPlanetId) {
+      lastOriginRef.current?.focus()
+      lastOriginRef.current = null
+    }
+    prevSelectedRef.current = selectedPlanetId
+  }, [selectedPlanetId])
 
   useEffect(() => {
     const worker = createTailBacktestWorker(() => undefined)
@@ -59,6 +121,10 @@ export function SystemPage() {
       db.actionAudits.orderBy('ts').reverse().limit(36).toArray(),
       db.frameSnapshots.orderBy('ts').toArray(),
     ]).then(async ([frame, forecast, blackSwan, multiverse, checkins, events, frames, runs, matrices, forecasts, audits, frameSeries]) => {
+      setHorizonSummary(audits[0]?.horizonSummary ?? [])
+      setWhyTopRu(audits[0]?.whyTopRu ?? [])
+      setDebtProtocol(frame?.payload.debt.protocol ?? [])
+
       const learnedCalibration = matrices.map((item) => {
         const trained = Math.min(1, item.trainedOnDays / 60)
         const lagPenalty = Math.min(0.3, Math.abs(item.lags - 2) * 0.08)
@@ -189,6 +255,41 @@ export function SystemPage() {
     }
   }, [])
 
+  const selectedPlanet = useMemo(() => worldMapSnapshot?.planets.find((planet) => planet.id === selectedPlanetId) ?? null, [selectedPlanetId, worldMapSnapshot])
+
+  const panelLevers = useMemo((): PlanetLever[] => {
+    if (!selectedPlanet) return []
+    const catalog = buildUnifiedActionCatalog()
+    const actionMap = new Map(catalog.map((item) => [item.id, item]))
+    const domain = DOMAIN_BY_PLANET[selectedPlanet.domainId]
+    return horizonSummary
+      .filter((item) => item.horizonDays === 7)
+      .filter((item) => actionMap.get(item.actionId)?.domain === domain)
+      .sort(sortLevers)
+      .slice(0, 4)
+      .map((item) => {
+        const action = actionMap.get(item.actionId)
+        return {
+          actionId: item.actionId,
+          titleRu: action?.titleRu ?? item.actionId,
+          p50: item.stats.p50,
+          p90: item.stats.p90,
+          es97_5: item.stats.es97_5 ?? item.stats.tail,
+          failRate: item.stats.failRate,
+          ctaRu: action?.tags.includes('goal') ? 'Собрать миссию' : 'Сделать',
+        }
+      })
+  }, [horizonSummary, selectedPlanet])
+
+  useEffect(() => {
+    if (!selectedPlanet) return
+    const onEsc = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setHashPlanetId(null)
+    }
+    window.addEventListener('keydown', onEsc)
+    return () => window.removeEventListener('keydown', onEsc)
+  }, [selectedPlanet])
+
   return (
     <section className="page">
       <h1>Система</h1>
@@ -239,7 +340,27 @@ export function SystemPage() {
 
         <section className="panel" aria-label="World map">
           <h2>Карта мира (SVG)</h2>
-          {worldMapSnapshot ? <WorldMapView snapshot={worldMapSnapshot} /> : <p>Карта мира готовится…</p>}
+          <div className="system-world-layout">
+            {worldMapSnapshot ? (
+              <WorldMapView
+                snapshot={worldMapSnapshot}
+                selectedPlanetId={selectedPlanetId}
+                onPlanetSelect={(planetId, origin) => {
+                  if (origin) lastOriginRef.current = origin
+                  setHashPlanetId(planetId)
+                }}
+              />
+            ) : <p>Карта мира готовится…</p>}
+            {selectedPlanet ? (
+              <PlanetPanel
+                planet={selectedPlanet}
+                levers={panelLevers}
+                whyBullets={whyTopRu}
+                debtProtocol={debtProtocol}
+                onClose={() => setHashPlanetId(null)}
+              />
+            ) : null}
+          </div>
         </section>
 
         <div className="settings-actions">
