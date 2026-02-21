@@ -1,5 +1,6 @@
 import { db } from '../core/storage/db'
 import type { ReproToken } from '../core/actions/audit'
+import type { ModelHealthSnapshot } from '../core/engines/analytics/modelHealth'
 
 export interface ActionAuditCandidateCompact {
   actionId: string
@@ -31,7 +32,7 @@ export interface ActionAuditRecord {
   topCandidates: ActionAuditCandidateCompact[]
   horizonSummary?: HorizonAuditSummaryRecord[]
   whyTopRu: string[]
-  modelHealth: Record<string, unknown>
+  modelHealth: ModelHealthSnapshot
 }
 
 export async function saveActionAudit(record: ActionAuditRecord): Promise<ActionAuditRecord> {
