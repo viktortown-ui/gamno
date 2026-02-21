@@ -4,7 +4,7 @@ import { getLastBlackSwanRun } from '../repo/blackSwanRepo'
 import { getLastSnapshot as getLastTimeDebtSnapshot } from '../repo/timeDebtRepo'
 import { getLastSnapshot as getLastAntifragilitySnapshot } from '../repo/antifragilityRepo'
 import { buildStateVector, evaluatePoliciesWithAudit, type PolicyConstraints, type PolicyMode, type PolicyResult, type PolicyTuning } from '../core/engines/policy'
-import { getBriefingBullets, getDrilldownCandidates, getModelHealthView, getPolicyCards, getPolicyDuelSummary, type ModelHealthView } from './autopilotUi'
+import { getBriefingBullets, getDrilldownCandidates, getModelHealthView, getPolicyCards, getPolicyDuelSummary, getTailRiskSummaryForSelection, type ModelHealthView } from './autopilotUi'
 import { createPolicy, getActivePolicy, saveRun, setActivePolicy } from '../repo/policyRepo'
 import { getLastActionAudit, listRecentActionAudits, type ActionAuditRecord } from '../repo/actionAuditRepo'
 import { CalibrationTrustCard } from '../ui/components/CalibrationTrust'
@@ -144,12 +144,18 @@ export function AutopilotPage({ onChanged }: { onChanged: () => Promise<void> })
   }, [auditList, selectedAuditId])
 
   const whyTop = useMemo(() => latestActionAudit?.whyTopRu ?? selected?.best.reasonsRu ?? [], [latestActionAudit, selected])
-  const briefing = useMemo(() => getBriefingBullets({ selected, whyTopRu: whyTop, constraints }), [selected, whyTop, constraints])
-  const duel = useMemo(() => getPolicyDuelSummary({ horizonSummary: latestActionAudit?.horizonSummary ?? [], horizon }), [latestActionAudit, horizon])
-  const drilldown = useMemo(() => getDrilldownCandidates({ selected, constraints, topK: 3 }), [selected, constraints])
-  const health = useMemo<ModelHealthView>(() => getModelHealthView(latestActionAudit?.modelHealth), [latestActionAudit])
   const safeMode = latestActionAudit?.safeMode ?? false
   const safeModeReasons = latestActionAudit?.gateReasonsRu ?? []
+  const selectedTailRisk = useMemo(() => getTailRiskSummaryForSelection({
+    horizonSummary: latestActionAudit?.horizonSummary ?? [],
+    horizon,
+    mode: selected?.mode,
+    actionId: selected?.best.action.id,
+  }), [latestActionAudit, horizon, selected?.mode, selected?.best.action.id])
+  const briefing = useMemo(() => getBriefingBullets({ selected, whyTopRu: whyTop, constraints, tailRisk: selectedTailRisk }), [selected, whyTop, constraints, selectedTailRisk])
+  const duel = useMemo(() => getPolicyDuelSummary({ horizonSummary: latestActionAudit?.horizonSummary ?? [], horizon, safeMode, fallbackPolicy: latestActionAudit?.fallbackPolicy }), [latestActionAudit, horizon, safeMode])
+  const drilldown = useMemo(() => getDrilldownCandidates({ selected, constraints, topK: 3 }), [selected, constraints])
+  const health = useMemo<ModelHealthView>(() => getModelHealthView(latestActionAudit?.modelHealth), [latestActionAudit])
 
   const fanChartPoints = useMemo(() => {
     const actionId = selected?.best.action.id
@@ -280,8 +286,10 @@ export function AutopilotPage({ onChanged }: { onChanged: () => Promise<void> })
         <h2>Policy Duel</h2>
         <p>best p50: <strong>{duel.p50}</strong></p>
         <p>best tail: <strong>{duel.tail}</strong></p>
+        <p>best by ES: <strong>{duel.es}</strong></p>
         <p>best failRate: <strong>{duel.failRate}</strong></p>
         <p>best budget stability: <strong>{duel.budget}</strong></p>
+        <p>safeMode influence: <strong>{duel.safeModeInfluence}</strong></p>
       </article>
 
       <article className="summary-card panel">
@@ -364,7 +372,7 @@ export function AutopilotPage({ onChanged }: { onChanged: () => Promise<void> })
                 <p>catalogHash: {selectedAudit.reproToken.catalogHash}</p>
                 <p>policyVersion: {selectedAudit.reproToken.policyVersion}</p>
                 <p>Кандидаты: {selectedAudit.topCandidates.map((candidate) => `${candidate.actionId} (${candidate.score.toFixed(2)})`).join(', ') || '—'}</p>
-                <p>H{horizon}: {(selectedAudit.horizonSummary ?? []).filter((item) => item.horizonDays === horizon).map((item) => `${item.policyMode}/${item.actionId}: p50 ${item.stats.p50.toFixed(2)}, p90 ${item.stats.p90.toFixed(2)}, fail ${formatPercent(item.stats.failRate)}`).join(' · ') || '—'}</p>
+                <p>H{horizon}: {(selectedAudit.horizonSummary ?? []).filter((item) => item.horizonDays === horizon).map((item) => `${item.policyMode}/${item.actionId}: VaR97.5 ${((item.stats.var97_5 ?? 0) * 100).toFixed(1)}%, ES97.5 ${((item.stats.es97_5 ?? 0) * 100).toFixed(1)}%, fail ${formatPercent(item.stats.failRate)}, tailMass ${((item.stats.tailMass ?? 0) * 100).toFixed(1)}%`).join(' · ') || '—'}</p>
               </>
             ) : <p>Нет записей аудита.</p>}
           </div>

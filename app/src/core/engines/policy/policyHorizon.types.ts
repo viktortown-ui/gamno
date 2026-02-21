@@ -1,4 +1,5 @@
 import type { PolicyConstraints, PolicyMode, PolicyStateVector, PolicyTuning } from './index'
+import type { TailRiskSummaryCompact } from '../../risk/tailRisk'
 
 export type PolicyHorizon = 3 | 7
 
@@ -8,6 +9,7 @@ export interface HorizonSummaryCompact {
   p50: number
   p90: number
   tail: number
+  tailRisk: TailRiskSummaryCompact
   failRate: number
 }
 

@@ -16,10 +16,11 @@ interface SystemStats {
   counts: Record<string, number>
   health: { learned: ModelHealthSnapshot; forecast: ModelHealthSnapshot; policy: ModelHealthSnapshot } | null
   safeModeTriggers: Array<{ ts: number; chosenActionId: string; gatesApplied: string[]; reasonsRu: string[]; fallbackPolicy?: string }>
+  tailRiskPanel: Array<{ source: 'BlackSwans' | 'Multiverse' | 'Autopilot'; es: number; varValue: number; tailMass: number; failRate?: number }>
 }
 
 export function SystemPage() {
-  const [stats, setStats] = useState<SystemStats>({ counts: {}, health: null, safeModeTriggers: [] })
+  const [stats, setStats] = useState<SystemStats>({ counts: {}, health: null, safeModeTriggers: [], tailRiskPanel: [] })
 
   useEffect(() => {
     void Promise.all([
@@ -83,7 +84,29 @@ export function SystemPage() {
           fallbackPolicy: audit.fallbackPolicy,
         }))
 
-      setStats({ frameTs: frame?.ts, forecastTs: forecast?.ts, blackSwanTs: blackSwan?.ts, multiverseTs: multiverse?.ts, counts: { checkins, events, frames, runs }, health, safeModeTriggers })
+      const autopilotTail = audits[0]?.horizonSummary?.slice().sort((a, b) => (a.horizonDays - b.horizonDays) || a.policyMode.localeCompare(b.policyMode) || a.actionId.localeCompare(b.actionId))[0]
+      const tailRiskPanel: SystemStats['tailRiskPanel'] = [
+        {
+          source: 'BlackSwans',
+          es: blackSwan?.payload.tail.collapseTail.es ?? 0,
+          varValue: blackSwan?.payload.tail.collapseTail.var ?? 0,
+          tailMass: blackSwan?.payload.tail.collapseTail.tailMass ?? 0,
+        },
+        {
+          source: 'Multiverse',
+          es: multiverse?.summary.collapseTail.es ?? 0,
+          varValue: multiverse?.summary.collapseTail.var ?? 0,
+          tailMass: multiverse?.summary.collapseTail.tailMass ?? 0,
+        },
+        {
+          source: 'Autopilot',
+          es: autopilotTail?.stats.es97_5 ?? 0,
+          varValue: autopilotTail?.stats.var97_5 ?? 0,
+          tailMass: autopilotTail?.stats.tailMass ?? 0,
+          failRate: autopilotTail?.stats.failRate,
+        },
+      ]
+      setStats({ frameTs: frame?.ts, forecastTs: forecast?.ts, blackSwanTs: blackSwan?.ts, multiverseTs: multiverse?.ts, counts: { checkins, events, frames, runs }, health, safeModeTriggers, tailRiskPanel })
     })
   }, [])
 
@@ -105,6 +128,19 @@ export function SystemPage() {
             <CalibrationTrustCard title="Policy" health={stats.health.policy} />
           </section>
         ) : null}
+
+        <section className="panel" aria-label="Tail-Risk unified panel">
+          <h2>Tail-Risk unified</h2>
+          <ul>
+            {stats.tailRiskPanel.map((item) => (
+              <li key={item.source}>
+                <strong>{item.source}</strong>: ES {item.es.toFixed(4)} · VaR {item.varValue.toFixed(4)} · tailMass {(item.tailMass * 100).toFixed(1)}%
+                {typeof item.failRate === 'number' ? ` · failRate ${(item.failRate * 100).toFixed(1)}%` : ''}
+              </li>
+            ))}
+          </ul>
+        </section>
+
         <section className="panel" aria-label="Safe Mode triggers">
           <h2>Safe Mode triggers</h2>
           {stats.safeModeTriggers.length ? (

@@ -11,6 +11,29 @@ function byStatsDesc(a: HorizonAuditSummaryRecord, b: HorizonAuditSummaryRecord)
   return a.actionId.localeCompare(b.actionId)
 }
 
+
+function tieBreak(a: HorizonAuditSummaryRecord, b: HorizonAuditSummaryRecord): number {
+  if (a.stats.p90 !== b.stats.p90) return b.stats.p90 - a.stats.p90
+  return a.actionId.localeCompare(b.actionId)
+}
+
+export function getTailRiskSummaryForSelection(params: {
+  horizonSummary: HorizonAuditSummaryRecord[]
+  horizon: HorizonDays
+  mode?: PolicyMode
+  actionId?: string
+}): HorizonAuditSummaryRecord | null {
+  const filtered = params.horizonSummary
+    .filter((item) => item.horizonDays === params.horizon)
+    .sort((a, b) => a.policyMode.localeCompare(b.policyMode) || a.actionId.localeCompare(b.actionId))
+
+  if (!filtered.length) return null
+  if (params.mode && params.actionId) {
+    return filtered.find((item) => item.policyMode === params.mode && item.actionId === params.actionId) ?? null
+  }
+  return filtered[0]
+}
+
 export function getPolicyCards(params: {
   results: PolicyResult[]
   audit: ActionAuditRecord | null
@@ -71,8 +94,9 @@ export function getBriefingBullets(params: {
   selected: PolicyResult | undefined
   whyTopRu: string[]
   constraints: PolicyConstraints
+  tailRisk: HorizonAuditSummaryRecord | null
 }): { summary: string; why: string[]; risks: string[] } {
-  const { selected, whyTopRu, constraints } = params
+  const { selected, whyTopRu, constraints, tailRisk } = params
   if (!selected) {
     return {
       summary: 'Нет данных для рекомендации.',
@@ -86,8 +110,8 @@ export function getBriefingBullets(params: {
     summary: `Сейчас лучше: «${top.action.titleRu}» в режиме «${selected.nameRu}».`,
     why: whyTopRu.slice(0, 3),
     risks: [
-      `Tail: ${(top.deltas.tailRisk * 100).toFixed(1)} п.п. (лимит косвенно через maxPCollapse ${ (constraints.maxPCollapse * 100).toFixed(1)} п.п.).`,
-      `Fail (proxy через siren): ${(top.deltas.sirenRisk * 100).toFixed(1)} п.п. при лимите ${(constraints.sirenCap * 100).toFixed(1)} п.п..`,
+      `ES(97.5): ${((tailRisk?.stats.es97_5 ?? 0) * 100).toFixed(1)}% · VaR(97.5): ${((tailRisk?.stats.var97_5 ?? 0) * 100).toFixed(1)}%.`,
+      `FailRate: ${((tailRisk?.stats.failRate ?? top.deltas.sirenRisk) * 100).toFixed(1)}% · TailMass: ${((tailRisk?.stats.tailMass ?? 0) * 100).toFixed(1)}%.`,
       `Budget debt: ${(top.deltas.debt * 100).toFixed(1)} п.п. при лимите ${(constraints.maxDebtGrowth * 100).toFixed(1)} п.п..`,
     ],
   }
@@ -96,13 +120,15 @@ export function getBriefingBullets(params: {
 export function getPolicyDuelSummary(params: {
   horizonSummary: HorizonAuditSummaryRecord[]
   horizon: HorizonDays
-}): { p50: string; tail: string; failRate: string; budget: string } {
+  safeMode: boolean
+  fallbackPolicy?: PolicyMode
+}): { p50: string; tail: string; es: string; failRate: string; budget: string; safeModeInfluence: string } {
   const filtered = params.horizonSummary
     .filter((item) => item.horizonDays === params.horizon)
     .sort((a, b) => a.policyMode.localeCompare(b.policyMode) || a.actionId.localeCompare(b.actionId))
 
   if (!filtered.length) {
-    return { p50: '—', tail: '—', failRate: '—', budget: '—' }
+    return { p50: '—', tail: '—', es: '—', failRate: '—', budget: '—', safeModeInfluence: 'нет данных' }
   }
 
   const bestBy = <T extends number>(getter: (row: HorizonAuditSummaryRecord) => T, direction: 'asc' | 'desc'): HorizonAuditSummaryRecord => {
@@ -110,22 +136,24 @@ export function getPolicyDuelSummary(params: {
       const current = getter(row)
       const chosen = getter(best)
       if (direction === 'desc' ? current > chosen : current < chosen) return row
-      if (current === chosen && row.stats.p90 > best.stats.p90) return row
-      if (current === chosen && row.stats.p90 === best.stats.p90 && row.actionId < best.actionId) return row
+      if (current === chosen) return tieBreak(row, best) < 0 ? row : best
       return best
     }, filtered[0])
   }
 
   const p50 = bestBy((item) => item.stats.p50, 'desc')
   const tail = bestBy((item) => item.stats.tail, 'asc')
+  const es = bestBy((item) => item.stats.es97_5 ?? Number.POSITIVE_INFINITY, 'asc')
   const fail = bestBy((item) => item.stats.failRate, 'asc')
   const budget = bestBy((item) => Math.abs(item.stats.p90 - item.stats.p10), 'asc')
 
   return {
     p50: `${p50.policyMode}/${p50.actionId}`,
     tail: `${tail.policyMode}/${tail.actionId}`,
+    es: `${es.policyMode}/${es.actionId}`,
     failRate: `${fail.policyMode}/${fail.actionId}`,
     budget: `${budget.policyMode}/${budget.actionId}`,
+    safeModeInfluence: params.safeMode ? `active${params.fallbackPolicy ? ` · fallback ${params.fallbackPolicy}` : ''}` : 'inactive',
   }
 }
 

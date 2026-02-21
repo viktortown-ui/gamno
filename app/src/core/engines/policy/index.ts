@@ -471,7 +471,12 @@ export async function evaluatePoliciesWithAudit(params: {
         horizonDays,
         policyMode,
         actionId: candidate.actionId,
-        stats: candidate.summary as HorizonSummaryCompact,
+        stats: {
+          ...(candidate.summary as HorizonSummaryCompact),
+          var97_5: candidate.summary.tailRisk.var,
+          es97_5: candidate.summary.tailRisk.es,
+          tailMass: candidate.summary.tailRisk.tailMass,
+        },
       })),
     )
   })

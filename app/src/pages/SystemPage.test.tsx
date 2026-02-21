@@ -7,8 +7,8 @@ import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('../repo/frameRepo', () => ({ getLastFrame: vi.fn(async () => ({ ts: 100 })) }))
 vi.mock('../repo/forecastRepo', () => ({ getLatestForecastRun: vi.fn(async () => ({ ts: 200 })) }))
-vi.mock('../repo/blackSwanRepo', () => ({ getLastBlackSwanRun: vi.fn(async () => ({ ts: 300 })) }))
-vi.mock('../repo/multiverseRepo', () => ({ getLastRun: vi.fn(async () => ({ ts: 400 })) }))
+vi.mock('../repo/blackSwanRepo', () => ({ getLastBlackSwanRun: vi.fn(async () => ({ ts: 300, payload: { tail: { collapseTail: { es: 0.2, var: 0.15, tailMass: 0.08 } } } })) }))
+vi.mock('../repo/multiverseRepo', () => ({ getLastRun: vi.fn(async () => ({ ts: 400, summary: { collapseTail: { es: 0.18, var: 0.14, tailMass: 0.07 } } })) }))
 
 vi.mock('../core/storage/db', () => ({
   schemaVersion: 9,
@@ -27,7 +27,7 @@ vi.mock('../core/storage/db', () => ({
       orderBy: vi.fn(() => ({ reverse: () => ({ limit: () => ({ toArray: async () => [{ backtest: { averageIntervalWidth: 0.4, rows: [{ p10: 0, p90: 1, actual: 0.8, insideBand: 1 }] } }] }) }) })),
     },
     actionAudits: {
-      orderBy: vi.fn(() => ({ reverse: () => ({ limit: () => ({ toArray: async () => [{ modelHealth: { v: 1, kind: 'policy', grade: 'yellow', reasonsRu: ['Калибровка умеренная.'], data: { samples: 9, minSamples: 6, sufficient: true }, calibration: { brier: 0.18, worstGap: 0.13, bins: Array.from({ length: 10 }, (_, index) => ({ index, left: index / 10, right: (index + 1) / 10, count: 1, meanProbability: 0.1 * index, observedRate: 0.08 * index, gap: 0.02 }) ) }, drift: { triggered: false, triggerIndex: null, score: 0.05 } } }] }) }) })),
+      orderBy: vi.fn(() => ({ reverse: () => ({ limit: () => ({ toArray: async () => [{ modelHealth: { v: 1, kind: 'policy', grade: 'yellow', reasonsRu: ['Калибровка умеренная.'], data: { samples: 9, minSamples: 6, sufficient: true }, calibration: { brier: 0.18, worstGap: 0.13, bins: Array.from({ length: 10 }, (_, index) => ({ index, left: index / 10, right: (index + 1) / 10, count: 1, meanProbability: 0.1 * index, observedRate: 0.08 * index, gap: 0.02 }) ) }, drift: { triggered: false, triggerIndex: null, score: 0.05 } }, horizonSummary: [{ horizonDays: 3, policyMode: 'balanced', actionId: 'bal:1', stats: { mean: 0, p10: 0, p50: 0, p90: 0, tail: 0, var97_5: 0.11, es97_5: 0.16, tailMass: 0.09, failRate: 0.12 } }] }] }) }) })),
     },
   },
 }))
@@ -51,5 +51,9 @@ describe('SystemPage', () => {
     expect(container.textContent).toContain('Policy')
     expect(container.textContent).toContain('Brier:')
     expect(container.querySelectorAll('svg').length).toBeGreaterThan(0)
+    expect(container.textContent).toContain('Tail-Risk unified')
+    expect(container.textContent).toContain('BlackSwans')
+    expect(container.textContent).toContain('Multiverse')
+    expect(container.textContent).toContain('Autopilot')
   })
 })

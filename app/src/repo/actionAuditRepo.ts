@@ -18,6 +18,9 @@ export interface HorizonAuditSummaryRecord {
     p50: number
     p90: number
     tail: number
+    var97_5?: number
+    es97_5?: number
+    tailMass?: number
     failRate: number
   }
 }

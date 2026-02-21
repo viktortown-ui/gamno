@@ -65,9 +65,9 @@ const latestAudit: ActionAuditRecord = {
   topCandidates: [{ actionId: 'bal:1', score: 4, penalty: 0.3 }],
   whyTopRu: ['• Лучший баланс'],
   horizonSummary: [
-    { horizonDays: 3, policyMode: 'balanced', actionId: 'bal:1', stats: { mean: 1, p10: 0.5, p50: 1.2, p90: 1.8, tail: 0.11, failRate: 0.05 } },
-    { horizonDays: 3, policyMode: 'balanced', actionId: 'bal:2', stats: { mean: 1, p10: 0.4, p50: 1.1, p90: 1.6, tail: 0.1, failRate: 0.06 } },
-    { horizonDays: 7, policyMode: 'balanced', actionId: 'bal:1', stats: { mean: 1, p10: 0.2, p50: 1.5, p90: 1.9, tail: 0.08, failRate: 0.03 } },
+    { horizonDays: 3, policyMode: 'balanced', actionId: 'bal:1', stats: { mean: 1, p10: 0.5, p50: 1.2, p90: 1.8, tail: 0.11, var97_5: 0.21, es97_5: 0.25, tailMass: 0.1, failRate: 0.05 } },
+    { horizonDays: 3, policyMode: 'balanced', actionId: 'bal:2', stats: { mean: 1, p10: 0.4, p50: 1.1, p90: 1.6, tail: 0.1, var97_5: 0.2, es97_5: 0.22, tailMass: 0.08, failRate: 0.06 } },
+    { horizonDays: 7, policyMode: 'balanced', actionId: 'bal:1', stats: { mean: 1, p10: 0.2, p50: 1.5, p90: 1.9, tail: 0.08, var97_5: 0.15, es97_5: 0.18, tailMass: 0.07, failRate: 0.03 } },
   ],
   modelHealth: { v: 1, kind: 'policy', grade: 'green', reasonsRu: ['Калибровка стабильная.'], data: { samples: 12, minSamples: 6, sufficient: true }, calibration: { brier: 0.08, worstGap: 0.09, bins: [] }, drift: { triggered: false, triggerIndex: null, score: 0.01 } },
 }
@@ -106,6 +106,8 @@ describe('AutopilotPage', () => {
     expect(container.textContent).toContain('Action Drilldown')
     expect(container.textContent).toContain('Model Health: High · Калибровка стабильная.')
     expect(container.textContent).toContain('best p50:')
+    expect(container.textContent).toContain('best by ES:')
+    expect(container.textContent).toContain('safeMode influence:')
     expect(container.textContent).toContain('Текущий статус доверия модели: High')
   })
 
@@ -116,15 +118,33 @@ describe('AutopilotPage', () => {
       audit: {
         ...latestAudit,
         horizonSummary: [
-          { horizonDays: 3, policyMode: 'risk', actionId: 'risk:b', stats: { mean: 0, p10: 0, p50: 1.2, p90: 1.5, tail: 0.2, failRate: 0.1 } },
-          { horizonDays: 3, policyMode: 'risk', actionId: 'risk:a', stats: { mean: 0, p10: 0, p50: 1.2, p90: 1.5, tail: 0.2, failRate: 0.1 } },
-          { horizonDays: 3, policyMode: 'risk', actionId: 'risk:c', stats: { mean: 0, p10: 0, p50: 1.3, p90: 1.4, tail: 0.2, failRate: 0.1 } },
+          { horizonDays: 3, policyMode: 'risk', actionId: 'risk:b', stats: { mean: 0, p10: 0, p50: 1.2, p90: 1.5, tail: 0.2, var97_5: 0.2, es97_5: 0.3, tailMass: 0.1, failRate: 0.1 } },
+          { horizonDays: 3, policyMode: 'risk', actionId: 'risk:a', stats: { mean: 0, p10: 0, p50: 1.2, p90: 1.5, tail: 0.2, var97_5: 0.2, es97_5: 0.3, tailMass: 0.1, failRate: 0.1 } },
+          { horizonDays: 3, policyMode: 'risk', actionId: 'risk:c', stats: { mean: 0, p10: 0, p50: 1.3, p90: 1.4, tail: 0.2, var97_5: 0.2, es97_5: 0.3, tailMass: 0.1, failRate: 0.1 } },
         ],
       },
       horizon: 3,
     })
 
     expect(cards[0].candidates.map((item) => item.actionId)).toEqual(['risk:c', 'risk:a', 'risk:b'])
+  })
+
+
+
+  it('selects best by ES deterministically and reports safe mode fallback', async () => {
+    const { getPolicyDuelSummary } = await import('./autopilotUi')
+    const duel = getPolicyDuelSummary({
+      horizonSummary: [
+        { horizonDays: 3, policyMode: 'balanced', actionId: 'b', stats: { mean: 0, p10: 0, p50: 1, p90: 1.1, tail: 0.2, var97_5: 0.2, es97_5: 0.12, tailMass: 0.1, failRate: 0.1 } },
+        { horizonDays: 3, policyMode: 'risk', actionId: 'a', stats: { mean: 0, p10: 0, p50: 1, p90: 1.1, tail: 0.2, var97_5: 0.2, es97_5: 0.12, tailMass: 0.1, failRate: 0.1 } },
+      ],
+      horizon: 3,
+      safeMode: true,
+      fallbackPolicy: 'risk',
+    })
+
+    expect(duel.es).toBe('risk/a')
+    expect(duel.safeModeInfluence).toContain('fallback risk')
   })
 
   it('builds drilldown delta preview and budget warning deterministically', async () => {

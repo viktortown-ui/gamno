@@ -4,6 +4,7 @@ import { runBlackSwan } from '../blackSwan'
 import type { BlackSwanInput } from '../blackSwan/types'
 import { defaultInfluenceMatrix } from '../influence/influence'
 import { summarizeTail } from '../multiverse/scoring'
+import { compactTailRiskSummary, computeTailRisk } from '../../risk/tailRisk'
 import { buildActionLibrary, modeBudgetRisk, type PolicyActionEvaluation, type PolicyConstraints, type PolicyMode, type PolicyStateVector } from './index'
 import { penaltyScore } from '../../actions/costModel'
 import type { ActionBudgetEnvelope, ActionContext, ActionCostWeights, ActionState } from '../../actions/types'
@@ -175,6 +176,7 @@ function runActionRollout(paramsInput: {
   }
 
   const tail = evaluateTailSignal(cur, horizon, seed + horizon)
+  const tailRisk = compactTailRiskSummary(computeTailRisk(discountedScores.map((value) => -value), 0.975))
   const mean = discountedScores.reduce((sum, x) => sum + x, 0) / Math.max(1, discountedScores.length)
   const score = Number((mean - tail * 100).toFixed(4))
 
@@ -190,6 +192,7 @@ function runActionRollout(paramsInput: {
       p50: Number(quantile(discountedScores, 0.5).toFixed(4)),
       p90: Number(quantile(discountedScores, 0.9).toFixed(4)),
       tail,
+      tailRisk,
       failRate: Number((fail / horizon).toFixed(4)),
     },
   }
