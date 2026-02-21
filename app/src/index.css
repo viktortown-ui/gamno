@@ -597,3 +597,39 @@ input:focus-visible {
   gap: 8px;
   flex-wrap: wrap;
 }
+
+.world-page {
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+  gap: var(--space-2);
+  min-height: calc(100vh - 120px);
+}
+
+.world-hud {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+  padding: 10px;
+  font-size: 12px;
+}
+
+.world-replay {
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.world-replay input[type='range'] {
+  width: 100%;
+}
+
+.world-stage {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
+  gap: var(--space-2);
+  align-items: start;
+}
+
+.world-page .world-map__svg {
+  height: min(74vh, 820px);
+}

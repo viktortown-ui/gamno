@@ -4,19 +4,10 @@ import { getLastFrame } from '../repo/frameRepo'
 import { getLatestForecastRun } from '../repo/forecastRepo'
 import { getLastBlackSwanRun } from '../repo/blackSwanRepo'
 import { getLastRun as getLastMultiverseRun } from '../repo/multiverseRepo'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { evaluateModelHealth, type ModelHealthSnapshot } from '../core/engines/analytics/modelHealth'
 import { createTailBacktestWorker, runTailBacktestInWorker, type TailBacktestWorkerMessage } from '../core/workers/tailBacktestClient'
 import { CalibrationTrustCard } from '../ui/components/CalibrationTrust'
-import { createWorldMapWorker, runWorldMapInWorker, type WorldMapWorkerMessage } from '../core/workers/worldMapClient'
-import type { WorldMapSnapshot } from '../core/worldMap/types'
-import { WorldMapView } from '../ui/components/WorldMapView'
-import { buildUnifiedActionCatalog } from '../core/actions/catalog'
-import { buildFrameSnapshot, type FrameSnapshot } from '../core/frame/frameEngine'
-import { PlanetPanel, type PlanetLever } from '../ui/components/PlanetPanel'
-import type { ActionDomain } from '../core/actions/types'
-import type { HorizonAuditSummaryRecord } from '../repo/actionAuditRepo'
-import { seedTestData } from '../core/storage/repo'
 
 interface SystemStats {
   frameTs?: number
@@ -29,8 +20,6 @@ interface SystemStats {
   tailRiskPanel: Array<{ source: 'BlackSwans' | 'Multiverse' | 'Autopilot' | 'Tail-Backtest'; es: number; varValue: number; tailMass: number; failRate?: number; note?: string }>
 }
 
-const DEFAULT_WORLD_MAP_FRAME: FrameSnapshot = buildFrameSnapshot({ nowTs: Date.UTC(2026, 0, 1) })
-
 function resolveTailBacktest(worker: Worker, payload: Parameters<typeof runTailBacktestInWorker>[1]): Promise<Extract<TailBacktestWorkerMessage, { type: 'done' }>['result']> {
   return new Promise((resolve, reject) => {
     worker.onmessage = (event: MessageEvent<TailBacktestWorkerMessage>) => {
@@ -41,75 +30,11 @@ function resolveTailBacktest(worker: Worker, payload: Parameters<typeof runTailB
   })
 }
 
-function getHashPlanetId(): string | null {
-  const hash = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : window.location.hash
-  const [path, query] = hash.split('?')
-  if (path !== '/system' || !query) return null
-  const params = new URLSearchParams(query)
-  return params.get('planet')
-}
-
-function setHashPlanetId(planetId: string | null): void {
-  const hash = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : window.location.hash
-  const [pathPart] = hash.split('?')
-  const path = pathPart || '/system'
-  const params = new URLSearchParams(hash.split('?')[1] ?? '')
-  if (planetId) params.set('planet', planetId)
-  else params.delete('planet')
-  const next = params.toString()
-  window.location.hash = next ? `${path}?${next}` : path
-}
-
-const DOMAIN_BY_PLANET: Record<string, ActionDomain> = {
-  core: 'фокус',
-  risk: 'восстановление',
-  mission: 'карьера',
-  stability: 'финансы',
-  forecast: 'фокус',
-  social: 'социальное',
-}
-
-function sortLevers(a: HorizonAuditSummaryRecord, b: HorizonAuditSummaryRecord): number {
-  return (b.stats.p50 - a.stats.p50)
-    || (b.stats.p90 - a.stats.p90)
-    || ((a.stats.es97_5 ?? Number.POSITIVE_INFINITY) - (b.stats.es97_5 ?? Number.POSITIVE_INFINITY))
-    || (a.stats.failRate - b.stats.failRate)
-    || a.policyMode.localeCompare(b.policyMode)
-    || a.actionId.localeCompare(b.actionId)
-}
-
 export function SystemPage() {
   const [stats, setStats] = useState<SystemStats>({ counts: {}, health: null, safeModeTriggers: [], tailRiskPanel: [] })
-  const [worldMapSnapshot, setWorldMapSnapshot] = useState<WorldMapSnapshot | null>(null)
-  const [horizonSummary, setHorizonSummary] = useState<HorizonAuditSummaryRecord[]>([])
-  const [whyTopRu, setWhyTopRu] = useState<string[]>([])
-  const [debtProtocol, setDebtProtocol] = useState<string[]>([])
-  const [selectedPlanetId, setSelectedPlanetId] = useState<string | null>(() => getHashPlanetId())
-  const lastOriginRef = useRef<HTMLElement | null>(null)
-  const prevSelectedRef = useRef<string | null>(selectedPlanetId)
-
-  useEffect(() => {
-    const syncFromHash = () => setSelectedPlanetId(getHashPlanetId())
-    window.addEventListener('hashchange', syncFromHash)
-    return () => window.removeEventListener('hashchange', syncFromHash)
-  }, [])
-
-  useEffect(() => {
-    const prev = prevSelectedRef.current
-    if (prev && !selectedPlanetId) {
-      lastOriginRef.current?.focus()
-      lastOriginRef.current = null
-    }
-    prevSelectedRef.current = selectedPlanetId
-  }, [selectedPlanetId])
 
   useEffect(() => {
     const worker = createTailBacktestWorker(() => undefined)
-    const worldMapWorker = createWorldMapWorker((message: WorldMapWorkerMessage) => {
-      if (message.type === 'done') {
-        setWorldMapSnapshot(message.result)
-      }
-    })
 
     void Promise.all([
       getLastFrame(),
@@ -124,75 +49,33 @@ export function SystemPage() {
       db.forecastRuns.orderBy('ts').reverse().limit(12).toArray(),
       db.actionAudits.orderBy('ts').reverse().limit(36).toArray(),
       db.frameSnapshots.orderBy('ts').toArray(),
-    ]).then(async ([frame, forecast, blackSwan, multiverse, checkins, events, frames, runs, matrices, forecasts, audits, frameSeries]) => {
-      setHorizonSummary(audits[0]?.horizonSummary ?? [])
-      setWhyTopRu(audits[0]?.whyTopRu ?? [])
-      setDebtProtocol(frame?.payload.debt.protocol ?? [])
+    ]).then(async ([frame, forecast, blackSwan, multiverse, checkins, events, frames, runs, learnedMatrices, forecastRuns, audits, frameRows]) => {
+      const learnedCalibrationRows = learnedMatrices
+        .map((item) => ({ probability: Math.min(1, item.trainedOnDays / 100), outcome: (item.lags >= 2 ? 1 : 0) as 0 | 1 }))
+      const learnedCalibration = learnedCalibrationRows.length
+        ? learnedCalibrationRows
+        : [{ probability: 0.5, outcome: 1 as 0 | 1 }]
+      const learnedDrift = learnedMatrices.map((item) => item.trainedOnDays)
 
-      const learnedCalibration = matrices.map((item) => {
-        const trained = Math.min(1, item.trainedOnDays / 60)
-        const lagPenalty = Math.min(0.3, Math.abs(item.lags - 2) * 0.08)
-        return {
-          probability: Number((Math.max(0, Math.min(1, trained - lagPenalty))).toFixed(4)),
-          outcome: item.trainedOnDays >= 30 ? 1 as const : 0 as const,
-        }
-      })
-      const learnedDrift = matrices.map((item, index) => {
-        if (index === 0) return 0
-        return Number(Math.abs(item.trainedOnDays - matrices[index - 1].trainedOnDays) / 60)
-      })
+      const forecastCalibrationRows = forecastRuns
+        .flatMap((run) => run.backtest.rows.map((row) => ({ probability: Math.max(0, Math.min(1, row.p90 - row.p10)), outcome: (row.insideBand ? 1 : 0) as 0 | 1 })))
+      const forecastCalibration = forecastCalibrationRows.length
+        ? forecastCalibrationRows
+        : [{ probability: 0.5, outcome: 1 as 0 | 1 }]
+      const forecastDrift = forecastRuns.map((run) => run.backtest.averageIntervalWidth)
 
-      const forecastCalibration = forecasts.flatMap((run) => run.backtest.rows.map((row) => {
-        const width = Math.max(0.0001, row.p90 - row.p10)
-        const normalized = Math.max(0, Math.min(1, (row.actual - row.p10) / width))
-        return {
-          probability: Number(normalized.toFixed(4)),
-          outcome: row.insideBand ? 1 as const : 0 as const,
-        }
-      }))
-      const forecastDrift = forecasts.map((run) => Number(run.backtest.averageIntervalWidth.toFixed(4)))
-
-      const policyHealthFromAudit = audits[0]?.modelHealth as ModelHealthSnapshot | undefined
-      const policyCalibration = audits.map(() => {
-        const grade = policyHealthFromAudit?.grade ?? 'red'
-        const probability = grade === 'green' ? 0.85 : grade === 'yellow' ? 0.6 : 0.25
-        return { probability, outcome: (grade === 'red' ? 0 : 1) as 0 | 1 }
-      })
-      const policyDrift = audits.map((audit) => Number((audit.horizonSummary?.[0]?.stats.failRate ?? 0).toFixed(4)))
-      const basePolicyHealth = policyHealthFromAudit ?? evaluateModelHealth({ kind: 'policy', calibration: policyCalibration, driftSeries: policyDrift, minSamples: 6 })
+      const policyHealth = audits[0]?.modelHealth
+        ? evaluateModelHealth({ kind: 'policy', calibration: audits[0].modelHealth.calibration.bins.map((bin) => ({ probability: bin.meanProbability, outcome: (bin.observedRate >= 0.5 ? 1 : 0) as 0 | 1 })), driftSeries: [audits[0].modelHealth.drift.score], minSamples: audits[0].modelHealth.data.minSamples ?? 6 })
+        : evaluateModelHealth({ kind: 'policy', calibration: [{ probability: 0.5, outcome: 1 as 0 | 1 }], driftSeries: [0], minSamples: 6 })
 
       const tailBacktest = await resolveTailBacktest(worker, {
-        audits: audits.map((audit) => ({ ts: audit.ts, horizonSummary: audit.horizonSummary })),
-        frames: frameSeries.map((item) => ({ ts: item.ts, payload: item.payload })),
-        minSamples: 5,
-      }).catch(() => ({ points: [], aggregates: [], warnings: ['Tail backtest worker error.'] }))
-
+        audits: audits.map((item) => ({ ts: item.ts, horizonSummary: item.horizonSummary })),
+        frames: frameRows.map((item) => ({ ts: item.ts, payload: item.payload })),
+        minSamples: 2,
+      })
       const tailSignals = tailBacktest.aggregates
-        .slice()
-        .sort((a, b) => (a.horizonDays - b.horizonDays) || a.policyMode.localeCompare(b.policyMode))
-        .map((item) => ({
-          horizonDays: item.horizonDays,
-          policyMode: item.policyMode,
-          tailExceedRate: item.tailExceedRate,
-          tailLossRatio: item.tailLossRatio,
-          sampleCount: item.sampleCount,
-          warnings: item.warnings,
-        }))
-
-      const policyHealth: ModelHealthSnapshot = {
-        ...basePolicyHealth,
-        tailBacktest: {
-          generatedAt: Date.now(),
-          signals: tailSignals,
-          warnings: tailBacktest.warnings,
-        },
-        reasonsRu: [
-          ...basePolicyHealth.reasonsRu,
-          tailSignals.length
-            ? `Tail-Backtest: ${tailSignals[0].policyMode}/H${tailSignals[0].horizonDays} exceed ${(tailSignals[0].tailExceedRate * 100).toFixed(1)}%, ratio ${tailSignals[0].tailLossRatio.toFixed(2)}.`
-            : 'Tail-Backtest: недостаточно данных.',
-        ],
-      }
+        .filter((item) => item.sampleCount >= 2)
+        .sort((a, b) => (b.tailExceedRate - a.tailExceedRate) || (b.tailLossRatio - a.tailLossRatio) || (a.horizonDays - b.horizonDays) || a.policyMode.localeCompare(b.policyMode))
 
       const health = {
         learned: evaluateModelHealth({ kind: 'learned', calibration: learnedCalibration, driftSeries: learnedDrift, minSamples: 3 }),
@@ -243,55 +126,11 @@ export function SystemPage() {
         },
       ]
 
-      runWorldMapInWorker(worldMapWorker, {
-        frame: frame?.payload ?? DEFAULT_WORLD_MAP_FRAME,
-        seed: 12,
-        viewport: { width: 1100, height: 540, padding: 24 },
-      })
       setStats({ frameTs: frame?.ts, forecastTs: forecast?.ts, blackSwanTs: blackSwan?.ts, multiverseTs: multiverse?.ts, counts: { checkins, events, frames, runs }, health, safeModeTriggers, tailRiskPanel })
     })
 
-    return () => {
-      worker.terminate()
-      worldMapWorker.terminate()
-    }
+    return () => worker.terminate()
   }, [])
-
-  const selectedPlanet = useMemo(() => worldMapSnapshot?.planets.find((planet) => planet.id === selectedPlanetId) ?? null, [selectedPlanetId, worldMapSnapshot])
-  const hasNoHistory = (stats.counts.checkins ?? 0) === 0 || (stats.counts.frames ?? 0) === 0
-
-  const panelLevers = useMemo((): PlanetLever[] => {
-    if (!selectedPlanet) return []
-    const catalog = buildUnifiedActionCatalog()
-    const actionMap = new Map(catalog.map((item) => [item.id, item]))
-    const domain = DOMAIN_BY_PLANET[selectedPlanet.domainId]
-    return horizonSummary
-      .filter((item) => item.horizonDays === 7)
-      .filter((item) => actionMap.get(item.actionId)?.domain === domain)
-      .sort(sortLevers)
-      .slice(0, 4)
-      .map((item) => {
-        const action = actionMap.get(item.actionId)
-        return {
-          actionId: item.actionId,
-          titleRu: action?.titleRu ?? item.actionId,
-          p50: item.stats.p50,
-          p90: item.stats.p90,
-          es97_5: item.stats.es97_5 ?? item.stats.tail,
-          failRate: item.stats.failRate,
-          ctaRu: action?.tags.includes('goal') ? 'Собрать миссию' : 'Сделать',
-        }
-      })
-  }, [horizonSummary, selectedPlanet])
-
-  useEffect(() => {
-    if (!selectedPlanet) return
-    const onEsc = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setHashPlanetId(null)
-    }
-    window.addEventListener('keydown', onEsc)
-    return () => window.removeEventListener('keydown', onEsc)
-  }, [selectedPlanet])
 
   return (
     <section className="page">
@@ -303,6 +142,13 @@ export function SystemPage() {
         <p>Последний Чёрные лебеди: <strong className="mono">{stats.blackSwanTs ?? '—'}</strong></p>
         <p>Последний Мультивселенная: <strong className="mono">{stats.multiverseTs ?? '—'}</strong></p>
         <p>Счётчики: checkins={stats.counts.checkins ?? 0}, events={stats.counts.events ?? 0}, frames={stats.counts.frames ?? 0}, runs={stats.counts.runs ?? 0}</p>
+
+        <section className="panel" aria-label="Карта мира ссылка">
+          <h2>Карта мира</h2>
+          <p>Полный cockpit теперь открыт на отдельной странице.</p>
+          <a href="#/world">Открыть карту мира</a>
+        </section>
+
         {stats.health ? (
           <section aria-label="Calibration & Trust" className="calibration-grid">
             <h2>Calibration &amp; Trust</h2>
@@ -324,77 +170,6 @@ export function SystemPage() {
             ))}
           </ul>
         </section>
-
-        <section className="panel" aria-label="Safe Mode triggers">
-          <h2>Safe Mode triggers</h2>
-          {stats.safeModeTriggers.length ? (
-            <ul>
-              {stats.safeModeTriggers.map((item) => (
-                <li key={`${item.ts}-${item.chosenActionId}`}>
-                  {new Date(item.ts).toLocaleString('ru-RU')} · action {item.chosenActionId}
-                  {item.fallbackPolicy ? ` · fallback ${item.fallbackPolicy}` : ''}
-                  {item.gatesApplied.length ? ` · gates: ${item.gatesApplied.join(', ')}` : ''}
-                  {item.reasonsRu.length ? <div>{item.reasonsRu.join(' ')}</div> : null}
-                </li>
-              ))}
-            </ul>
-          ) : <p>Триггеры Safe Mode пока не зафиксированы.</p>}
-        </section>
-
-        <section className="panel" aria-label="World map">
-          <h2>Карта мира (SVG)</h2>
-          {hasNoHistory ? (
-            <article className="empty-state panel" aria-label="Пустое состояние карты мира">
-              <h3>Недостаточно данных для истории</h3>
-              <p>Планеты уже доступны: можно открыть брифинг по каждой и начать наполнять карту событиями.</p>
-              <div className="settings-actions">
-                <button type="button" onClick={() => { window.location.hash = '#/launch' }}>Сделать первый чек-ин</button>
-                {import.meta.env.DEV ? (
-                  <button type="button" onClick={async () => {
-                    await seedTestData(30, 42)
-                    window.location.hash = '#/system'
-                    window.location.reload()
-                  }}>Сид тест-данных</button>
-                ) : null}
-              </div>
-            </article>
-          ) : null}
-          <div className="system-world-layout">
-            {worldMapSnapshot ? (
-              <WorldMapView
-                snapshot={worldMapSnapshot}
-                selectedPlanetId={selectedPlanetId}
-                onPlanetSelect={(planetId, origin) => {
-                  if (origin) lastOriginRef.current = origin
-                  setHashPlanetId(planetId)
-                }}
-              />
-            ) : <p>Карта мира готовится…</p>}
-            {selectedPlanet ? (
-              <PlanetPanel
-                planet={selectedPlanet}
-                levers={panelLevers}
-                whyBullets={whyTopRu}
-                debtProtocol={debtProtocol}
-                onClose={() => setHashPlanetId(null)}
-              />
-            ) : null}
-          </div>
-        </section>
-
-        <div className="settings-actions">
-          <button type="button" onClick={() => {
-            const report = { build: import.meta.env.VITE_APP_VERSION ?? 'dev', schemaVersion, stats, settings: { theme: document.documentElement.dataset.theme }, lastErrors: window.localStorage.getItem('gamno.lastError') }
-            const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' })
-            const url = URL.createObjectURL(blob)
-            const a = document.createElement('a')
-            a.href = url
-            a.download = 'gamno-system-report.json'
-            a.click()
-            URL.revokeObjectURL(url)
-          }}>Экспорт отчёта</button>
-          <button type="button" onClick={() => { window.localStorage.removeItem('gamno.multiverseDraft') }}>Очистить кэш воркеров</button>
-        </div>
       </article>
     </section>
   )

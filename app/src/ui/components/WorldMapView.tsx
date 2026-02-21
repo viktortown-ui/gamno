@@ -7,6 +7,7 @@ interface WorldMapViewProps {
   snapshot: WorldMapSnapshot
   onPlanetSelect?: (planetId: string | null, origin?: HTMLElement | null) => void
   selectedPlanetId?: string | null
+  showNeighborLabels?: boolean
 }
 
 interface PointerData {
@@ -30,7 +31,7 @@ function center(a: PointerData, b: PointerData): { x: number; y: number } {
   return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
 }
 
-export function WorldMapView({ snapshot, onPlanetSelect, selectedPlanetId }: WorldMapViewProps) {
+export function WorldMapView({ snapshot, onPlanetSelect, selectedPlanetId, showNeighborLabels = true }: WorldMapViewProps) {
   const planets = useMemo(() => [...snapshot.planets].sort((a, b) => (a.order - b.order) || a.id.localeCompare(b.id, 'ru')), [snapshot.planets])
   const [internalSelectedId, setInternalSelectedId] = useState<string | null>(null)
   const [focusedId, setFocusedId] = useState<string>(planets[0]?.id ?? '')
@@ -49,6 +50,19 @@ export function WorldMapView({ snapshot, onPlanetSelect, selectedPlanetId }: Wor
 
 
   const selectedId = selectedPlanetId ?? internalSelectedId
+  const visibleLabelIds = useMemo(() => {
+    if (!selectedId) return new Set<string>()
+    const selectedIndex = planets.findIndex((planet) => planet.id === selectedId)
+    if (selectedIndex < 0) return new Set<string>()
+    const ids = new Set<string>([selectedId])
+    if (showNeighborLabels) {
+      const prev = planets[(selectedIndex - 1 + planets.length) % planets.length]
+      const next = planets[(selectedIndex + 1) % planets.length]
+      if (prev) ids.add(prev.id)
+      if (next) ids.add(next.id)
+    }
+    return ids
+  }, [planets, selectedId, showNeighborLabels])
 
   const selectPlanet = (id: string | null, origin?: HTMLElement | null) => {
     setInternalSelectedId(id)
@@ -205,7 +219,7 @@ export function WorldMapView({ snapshot, onPlanetSelect, selectedPlanetId }: Wor
                   onClick={() => selectPlanet(planet.id)}
                   aria-labelledby={`label:${planet.id}`}
                 />
-                <text id={`label:${planet.id}`} x={planet.x} y={planet.y + 4} textAnchor="middle" fontSize={10} fill="#fff">{planet.labelRu}</text>
+                {visibleLabelIds.has(planet.id) ? <text id={`label:${planet.id}`} x={planet.x} y={planet.y + 4} textAnchor="middle" fontSize={10} fill="#fff">{planet.labelRu}</text> : null}
               </g>
             )
           })}

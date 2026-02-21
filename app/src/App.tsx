@@ -22,13 +22,15 @@ import { AutopilotPage } from './pages/AutopilotPage'
 import { AntifragilityPage } from './pages/AntifragilityPage'
 import { LaunchPage } from './pages/LaunchPage'
 import { SystemPage } from './pages/SystemPage'
+import { WorldPage } from './pages/WorldPage'
 import { computeAndSaveFrame, getLastFrame, type FrameSnapshotRecord } from './repo/frameRepo'
 import { needsLaunchOnboarding } from './core/frame/launchGate'
 
-type PageKey = 'launch' | 'core' | 'dashboard' | 'oracle' | 'autopilot' | 'antifragility' | 'multiverse' | 'time-debt' | 'social-radar' | 'black-swans' | 'goals' | 'graph' | 'history' | 'settings' | 'system'
+type PageKey = 'launch' | 'world' | 'core' | 'dashboard' | 'oracle' | 'autopilot' | 'antifragility' | 'multiverse' | 'time-debt' | 'social-radar' | 'black-swans' | 'goals' | 'graph' | 'history' | 'settings' | 'system'
 
 const pageMeta: { key: PageKey; label: string }[] = [
   { key: 'launch', label: 'Запуск' },
+  { key: 'world', label: 'Карта мира' },
   { key: 'core', label: 'Живое ядро' },
   { key: 'dashboard', label: 'Дашборд' },
   { key: 'oracle', label: 'Оракул' },
@@ -134,8 +136,10 @@ function DesktopApp() {
           recoverySummary={frame ? { score: frame.payload.antifragility.recoveryScore, trend: 'flat' } : null}
         />
         <Routes>
-          <Route path="/" element={<Navigate to={needsLaunch ? '/launch' : '/core'} replace />} />
+          <Route path="/" element={<Navigate to={needsLaunch ? '/launch' : '/world'} replace />} />
           <Route path="/launch" element={<LaunchPage frame={frame} onDone={loadData} />} />
+          <Route path="/world" element={<WorldPage />} />
+          <Route path="/map" element={<Navigate to="/world" replace />} />
           <Route path="/core" element={needsLaunch ? <Navigate to="/launch" replace /> : <CorePage onSaved={loadData} latest={latestCheckin} previous={checkins[1]} templateValues={templateValues} activeQuest={activeQuest} onQuestChange={loadData} checkins={checkins} activeGoalSummary={frame ? { title: frame.payload.goal.active?.title ?? 'Цель', score: frame.payload.goal.goalScore, gap: frame.payload.goal.gap, trend: null } : null} />} />
           <Route path="/dashboard" element={<DashboardPage checkins={checkins} activeQuest={activeQuest} onQuestChange={loadData} />} />
           <Route path="/history" element={<HistoryPage checkins={checkins} onUseTemplate={setTemplateValues} onDataChanged={loadData} />} />
