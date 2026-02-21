@@ -82,12 +82,12 @@ describe('WorldMapView', () => {
     await act(async () => {
       nextActive?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
     })
-    expect(onSelect).toHaveBeenLastCalledWith(nextActive?.dataset.planetId)
+    expect(onSelect).toHaveBeenLastCalledWith(nextActive?.dataset.planetId, nextActive)
 
     await act(async () => {
       nextActive?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
     })
-    expect(onSelect).toHaveBeenLastCalledWith(null)
+    expect(onSelect).toHaveBeenLastCalledWith(null, undefined)
 
     await act(async () => {
       root.unmount()
