@@ -4,6 +4,7 @@ import { act } from 'react'
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 import { createRoot } from 'react-dom/client'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { db } from '../core/storage/db'
 
 vi.mock('../ui/components/FanChart', () => ({
   FanChart: () => <div data-testid="fan-chart" />,
@@ -151,6 +152,44 @@ describe('SystemPage', () => {
     container.remove()
   })
 
+
+  it('opens panel from hash deep-link', async () => {
+    window.location.hash = '#/system?planet=planet:core:1'
+    const { SystemPage } = await import('./SystemPage')
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+
+    await act(async () => { root.render(<SystemPage />) })
+    await act(async () => { await flush() })
+
+    expect(container.querySelector('.planet-panel')).toBeTruthy()
+    expect(container.textContent).toContain('Уровень')
+
+    await act(async () => { root.unmount() })
+    container.remove()
+  })
+
+  it('renders world map and strong empty-state when history is missing', async () => {
+    vi.mocked(db.checkins.count).mockResolvedValueOnce(0)
+    vi.mocked(db.frameSnapshots.count).mockResolvedValueOnce(0)
+
+    const { SystemPage } = await import('./SystemPage')
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+
+    await act(async () => { root.render(<SystemPage />) })
+    await act(async () => { await flush() })
+
+    expect(container.querySelectorAll('.mock-planet').length).toBeGreaterThan(0)
+    expect(container.textContent).toContain('Недостаточно данных для истории')
+    expect(container.textContent).toContain('Сделать первый чек-ин')
+
+    await act(async () => { root.unmount() })
+    container.remove()
+  })
+
   it('sorts levers deterministically with tie-breakers', async () => {
     const { SystemPage } = await import('./SystemPage')
     const container = document.createElement('div')
@@ -162,6 +201,9 @@ describe('SystemPage', () => {
 
     const firstPlanet = container.querySelectorAll<HTMLButtonElement>('.mock-planet')[0]
     await act(async () => { firstPlanet?.click(); window.dispatchEvent(new HashChangeEvent('hashchange')) })
+
+    const planets = [...container.querySelectorAll<HTMLButtonElement>('.mock-planet')].map((el) => el.textContent)
+    expect(planets).toEqual(['Индекс', 'Уровень'])
 
     const leverRows = [...container.querySelectorAll('.planet-panel__levers li strong')].map((el) => el.textContent)
     expect(leverRows[0]).toContain('Глубокий фокус 25 минут')

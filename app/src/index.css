@@ -491,6 +491,8 @@ input:focus-visible {
 
 .world-map {
   position: relative;
+  touch-action: none;
+  overscroll-behavior: contain;
   border: 1px solid var(--line);
   border-radius: 12px;
   background: color-mix(in srgb, var(--panel) 82%, #071127 18%);

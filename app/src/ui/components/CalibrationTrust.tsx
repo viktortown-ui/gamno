@@ -45,7 +45,9 @@ export function CalibrationTrustCard({ title, health }: { title: string; health:
         {health.reasonsRu.map((reason) => <li key={`${health.kind}-${reason}`}>{reason}</li>)}
       </ul>
       <p>
-        Brier: <strong>{health.calibration.brier.toFixed(3)}</strong> · {brierTrendRu(health.calibration.brier)} · ECE: <strong>{ece.toFixed(3)}</strong>
+        {health.data.sufficient
+          ? <>Brier: <strong>{health.calibration.brier.toFixed(3)}</strong> · {brierTrendRu(health.calibration.brier)} · ECE: <strong>{ece.toFixed(3)}</strong></>
+          : <>Brier: <strong>Н/Д</strong> · Недостаточно данных · ECE: <strong>Н/Д</strong></>}
       </p>
       <svg width={SVG_WIDTH} height={SVG_HEIGHT} role="img" aria-label={`Надёжность ${title}`}>
         <rect x={SVG_PAD} y={SVG_PAD} width={SVG_WIDTH - SVG_PAD * 2} height={SVG_HEIGHT - SVG_PAD * 2} fill="transparent" stroke="rgba(148,167,203,0.4)" />

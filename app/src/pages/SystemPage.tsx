@@ -12,9 +12,11 @@ import { createWorldMapWorker, runWorldMapInWorker, type WorldMapWorkerMessage }
 import type { WorldMapSnapshot } from '../core/worldMap/types'
 import { WorldMapView } from '../ui/components/WorldMapView'
 import { buildUnifiedActionCatalog } from '../core/actions/catalog'
+import { buildFrameSnapshot, type FrameSnapshot } from '../core/frame/frameEngine'
 import { PlanetPanel, type PlanetLever } from '../ui/components/PlanetPanel'
 import type { ActionDomain } from '../core/actions/types'
 import type { HorizonAuditSummaryRecord } from '../repo/actionAuditRepo'
+import { seedTestData } from '../core/storage/repo'
 
 interface SystemStats {
   frameTs?: number
@@ -26,6 +28,8 @@ interface SystemStats {
   safeModeTriggers: Array<{ ts: number; chosenActionId: string; gatesApplied: string[]; reasonsRu: string[]; fallbackPolicy?: string }>
   tailRiskPanel: Array<{ source: 'BlackSwans' | 'Multiverse' | 'Autopilot' | 'Tail-Backtest'; es: number; varValue: number; tailMass: number; failRate?: number; note?: string }>
 }
+
+const DEFAULT_WORLD_MAP_FRAME: FrameSnapshot = buildFrameSnapshot({ nowTs: Date.UTC(2026, 0, 1) })
 
 function resolveTailBacktest(worker: Worker, payload: Parameters<typeof runTailBacktestInWorker>[1]): Promise<Extract<TailBacktestWorkerMessage, { type: 'done' }>['result']> {
   return new Promise((resolve, reject) => {
@@ -239,13 +243,11 @@ export function SystemPage() {
         },
       ]
 
-      if (frame) {
-        runWorldMapInWorker(worldMapWorker, {
-          frame: frame.payload,
-          seed: 12,
-          viewport: { width: 1100, height: 540, padding: 24 },
-        })
-      }
+      runWorldMapInWorker(worldMapWorker, {
+        frame: frame?.payload ?? DEFAULT_WORLD_MAP_FRAME,
+        seed: 12,
+        viewport: { width: 1100, height: 540, padding: 24 },
+      })
       setStats({ frameTs: frame?.ts, forecastTs: forecast?.ts, blackSwanTs: blackSwan?.ts, multiverseTs: multiverse?.ts, counts: { checkins, events, frames, runs }, health, safeModeTriggers, tailRiskPanel })
     })
 
@@ -256,6 +258,7 @@ export function SystemPage() {
   }, [])
 
   const selectedPlanet = useMemo(() => worldMapSnapshot?.planets.find((planet) => planet.id === selectedPlanetId) ?? null, [selectedPlanetId, worldMapSnapshot])
+  const hasNoHistory = (stats.counts.checkins ?? 0) === 0 || (stats.counts.frames ?? 0) === 0
 
   const panelLevers = useMemo((): PlanetLever[] => {
     if (!selectedPlanet) return []
@@ -340,6 +343,22 @@ export function SystemPage() {
 
         <section className="panel" aria-label="World map">
           <h2>Карта мира (SVG)</h2>
+          {hasNoHistory ? (
+            <article className="empty-state panel" aria-label="Пустое состояние карты мира">
+              <h3>Недостаточно данных для истории</h3>
+              <p>Планеты уже доступны: можно открыть брифинг по каждой и начать наполнять карту событиями.</p>
+              <div className="settings-actions">
+                <button type="button" onClick={() => { window.location.hash = '#/launch' }}>Сделать первый чек-ин</button>
+                {import.meta.env.DEV ? (
+                  <button type="button" onClick={async () => {
+                    await seedTestData(30, 42)
+                    window.location.hash = '#/system'
+                    window.location.reload()
+                  }}>Сид тест-данных</button>
+                ) : null}
+              </div>
+            </article>
+          ) : null}
           <div className="system-world-layout">
             {worldMapSnapshot ? (
               <WorldMapView

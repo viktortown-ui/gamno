@@ -108,6 +108,9 @@ export function WorldMapView({ snapshot, onPlanetSelect, selectedPlanetId }: Wor
   }
 
   const handlePointerEnd = (event: ReactPointerEvent<SVGSVGElement>) => {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
     pointerMapRef.current.delete(event.pointerId)
     if (pointerMapRef.current.size < 2) pinchSessionRef.current = null
     if (pointerMapRef.current.size === 0) {
