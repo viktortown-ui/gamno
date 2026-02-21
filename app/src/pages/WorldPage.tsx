@@ -9,6 +9,7 @@ import type { WorldMapSnapshot } from '../core/worldMap/types'
 import type { FrameSnapshot } from '../core/frame/frameEngine'
 import { buildFrameSnapshot } from '../core/frame/frameEngine'
 import type { HorizonAuditSummaryRecord } from '../repo/actionAuditRepo'
+import { buildWorldFxEvents, mapFrameToHudSignals } from './worldCockpit'
 
 const DEFAULT_WORLD_MAP_FRAME: FrameSnapshot = buildFrameSnapshot({ nowTs: Date.UTC(2026, 0, 1) })
 const WORLD_ROUTE = '/world'
@@ -56,6 +57,7 @@ export function WorldPage() {
   const [whyTopRu, setWhyTopRu] = useState<string[]>([])
   const [debtProtocol, setDebtProtocol] = useState<string[]>([])
   const [modelTrust, setModelTrust] = useState('n/a')
+  const [trustReason, setTrustReason] = useState('Нет данных.')
   const [policyMode, setPolicyMode] = useState('balanced')
   const [selectedPlanetId, setSelectedPlanetId] = useState<string | null>(() => getHashPlanetId())
   const lastOriginRef = useRef<HTMLElement | null>(null)
@@ -104,6 +106,7 @@ export function WorldPage() {
       setWhyTopRu(lastAudit?.whyTopRu ?? [])
       setDebtProtocol((latest.debt.protocol ?? []).slice(0, 4))
       setModelTrust(lastAudit?.modelHealth?.grade ?? 'n/a')
+      setTrustReason(lastAudit?.modelHealth?.reasonsRu?.[0] ?? 'Нет свежей диагностики.')
       setPolicyMode(lastAudit?.horizonSummary?.[0]?.policyMode ?? 'balanced')
     })
 
@@ -125,6 +128,8 @@ export function WorldPage() {
   }, [replayFrame])
 
   const selectedPlanet = useMemo(() => worldMapSnapshot?.planets.find((planet) => planet.id === selectedPlanetId) ?? null, [selectedPlanetId, worldMapSnapshot])
+  const currentFrame = frames[timelineIndex]?.payload ?? DEFAULT_WORLD_MAP_FRAME
+  const previousFrame = timelineIndex > 0 ? frames[timelineIndex - 1]?.payload : undefined
 
   const panelLevers = useMemo((): PlanetLever[] => {
     if (!selectedPlanet) return []
@@ -150,16 +155,23 @@ export function WorldPage() {
       })
   }, [horizonSummary, selectedPlanet])
 
+  const hudSignals = mapFrameToHudSignals({
+    frame: currentFrame,
+    mode: policyMode,
+    failRate: panelLevers[0]?.failRate ?? 0,
+    trust: { grade: modelTrust as 'green' | 'yellow' | 'red', reasonsRu: [trustReason] },
+  })
+
+  const fxEvents = worldMapSnapshot
+    ? buildWorldFxEvents({ current: currentFrame, previous: previousFrame, snapshot: worldMapSnapshot })
+    : []
+
   return (
     <section className="world-page" aria-label="World cockpit">
-      <div className="world-hud panel">
-        <span>mode: <strong>{policyMode}</strong></span>
-        <span>{replayFrame.regimeSnapshot.disarmProtocol.length ? 'safeMode:on' : `siren:${replayFrame.regimeSnapshot.sirenLevel}`}</span>
-        <span>P(collapse): {(replayFrame.regimeSnapshot.pCollapse * 100).toFixed(1)}%</span>
-        <span>ES97.5: {((replayFrame.tailRiskSummary.esCollapse10 ?? 0) * 100).toFixed(1)}%</span>
-        <span>failRate: {((panelLevers[0]?.failRate ?? 0) * 100).toFixed(1)}%</span>
-        <span>goal: {replayFrame.goal.active?.title ?? 'Без активной цели'}</span>
-        <span>trust: {modelTrust}</span>
+      <div className="world-hud panel" role="list" aria-label="Сигналы cockpit">
+        {hudSignals.map((signal) => (
+          <span key={signal.key} role="listitem"><strong>{signal.label}</strong>: {signal.value}</span>
+        ))}
       </div>
 
       <div className="world-replay panel">
@@ -173,6 +185,8 @@ export function WorldPage() {
           <WorldMapView
             snapshot={worldMapSnapshot}
             selectedPlanetId={selectedPlanetId}
+            showNeighborLabels={false}
+            fxEvents={fxEvents}
             onPlanetSelect={(planetId, origin) => {
               if (origin) lastOriginRef.current = origin
               setHashPlanetId(planetId)

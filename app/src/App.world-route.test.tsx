@@ -19,6 +19,23 @@ async function flush(): Promise<void> {
 }
 
 describe('App world routes', () => {
+
+  it('renders /world route directly', async () => {
+    window.location.hash = '#/world'
+    const { default: App } = await import('./App')
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+
+    await act(async () => { root.render(<HashRouter><App /></HashRouter>) })
+    await act(async () => { await flush() })
+
+    expect(container.textContent).toContain('WORLD')
+
+    await act(async () => { root.unmount() })
+    container.remove()
+  })
+
   it('renders /map as /world alias', async () => {
     window.location.hash = '#/map'
     const { default: App } = await import('./App')

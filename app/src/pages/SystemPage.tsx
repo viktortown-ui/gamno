@@ -145,8 +145,11 @@ export function SystemPage() {
 
         <section className="panel" aria-label="Карта мира ссылка">
           <h2>Карта мира</h2>
-          <p>Полный cockpit теперь открыт на отдельной странице.</p>
-          <a href="#/world">Открыть карту мира</a>
+          <p>Диагностический режим: основная карта перенесена в отдельный cockpit.</p>
+          <div className="system-world-preview" aria-hidden="true">
+            <span>◌</span><span>◍</span><span>◎</span>
+          </div>
+          <a className="button-secondary" href="#/world">Открыть Мир</a>
         </section>
 
         {stats.health ? (
