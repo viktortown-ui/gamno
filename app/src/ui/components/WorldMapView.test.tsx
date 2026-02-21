@@ -56,7 +56,7 @@ describe('WorldMapView', () => {
     expect(container.querySelector('svg')).not.toBeNull()
     expect(container.querySelectorAll('circle[id^="svg-ring:"]').length).toBe(snapshot.rings.length)
     expect(container.querySelectorAll('g[id^="svg-planet:"]').length).toBe(snapshot.planets.length)
-    expect(container.textContent).toContain('Ядро')
+    expect(container.textContent).toContain(snapshot.planets[0]?.labelRu ?? '')
   })
 
   it('shows labels only for selected planet when neighbor labels are disabled', async () => {
@@ -114,6 +114,30 @@ describe('WorldMapView', () => {
     container.remove()
   })
 
+
+  it('switches uiVariant DOM state', async () => {
+    const container = document.createElement('div')
+    const root = createRoot(container)
+
+    await act(async () => {
+      root.render(<WorldMapView snapshot={snapshot} uiVariant="instrument" />)
+    })
+    const map = container.querySelector('.world-map')
+    expect(map?.getAttribute('data-ui-variant')).toBe('instrument')
+    expect(map?.classList.contains('world-map--instrument')).toBe(true)
+
+    await act(async () => {
+      root.render(<WorldMapView snapshot={snapshot} uiVariant="cinematic" />)
+    })
+    const switched = container.querySelector('.world-map')
+    expect(switched?.getAttribute('data-ui-variant')).toBe('cinematic')
+    expect(switched?.classList.contains('world-map--cinematic')).toBe(true)
+
+    await act(async () => {
+      root.unmount()
+    })
+    container.remove()
+  })
   it('supports roving tabindex and keyboard selection', async () => {
     const onSelect = vi.fn<(id: string | null) => void>()
     const container = document.createElement('div')

@@ -78,6 +78,16 @@ export function SettingsPage({ onDataChanged, appearance, onAppearanceChange }: 
               <option value="reduced">Сниженная</option>
             </select>
           </label>
+          <label>Мир (dev)
+            <select
+              value={appearance.worldUiVariant}
+              onChange={(event) => onAppearanceChange({ ...appearance, worldUiVariant: event.target.value === 'cinematic' ? 'cinematic' : 'instrument' })}
+            >
+              <option value="instrument">Instrument</option>
+              <option value="cinematic">Cinematic</option>
+            </select>
+          </label>
+
         </div>
       </article>
 
