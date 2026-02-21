@@ -84,13 +84,13 @@ function scoreRollout(mode: PolicyMode, deltas: PolicyActionEvaluation['deltas']
   return reward - penalties - stressPenalty
 }
 
-function budgetFor(state: ActionState): ActionBudgetEnvelope {
+function budgetFor(state: ActionState, tuning: { load: number; cautious: number }): ActionBudgetEnvelope {
   return {
-    maxTimeMin: 90,
-    maxEnergy: 35,
+    maxTimeMin: Number((90 * (1 - tuning.load * 0.2)).toFixed(2)),
+    maxEnergy: Number((35 * (1 - tuning.load * 0.2)).toFixed(2)),
     maxMoney: 5000,
     maxTimeDebt: 0.25,
-    maxRisk: modeBudgetRisk(state.sirenLevel),
+    maxRisk: Number((modeBudgetRisk(state.sirenLevel) * (1 - tuning.cautious * 0.25)).toFixed(4)),
     maxEntropy: 0.2,
   }
 }
@@ -123,15 +123,16 @@ function evaluateTailSignal(baseState: ActionState, horizon: PolicyHorizon, seed
   return Number(((blackSwan.tail.esCollapse + multiverseTail.cvar5Collapse) / 2).toFixed(4))
 }
 
-function runActionRollout(params: {
+function runActionRollout(paramsInput: {
   state: ActionState
   mode: PolicyMode
   action: ReturnType<typeof buildActionLibrary>[number]
   seed: number
   horizon: PolicyHorizon
   constraints: PolicyConstraints
+  tuning: { load: number; cautious: number }
 }): HorizonCandidateResult | null {
-  const { state, mode, action, seed, horizon, constraints } = params
+  const { state, mode, action, seed, horizon, constraints } = paramsInput
   const ctx: ActionContext = { seed, mode }
   if (!action.preconditions(state, ctx)) return null
   if (mode === 'risk' && action.tags.includes('shock')) return null
@@ -141,7 +142,16 @@ function runActionRollout(params: {
   const gamma = 0.92
   const discountedScores: number[] = []
   let fail = 0
-  const penalty = penaltyScore(action.defaultCost, COST_WEIGHTS[mode], budgetFor(cur))
+  const loadMultiplier = 1 + paramsInput.tuning.load * 0.5
+  const cautiousMultiplier = 1 + paramsInput.tuning.cautious * 0.7
+  const tunedWeights: ActionCostWeights = {
+    ...COST_WEIGHTS[mode],
+    timeMin: Number((COST_WEIGHTS[mode].timeMin * loadMultiplier).toFixed(4)),
+    energy: Number((COST_WEIGHTS[mode].energy * loadMultiplier).toFixed(4)),
+    risk: Number((COST_WEIGHTS[mode].risk * cautiousMultiplier).toFixed(4)),
+    timeDebt: Number((COST_WEIGHTS[mode].timeDebt * cautiousMultiplier).toFixed(4)),
+  }
+  const penalty = penaltyScore(action.defaultCost, tunedWeights, budgetFor(cur, paramsInput.tuning))
 
   for (let day = 0; day < horizon; day += 1) {
     const stepDeltas = action.effectsFn(cur, ctx)
@@ -204,6 +214,7 @@ export function evaluatePolicyHorizonInWorker(input: PolicyHorizonWorkerInput): 
           seed: input.seed + idx * 97 + horizon * 31,
           horizon,
           constraints: input.constraints,
+          tuning: input.tuning,
         }))
         .filter((item): item is HorizonCandidateResult => Boolean(item))
         .sort((a, b) => b.score - a.score || a.actionId.localeCompare(b.actionId))

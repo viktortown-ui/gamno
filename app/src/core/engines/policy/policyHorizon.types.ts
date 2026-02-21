@@ -1,4 +1,4 @@
-import type { PolicyConstraints, PolicyMode, PolicyStateVector } from './index'
+import type { PolicyConstraints, PolicyMode, PolicyStateVector, PolicyTuning } from './index'
 
 export type PolicyHorizon = 3 | 7
 
@@ -25,6 +25,7 @@ export interface PolicyHorizonWorkerInput {
   constraints: PolicyConstraints
   seed: number
   topK: number
+  tuning: PolicyTuning
 }
 
 export interface PolicyHorizonWorkerOutput {

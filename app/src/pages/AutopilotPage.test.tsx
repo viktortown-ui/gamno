@@ -41,7 +41,7 @@ const policyResults: PolicyResult[] = [
     nameRu: 'Сбалансированный',
     ranked: [
       { action: { id: 'bal:1', titleRu: 'Действие Баланс 1' } as PolicyResult['best']['action'], score: 4, penalty: 0.3, deltas: { goalScore: 0.4, index: 0.3, pCollapse: 0.01, tailRisk: 0.01, debt: 0.02, sirenRisk: 0.01 }, reasonsRu: ['Причина 3'] },
-      { action: { id: 'bal:2', titleRu: 'Действие Баланс 2' } as PolicyResult['best']['action'], score: 3, penalty: 0.2, deltas: { goalScore: 0.2, index: 0.2, pCollapse: 0.01, tailRisk: 0.01, debt: 0.02, sirenRisk: 0.01 }, reasonsRu: ['Причина 4'] },
+      { action: { id: 'bal:2', titleRu: 'Действие Баланс 2' } as PolicyResult['best']['action'], score: 3, penalty: 0.2, deltas: { goalScore: 0.2, index: 0.2, pCollapse: 0.01, tailRisk: 0.01, debt: 0.2, sirenRisk: 0.01 }, reasonsRu: ['Причина 4'] },
     ],
     best: { action: { id: 'bal:1', titleRu: 'Действие Баланс 1' } as PolicyResult['best']['action'], score: 4, penalty: 0.3, deltas: { goalScore: 0.4, index: 0.3, pCollapse: 0.01, tailRisk: 0.01, debt: 0.02, sirenRisk: 0.01 }, reasonsRu: ['Причина 3'] },
   },
@@ -61,14 +61,15 @@ const latestAudit: ActionAuditRecord = {
   chosenActionId: 'bal:1',
   stateHash: 'hstate',
   seed: 42,
-  reproToken: { buildId: 'dev', seed: 42, stateHash: 'hstate', catalogHash: 'hcat', policyVersion: '2.0-01-pr3' },
+  reproToken: { buildId: 'dev', seed: 42, stateHash: 'hstate', catalogHash: 'hcat', policyVersion: '2.0-01-pr4' },
   topCandidates: [{ actionId: 'bal:1', score: 4, penalty: 0.3 }],
   whyTopRu: ['• Лучший баланс'],
   horizonSummary: [
     { horizonDays: 3, policyMode: 'balanced', actionId: 'bal:1', stats: { mean: 1, p10: 0.5, p50: 1.2, p90: 1.8, tail: 0.11, failRate: 0.05 } },
     { horizonDays: 3, policyMode: 'balanced', actionId: 'bal:2', stats: { mean: 1, p10: 0.4, p50: 1.1, p90: 1.6, tail: 0.1, failRate: 0.06 } },
+    { horizonDays: 7, policyMode: 'balanced', actionId: 'bal:1', stats: { mean: 1, p10: 0.2, p50: 1.5, p90: 1.9, tail: 0.08, failRate: 0.03 } },
   ],
-  modelHealth: { placeholder: true },
+  modelHealth: { level: 'high', reason: 'Стабильные интервалы.' },
 }
 
 vi.mock('../core/engines/policy', () => ({
@@ -86,7 +87,7 @@ describe('AutopilotPage', () => {
     document.body.innerHTML = ''
   })
 
-  it('renders autopilot 2 panels with mocked outputs and audit list', async () => {
+  it('renders briefing, duel, model health and drilldown from mocked outputs', async () => {
     const { AutopilotPage } = await import('./AutopilotPage')
     const container = document.createElement('div')
     document.body.appendChild(container)
@@ -100,10 +101,11 @@ describe('AutopilotPage', () => {
       await Promise.resolve()
     })
 
-    expect(container.textContent).toContain('Best action now')
-    expect(container.textContent).toContain('Explain')
-    expect(container.textContent).toContain('Последние записи')
-    expect(container.textContent).toContain('policyVersion: 2.0-01-pr3')
+    expect(container.textContent).toContain('Briefing')
+    expect(container.textContent).toContain('Policy Duel')
+    expect(container.textContent).toContain('Action Drilldown')
+    expect(container.textContent).toContain('Model Health: high · Стабильные интервалы.')
+    expect(container.textContent).toContain('best p50:')
   })
 
   it('maps candidates in deterministic order by p50, p90, actionId', async () => {
@@ -122,5 +124,19 @@ describe('AutopilotPage', () => {
     })
 
     expect(cards[0].candidates.map((item) => item.actionId)).toEqual(['risk:c', 'risk:a', 'risk:b'])
+  })
+
+  it('builds drilldown delta preview and budget warning deterministically', async () => {
+    const { getDrilldownCandidates } = await import('./autopilotUi')
+    const rows = getDrilldownCandidates({
+      selected: policyResults[1],
+      constraints: { maxPCollapse: 0.03, sirenCap: 0.03, maxDebtGrowth: 0.1, minRecoveryScore: 55 },
+      topK: 2,
+    })
+
+    expect(rows).toHaveLength(2)
+    expect(rows[0].id).toBe('bal:1')
+    expect(rows[1].warnings).toContain('Рост долга выше лимита.')
+    expect(rows[0].deltas.goalScore).toBe(0.4)
   })
 })

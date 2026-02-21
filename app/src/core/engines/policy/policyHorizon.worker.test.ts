@@ -28,7 +28,7 @@ const constraints: PolicyConstraints = {
 describe('policy horizon worker', () => {
   it('deterministic for fixed seed and state', () => {
     const state = buildStateVector({ latestCheckin: checkin, checkins: [checkin], activeGoal: null })
-    const input = { state, constraints, seed: 77, topK: 4 }
+    const input = { state, constraints, seed: 77, topK: 4, tuning: { load: 0, cautious: 0 } }
     const first = evaluatePolicyHorizonInWorker(input)
     const second = evaluatePolicyHorizonInWorker(input)
     expect(first).toEqual(second)

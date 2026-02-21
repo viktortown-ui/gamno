@@ -83,6 +83,11 @@ export interface PolicyAudit {
   forecastConfidence: 'низкая' | 'средняя' | 'высокая'
 }
 
+export interface PolicyTuning {
+  load: number
+  cautious: number
+}
+
 export interface PolicyHorizonResult {
   byHorizon: PolicyHorizonWorkerOutput['byHorizon']
   bestByPolicy: PolicyHorizonWorkerOutput['bestByPolicy']
@@ -251,10 +256,15 @@ export function evaluatePolicies(params: {
   actions: PolicyAction[]
   constraints: PolicyConstraints
   seed?: number
+  tuning?: PolicyTuning
 }): PolicyResult[] {
   const { state, actions, constraints, seed = 0 } = params
+  const tuning = params.tuning ?? { load: 0, cautious: 0 }
   const modes: PolicyMode[] = ['risk', 'balanced', 'growth']
   const baseState = toActionState(state)
+
+  const loadMultiplier = 1 + tuning.load * 0.5
+  const cautiousMultiplier = 1 + tuning.cautious * 0.7
 
   const costWeights: Record<PolicyMode, ActionCostWeights> = {
     risk: { timeMin: 0.01, energy: 0.04, money: 0.001, timeDebt: 2.5, risk: 6.5, entropy: 1.8 },
@@ -262,12 +272,24 @@ export function evaluatePolicies(params: {
     growth: { timeMin: 0.015, energy: 0.03, money: 0.0008, timeDebt: 1.2, risk: 2.4, entropy: 0.8 },
   }
 
+  const tunedCostWeights = (Object.keys(costWeights) as PolicyMode[]).reduce((acc, policyMode) => {
+    const base = costWeights[policyMode]
+    acc[policyMode] = {
+      ...base,
+      timeMin: Number((base.timeMin * loadMultiplier).toFixed(4)),
+      energy: Number((base.energy * loadMultiplier).toFixed(4)),
+      risk: Number((base.risk * cautiousMultiplier).toFixed(4)),
+      timeDebt: Number((base.timeDebt * cautiousMultiplier).toFixed(4)),
+    }
+    return acc
+  }, {} as Record<PolicyMode, ActionCostWeights>)
+
   const budget: ActionBudgetEnvelope = {
-    maxTimeMin: 90,
-    maxEnergy: 35,
+    maxTimeMin: Number((90 * (1 - tuning.load * 0.2)).toFixed(2)),
+    maxEnergy: Number((35 * (1 - tuning.load * 0.2)).toFixed(2)),
     maxMoney: 5000,
     maxTimeDebt: 0.25,
-    maxRisk: modeBudgetRisk(state.sirenLevel),
+    maxRisk: Number((modeBudgetRisk(state.sirenLevel) * (1 - tuning.cautious * 0.25)).toFixed(4)),
     maxEntropy: 0.2,
   }
 
@@ -278,7 +300,7 @@ export function evaluatePolicies(params: {
       .map((action) => {
         const deltas = action.effectsFn(baseState, ctx)
         const baseScore = scoreAction({ mode, deltas, state })
-        const penalty = penaltyScore(action.defaultCost, costWeights[mode], budget)
+        const penalty = penaltyScore(action.defaultCost, tunedCostWeights[mode], budget)
         const score = Number((baseScore - penalty).toFixed(3))
         return {
           action,
@@ -341,6 +363,7 @@ export function evaluatePoliciesWithAuditHorizon(params: {
   constraints: PolicyConstraints
   seed: number
   topK?: number
+  tuning?: PolicyTuning
 }): Promise<PolicyHorizonResult> {
   return new Promise((resolve, reject) => {
     const worker = createPolicyHorizonWorker()
@@ -358,6 +381,7 @@ export function evaluatePoliciesWithAuditHorizon(params: {
       constraints: params.constraints,
       seed: params.seed,
       topK: params.topK ?? 5,
+      tuning: params.tuning ?? { load: 0, cautious: 0 },
     }
     worker.postMessage({ type: 'run', input })
   })
@@ -370,14 +394,15 @@ export async function evaluatePoliciesWithAudit(params: {
   seed: number
   buildId: string
   policyVersion: string
+  tuning?: PolicyTuning
 }): Promise<PolicyResult[]> {
   const actions = buildActionLibrary()
-  const evaluated = evaluatePolicies({ state: params.state, actions, constraints: params.constraints, seed: params.seed })
+  const evaluated = evaluatePolicies({ state: params.state, actions, constraints: params.constraints, seed: params.seed, tuning: params.tuning })
   const selected = evaluated.find((item) => item.mode === params.mode) ?? evaluated[0]
   const stateHash = buildStateHash(toActionState(params.state))
   const topCandidates = selected.ranked.slice(0, 5).map((item) => ({ actionId: item.action.id, score: item.score, penalty: Number(item.penalty ?? 0) }))
   const catalogHash = buildCatalogHash(actions)
-  const horizon = await evaluatePoliciesWithAuditHorizon({ state: params.state, constraints: params.constraints, seed: params.seed, topK: 5 })
+  const horizon = await evaluatePoliciesWithAuditHorizon({ state: params.state, constraints: params.constraints, seed: params.seed, topK: 5, tuning: params.tuning })
   const horizonSummary = (Object.keys(horizon.byHorizon) as Array<'3' | '7'>).flatMap((horizonKey) => {
     const horizonDays = Number(horizonKey) as 3 | 7
     const byMode = horizon.byHorizon[horizonDays]
