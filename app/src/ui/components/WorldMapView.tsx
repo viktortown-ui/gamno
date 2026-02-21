@@ -3,11 +3,19 @@ import type { KeyboardEvent, PointerEvent as ReactPointerEvent, WheelEvent } fro
 import type { WorldMapPlanet, WorldMapSnapshot } from '../../core/worldMap/types'
 import { createPanZoomState, panBy, pinchTransform, zoomAroundPoint, type PanZoomState } from './worldMapPanZoom'
 
+interface WorldFxEvent {
+  key: string
+  type: 'pulse' | 'burst' | 'storm'
+  planetId?: string
+  intensity: number
+}
+
 interface WorldMapViewProps {
   snapshot: WorldMapSnapshot
   onPlanetSelect?: (planetId: string | null, origin?: HTMLElement | null) => void
   selectedPlanetId?: string | null
   showNeighborLabels?: boolean
+  fxEvents?: WorldFxEvent[]
 }
 
 interface PointerData {
@@ -31,12 +39,13 @@ function center(a: PointerData, b: PointerData): { x: number; y: number } {
   return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
 }
 
-export function WorldMapView({ snapshot, onPlanetSelect, selectedPlanetId, showNeighborLabels = true }: WorldMapViewProps) {
+export function WorldMapView({ snapshot, onPlanetSelect, selectedPlanetId, showNeighborLabels = true, fxEvents = [] }: WorldMapViewProps) {
   const planets = useMemo(() => [...snapshot.planets].sort((a, b) => (a.order - b.order) || a.id.localeCompare(b.id, 'ru')), [snapshot.planets])
   const [internalSelectedId, setInternalSelectedId] = useState<string | null>(null)
   const [focusedId, setFocusedId] = useState<string>(planets[0]?.id ?? '')
   const [transform, setTransform] = useState<PanZoomState>(() => createPanZoomState())
   const [isPanning, setIsPanning] = useState(false)
+  const [reducedMotion, setReducedMotion] = useState(false)
 
   const pointerMapRef = useRef<Map<number, PointerData>>(new Map())
   const lastPanPointRef = useRef<PointerData | null>(null)
@@ -48,6 +57,37 @@ export function WorldMapView({ snapshot, onPlanetSelect, selectedPlanetId, showN
     if (active && document.activeElement !== active) active.focus()
   }, [focusedId])
 
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return
+    const media = window.matchMedia('(prefers-reduced-motion: reduce)')
+    const apply = () => setReducedMotion(media.matches)
+    apply()
+    if (typeof media.addEventListener === 'function') {
+      media.addEventListener('change', apply)
+      return () => media.removeEventListener('change', apply)
+    }
+    media.addListener?.(apply)
+    return () => media.removeListener?.(apply)
+  }, [])
+
+  const fxByPlanet = useMemo(() => {
+    const map = new Map<string, WorldFxEvent[]>()
+    if (reducedMotion) return map
+    fxEvents.forEach((event) => {
+      if (!event.planetId) return
+      const row = map.get(event.planetId) ?? []
+      row.push(event)
+      map.set(event.planetId, row)
+    })
+    return map
+  }, [fxEvents, reducedMotion])
+
+  const stormIntensity = useMemo(() => {
+    if (reducedMotion) return 0
+    return fxEvents
+      .filter((item) => item.type === 'storm')
+      .reduce((max, item) => Math.max(max, item.intensity), 0)
+  }, [fxEvents, reducedMotion])
 
   const selectedId = selectedPlanetId ?? internalSelectedId
   const visibleLabelIds = useMemo(() => {
@@ -198,17 +238,24 @@ export function WorldMapView({ snapshot, onPlanetSelect, selectedPlanetId, showN
             />
           ))}
 
+          {stormIntensity > 0 ? <rect x={0} y={0} width={snapshot.viewport.width} height={snapshot.viewport.height} fill={`rgba(255,90,90,${Math.min(0.22, 0.08 + stormIntensity * 0.18)})`} /> : null}
+
           {snapshot.domains.map((domain) => (
             <text key={`label:${domain.id}`} x={snapshot.center.x + domain.orbitRadius + 12} y={snapshot.center.y} fill="var(--muted)" fontSize={11}>{domain.labelRu}</text>
           ))}
 
           {planets.map((planet) => {
             const selected = selectedId === planet.id
+            const planetFx = fxByPlanet.get(planet.id) ?? []
+            const pulse = planetFx.find((item) => item.type === 'pulse')
+            const burst = planetFx.find((item) => item.type === 'burst')
             return (
               <g key={planet.id} id={`svg-${planet.id}`}>
                 {planet.renderHints.drawTailGlow ? (
                   <circle cx={planet.x} cy={planet.y} r={planet.radius + 8} fill="rgba(46, 233, 210, 0.1)" />
                 ) : null}
+                {pulse ? <circle cx={planet.x} cy={planet.y} r={planet.radius + 10 + pulse.intensity * 8} fill="none" stroke="rgba(67, 243, 208, 0.7)" strokeWidth={1.5 + pulse.intensity * 1.5} /> : null}
+                {burst ? <circle cx={planet.x} cy={planet.y} r={planet.radius + 4 + burst.intensity * 6} fill="rgba(125, 255, 186, 0.25)" /> : null}
                 <circle
                   cx={planet.x}
                   cy={planet.y}

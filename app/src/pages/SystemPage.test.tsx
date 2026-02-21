@@ -61,7 +61,7 @@ describe('SystemPage', () => {
 
     const link = container.querySelector<HTMLAnchorElement>('a[href="#/world"]')
     expect(link).toBeTruthy()
-    expect(container.textContent).toContain('Полный cockpit теперь открыт на отдельной странице')
+    expect(container.textContent).toContain('Диагностический режим: основная карта перенесена в отдельный cockpit')
 
     await act(async () => { root.unmount() })
     container.remove()
