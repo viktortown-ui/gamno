@@ -150,15 +150,14 @@ export function getDrilldownCandidates(params: {
   })
 }
 
-export function getModelHealthView(modelHealth: Record<string, unknown> | null | undefined): { level: 'high' | 'medium' | 'low'; reason: string } {
+export function getModelHealthView(modelHealth: unknown): { level: 'high' | 'medium' | 'low'; reason: string } {
   if (!modelHealth) return { level: 'low', reason: 'Нет данных о здоровье модели.' }
-  const explicitLevel = modelHealth.level
-  const reason = typeof modelHealth.reason === 'string' ? modelHealth.reason : ''
-  if (explicitLevel === 'high' || explicitLevel === 'medium' || explicitLevel === 'low') {
-    return { level: explicitLevel, reason: reason || 'Уровень предоставлен движком.' }
-  }
-  if (modelHealth.placeholder) {
-    return { level: 'medium', reason: 'Временная оценка: используем placeholder из аудита.' }
-  }
-  return { level: 'low', reason: reason || 'Недостаточно сигналов для оценки.' }
+  if (!modelHealth || typeof modelHealth !== 'object') return { level: 'low', reason: 'Нет данных о здоровье модели.' }
+  const healthRecord = modelHealth as { grade?: unknown; reasonsRu?: unknown }
+  const grade = healthRecord.grade
+  const reasons = Array.isArray(healthRecord.reasonsRu) ? healthRecord.reasonsRu.filter((item): item is string => typeof item === 'string') : []
+  if (grade === 'green') return { level: 'high', reason: reasons[0] ?? 'Модель стабильна.' }
+  if (grade === 'yellow') return { level: 'medium', reason: reasons[0] ?? 'Модель требует внимания.' }
+  if (grade === 'red') return { level: 'low', reason: reasons[0] ?? 'Модель нестабильна.' }
+  return { level: 'low', reason: 'Недостаточно сигналов для оценки.' }
 }

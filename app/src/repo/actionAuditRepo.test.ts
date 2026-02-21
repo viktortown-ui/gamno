@@ -23,7 +23,7 @@ describe('actionAuditRepo', () => {
       reproToken: { buildId: 'dev', seed: 42, stateHash: 'hstate', catalogHash: 'hcat', policyVersion: '2.0-01-pr1' },
       topCandidates: [{ actionId: 'focus:deep-25', score: 1.2, penalty: 0.3 }],
       whyTopRu: ['• Стабилен'],
-      modelHealth: { placeholder: true },
+      modelHealth: { v: 1, kind: 'policy', grade: 'yellow', reasonsRu: ['Тестовый снимок.'], data: { samples: 6, minSamples: 6, sufficient: true }, calibration: { brier: 0.2, worstGap: 0.1, bins: [] }, drift: { triggered: false, triggerIndex: null, score: 0.02 } },
     })
 
     const last = await getLastActionAudit()

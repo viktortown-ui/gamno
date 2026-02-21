@@ -69,7 +69,7 @@ const latestAudit: ActionAuditRecord = {
     { horizonDays: 3, policyMode: 'balanced', actionId: 'bal:2', stats: { mean: 1, p10: 0.4, p50: 1.1, p90: 1.6, tail: 0.1, failRate: 0.06 } },
     { horizonDays: 7, policyMode: 'balanced', actionId: 'bal:1', stats: { mean: 1, p10: 0.2, p50: 1.5, p90: 1.9, tail: 0.08, failRate: 0.03 } },
   ],
-  modelHealth: { level: 'high', reason: 'Стабильные интервалы.' },
+  modelHealth: { v: 1, kind: 'policy', grade: 'green', reasonsRu: ['Калибровка стабильная.'], data: { samples: 12, minSamples: 6, sufficient: true }, calibration: { brier: 0.08, worstGap: 0.09, bins: [] }, drift: { triggered: false, triggerIndex: null, score: 0.01 } },
 }
 
 vi.mock('../core/engines/policy', () => ({
@@ -104,7 +104,7 @@ describe('AutopilotPage', () => {
     expect(container.textContent).toContain('Briefing')
     expect(container.textContent).toContain('Policy Duel')
     expect(container.textContent).toContain('Action Drilldown')
-    expect(container.textContent).toContain('Model Health: high · Стабильные интервалы.')
+    expect(container.textContent).toContain('Model Health: high · Калибровка стабильная.')
     expect(container.textContent).toContain('best p50:')
   })
 

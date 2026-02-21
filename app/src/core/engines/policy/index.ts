@@ -14,6 +14,7 @@ import { buildUnifiedActionCatalog } from '../../actions/catalog'
 import { penaltyScore } from '../../actions/costModel'
 import type { ActionBudgetEnvelope, ActionContext, ActionCostWeights } from '../../actions/types'
 import { saveActionAudit } from '../../../repo/actionAuditRepo'
+import { evaluateModelHealth } from '../analytics/modelHealth'
 import type { HorizonCandidateResult, HorizonSummaryCompact, PolicyHorizonWorkerInput, PolicyHorizonWorkerOutput } from './policyHorizon.types'
 
 export type PolicyMode = 'risk' | 'balanced' | 'growth'
@@ -416,6 +417,18 @@ export async function evaluatePoliciesWithAudit(params: {
     )
   })
 
+  const policyCalibration = horizonSummary.map((item) => ({
+    probability: Math.max(0, Math.min(1, 1 - item.stats.failRate)),
+    outcome: item.stats.failRate <= params.constraints.sirenCap ? 1 as const : 0 as const,
+  }))
+  const policyDriftSeries = horizonSummary.map((item) => Number(Math.abs(item.stats.p90 - item.stats.p10).toFixed(4)))
+  const policyHealth = evaluateModelHealth({
+    kind: 'policy',
+    calibration: policyCalibration,
+    driftSeries: policyDriftSeries,
+    minSamples: 6,
+  })
+
   if (selected) {
     await saveActionAudit({
       ts: Date.now(),
@@ -432,7 +445,7 @@ export async function evaluatePoliciesWithAudit(params: {
       topCandidates,
       horizonSummary,
       whyTopRu: buildWhyTopRu(selected.best.reasonsRu),
-      modelHealth: { placeholder: true },
+      modelHealth: policyHealth,
     })
   }
 

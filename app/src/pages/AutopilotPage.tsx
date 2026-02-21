@@ -320,7 +320,7 @@ export function AutopilotPage({ onChanged }: { onChanged: () => Promise<void> })
         <p>Источник весов: <strong>{audit?.weightsSource ?? '—'}</strong> · mix: <strong>{audit?.mix ?? '—'}</strong></p>
         <p>Последний хвостовой прогон: <strong>{audit?.tailRiskRunTs ? new Date(audit.tailRiskRunTs).toLocaleString('ru-RU') : 'нет'}</strong></p>
         <p>Уверенность прогноза: <strong>{audit?.forecastConfidence ?? '—'}</strong></p>
-        <p>Model Health: <strong>{health.level}</strong> · {health.reason}</p>
+        <p>Model Health: <span className="chip"><strong>{health.level}</strong></span> · {health.reason}</p>
         <p>Последний запуск автопилота: <strong>{lastRunTs ? new Date(lastRunTs).toLocaleString('ru-RU') : '—'}</strong></p>
 
         <div className="audit-layout">
