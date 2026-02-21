@@ -15,10 +15,11 @@ interface SystemStats {
   multiverseTs?: number
   counts: Record<string, number>
   health: { learned: ModelHealthSnapshot; forecast: ModelHealthSnapshot; policy: ModelHealthSnapshot } | null
+  safeModeTriggers: Array<{ ts: number; chosenActionId: string; gatesApplied: string[]; reasonsRu: string[]; fallbackPolicy?: string }>
 }
 
 export function SystemPage() {
-  const [stats, setStats] = useState<SystemStats>({ counts: {}, health: null })
+  const [stats, setStats] = useState<SystemStats>({ counts: {}, health: null, safeModeTriggers: [] })
 
   useEffect(() => {
     void Promise.all([
@@ -71,7 +72,18 @@ export function SystemPage() {
         policy: policyHealthFromAudit ?? evaluateModelHealth({ kind: 'policy', calibration: policyCalibration, driftSeries: policyDrift, minSamples: 6 }),
       }
 
-      setStats({ frameTs: frame?.ts, forecastTs: forecast?.ts, blackSwanTs: blackSwan?.ts, multiverseTs: multiverse?.ts, counts: { checkins, events, frames, runs }, health })
+      const safeModeTriggers = audits
+        .filter((audit) => audit.safeMode)
+        .slice(0, 8)
+        .map((audit) => ({
+          ts: audit.ts,
+          chosenActionId: audit.chosenActionId,
+          gatesApplied: audit.gatesApplied ?? [],
+          reasonsRu: audit.gateReasonsRu ?? [],
+          fallbackPolicy: audit.fallbackPolicy,
+        }))
+
+      setStats({ frameTs: frame?.ts, forecastTs: forecast?.ts, blackSwanTs: blackSwan?.ts, multiverseTs: multiverse?.ts, counts: { checkins, events, frames, runs }, health, safeModeTriggers })
     })
   }, [])
 
@@ -93,6 +105,22 @@ export function SystemPage() {
             <CalibrationTrustCard title="Policy" health={stats.health.policy} />
           </section>
         ) : null}
+        <section className="panel" aria-label="Safe Mode triggers">
+          <h2>Safe Mode triggers</h2>
+          {stats.safeModeTriggers.length ? (
+            <ul>
+              {stats.safeModeTriggers.map((item) => (
+                <li key={`${item.ts}-${item.chosenActionId}`}>
+                  {new Date(item.ts).toLocaleString('ru-RU')} · action {item.chosenActionId}
+                  {item.fallbackPolicy ? ` · fallback ${item.fallbackPolicy}` : ''}
+                  {item.gatesApplied.length ? ` · gates: ${item.gatesApplied.join(', ')}` : ''}
+                  {item.reasonsRu.length ? <div>{item.reasonsRu.join(' ')}</div> : null}
+                </li>
+              ))}
+            </ul>
+          ) : <p>Триггеры Safe Mode пока не зафиксированы.</p>}
+        </section>
+
         <div className="settings-actions">
           <button type="button" onClick={() => {
             const report = { build: import.meta.env.VITE_APP_VERSION ?? 'dev', schemaVersion, stats, settings: { theme: document.documentElement.dataset.theme }, lastErrors: window.localStorage.getItem('gamno.lastError') }

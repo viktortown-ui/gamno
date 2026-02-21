@@ -148,6 +148,8 @@ export function AutopilotPage({ onChanged }: { onChanged: () => Promise<void> })
   const duel = useMemo(() => getPolicyDuelSummary({ horizonSummary: latestActionAudit?.horizonSummary ?? [], horizon }), [latestActionAudit, horizon])
   const drilldown = useMemo(() => getDrilldownCandidates({ selected, constraints, topK: 3 }), [selected, constraints])
   const health = useMemo<ModelHealthView>(() => getModelHealthView(latestActionAudit?.modelHealth), [latestActionAudit])
+  const safeMode = latestActionAudit?.safeMode ?? false
+  const safeModeReasons = latestActionAudit?.gateReasonsRu ?? []
 
   const fanChartPoints = useMemo(() => {
     const actionId = selected?.best.action.id
@@ -204,6 +206,13 @@ export function AutopilotPage({ onChanged }: { onChanged: () => Promise<void> })
     <section className="page panel" aria-label="Автопилот 2">
       <h1>Автопилот</h1>
       <p>Решения рассчитываются детерминированно из текущего состояния, цели и ограничений.</p>
+      {safeMode ? (
+        <article className="summary-card panel safe-mode-banner" aria-label="Safe Mode">
+          <p><span className="chip"><strong>Safe Mode</strong></span> Включены honesty-gates.</p>
+          <p>{safeModeReasons.join(' ') || 'Причины записаны в аудит автопилота.'}</p>
+          <p><a href="#/system">Открыть System diagnostics</a></p>
+        </article>
+      ) : null}
 
       <article className="summary-card panel">
         <h2>Briefing</h2>
@@ -329,6 +338,7 @@ export function AutopilotPage({ onChanged }: { onChanged: () => Promise<void> })
         <p>Последний хвостовой прогон: <strong>{audit?.tailRiskRunTs ? new Date(audit.tailRiskRunTs).toLocaleString('ru-RU') : 'нет'}</strong></p>
         <p>Уверенность прогноза: <strong>{audit?.forecastConfidence ?? '—'}</strong></p>
         <p>Model Health: <span className={`status-badge ${health.badgeClass}`}><strong>{health.label}</strong></span> · {health.reason}</p>
+        <p>Safe Mode: <strong>{safeMode ? 'включён' : 'выключен'}</strong>{latestActionAudit?.fallbackPolicy ? ` · fallback policy: ${latestActionAudit.fallbackPolicy}` : ''}</p>
         {latestActionAudit?.modelHealth ? <CalibrationTrustCard title="Policy (audit)" health={latestActionAudit.modelHealth} /> : null}
         <p>Последний запуск автопилота: <strong>{lastRunTs ? new Date(lastRunTs).toLocaleString('ru-RU') : '—'}</strong></p>
 

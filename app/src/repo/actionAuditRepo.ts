@@ -33,6 +33,10 @@ export interface ActionAuditRecord {
   horizonSummary?: HorizonAuditSummaryRecord[]
   whyTopRu: string[]
   modelHealth: ModelHealthSnapshot
+  safeMode?: boolean
+  gatesApplied?: string[]
+  gateReasonsRu?: string[]
+  fallbackPolicy?: 'risk' | 'balanced' | 'growth'
 }
 
 export async function saveActionAudit(record: ActionAuditRecord): Promise<ActionAuditRecord> {

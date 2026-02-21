@@ -1,6 +1,6 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import 'fake-indexeddb/auto'
-import { buildActionLibrary, buildStateVector, evaluatePolicies, evaluatePoliciesWithAudit, type PolicyConstraints } from './index'
+import { buildActionLibrary, buildStateVector, evaluateHonestyGates, evaluatePolicies, evaluatePoliciesWithAudit, type PolicyConstraints } from './index'
 import { evaluatePolicyHorizonInWorker } from './policyHorizon.worker'
 import type { CheckinRecord } from '../../models/checkin'
 
@@ -44,6 +44,15 @@ describe('policy engine', () => {
     const first = evaluatePolicies({ state, actions, constraints, seed: 7 })
     const second = evaluatePolicies({ state, actions, constraints, seed: 7 })
     expect(first).toEqual(second)
+  })
+
+
+  it('honesty gates include safe mode for red grade or drift', () => {
+    const gated = evaluateHonestyGates({ modelHealthGrade: 'red', driftDetected: true, requestedMode: 'growth' })
+    expect(gated.safeMode).toBe(true)
+    expect(gated.fallbackPolicy).toBe('risk')
+    expect(gated.gatesApplied).toEqual(expect.arrayContaining(['model-health-red', 'drift-detected', 'tight-budget', 'tail-fail-penalty-up', 'restrict-risky-paths']))
+    expect(gated.reasonsRu.length).toBeGreaterThan(0)
   })
 
   it('режим осторожный отсекает рост риска сирены по ограничению', () => {
@@ -105,6 +114,55 @@ describe('policy engine', () => {
     expect(last?.horizonSummary?.length).toBeGreaterThan(0)
     expect(last?.horizonSummary?.[0].stats).toHaveProperty('p50')
   })
+
+  it('red/drift scenario applies safe mode, stays deterministic and persists gates in audit', async () => {
+    const state = buildStateVector({ latestCheckin: checkin, checkins: [checkin], activeGoal: null })
+
+    class FakeWorker {
+      onmessage: ((event: MessageEvent<{ type: 'done'; result: ReturnType<typeof evaluatePolicyHorizonInWorker> }>) => void) | null = null
+      constructor(url: URL) {
+        void url
+      }
+      postMessage(message: { type: 'run'; input: Parameters<typeof evaluatePolicyHorizonInWorker>[0] }) {
+        const result = evaluatePolicyHorizonInWorker(message.input)
+        this.onmessage?.({ data: { type: 'done', result } } as MessageEvent<{ type: 'done'; result: typeof result }>)
+      }
+      terminate() {}
+    }
+
+    const originalWorker = globalThis.Worker
+    ;(globalThis as unknown as { Worker: typeof Worker }).Worker = FakeWorker as unknown as typeof Worker
+
+    const modelHealthModule = await import('../analytics/modelHealth')
+    const healthSpy = vi.spyOn(modelHealthModule, 'evaluateModelHealth').mockReturnValue({
+      v: 1,
+      kind: 'policy',
+      grade: 'red',
+      reasonsRu: ['Тест: красная зона.'],
+      data: { samples: 12, minSamples: 6, sufficient: true },
+      calibration: { brier: 0.35, worstGap: 0.32, bins: [] },
+      drift: { triggered: true, triggerIndex: 2, score: 0.33 },
+    })
+
+    const params = { state, constraints, mode: 'growth' as const, seed: 11, buildId: 'test', policyVersion: '2.0-02-pr7' }
+    const first = await evaluatePoliciesWithAudit(params)
+    const second = await evaluatePoliciesWithAudit(params)
+
+    healthSpy.mockRestore()
+    ;(globalThis as unknown as { Worker: typeof Worker | undefined }).Worker = originalWorker
+
+    const firstBest = first.find((item) => item.mode === 'risk')?.best.action.id
+    const secondBest = second.find((item) => item.mode === 'risk')?.best.action.id
+    expect(firstBest).toBe(secondBest)
+
+    const { getLastActionAudit } = await import('../../../repo/actionAuditRepo')
+    const last = await getLastActionAudit()
+    expect(last?.safeMode).toBe(true)
+    expect(last?.fallbackPolicy).toBe('risk')
+    expect(last?.gatesApplied).toEqual(expect.arrayContaining(['model-health-red', 'drift-detected']))
+    expect(last?.gateReasonsRu?.join(' ')).toContain('безопасный режим')
+  })
+
   it('fixed seed+state gives same choice and writes audit', async () => {
     const state = buildStateVector({ latestCheckin: checkin, checkins: [checkin], activeGoal: null })
 
@@ -136,7 +194,9 @@ describe('policy engine', () => {
     const { getLastActionAudit } = await import('../../../repo/actionAuditRepo')
     const last = await getLastActionAudit()
     expect(last).toBeDefined()
-    expect(last?.chosenActionId).toBe(secondBest)
+    const selectedMode = last?.fallbackPolicy ?? 'balanced'
+    const expectedChosen = second.find((item) => item.mode === selectedMode)?.best.action.id
+    expect(last?.chosenActionId).toBe(expectedChosen)
     expect(last?.reproToken.seed).toBe(7)
   })
 })

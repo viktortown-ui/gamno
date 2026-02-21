@@ -89,6 +89,14 @@ export interface PolicyTuning {
   cautious: number
 }
 
+export interface HonestyGateDecision {
+  safeMode: boolean
+  driftDetected: boolean
+  gatesApplied: string[]
+  reasonsRu: string[]
+  fallbackPolicy: PolicyMode
+}
+
 export interface PolicyHorizonResult {
   byHorizon: PolicyHorizonWorkerOutput['byHorizon']
   bestByPolicy: PolicyHorizonWorkerOutput['bestByPolicy']
@@ -234,6 +242,22 @@ function scoreAction(params: { mode: PolicyMode; deltas: PolicyActionEvaluation[
   return Number((reward - penalties - stressPenalty).toFixed(3))
 }
 
+function scoreActionWithGuardrails(params: {
+  mode: PolicyMode
+  deltas: PolicyActionEvaluation['deltas']
+  state: PolicyStateVector
+  safeMode: boolean
+}): number {
+  const tailPenaltyMultiplier = params.safeMode ? 1.8 : 1
+  const failPenaltyMultiplier = params.safeMode ? 1.6 : 1
+  const adjusted = {
+    ...params.deltas,
+    tailRisk: Number((params.deltas.tailRisk * tailPenaltyMultiplier).toFixed(6)),
+    sirenRisk: Number((params.deltas.sirenRisk * failPenaltyMultiplier).toFixed(6)),
+  }
+  return scoreAction({ mode: params.mode, deltas: adjusted, state: params.state })
+}
+
 function reasons(action: PolicyAction, deltas: PolicyActionEvaluation['deltas'], mode: PolicyMode): string[] {
   const reasonsList = [
     `Влияние на индекс: ${deltas.index >= 0 ? '+' : ''}${deltas.index.toFixed(2)}.`,
@@ -258,8 +282,9 @@ export function evaluatePolicies(params: {
   constraints: PolicyConstraints
   seed?: number
   tuning?: PolicyTuning
+  safeMode?: boolean
 }): PolicyResult[] {
-  const { state, actions, constraints, seed = 0 } = params
+  const { state, actions, constraints, seed = 0, safeMode = false } = params
   const tuning = params.tuning ?? { load: 0, cautious: 0 }
   const modes: PolicyMode[] = ['risk', 'balanced', 'growth']
   const baseState = toActionState(state)
@@ -285,13 +310,15 @@ export function evaluatePolicies(params: {
     return acc
   }, {} as Record<PolicyMode, ActionCostWeights>)
 
+  const safeBudgetMultiplier = safeMode ? 0.72 : 1
+
   const budget: ActionBudgetEnvelope = {
-    maxTimeMin: Number((90 * (1 - tuning.load * 0.2)).toFixed(2)),
-    maxEnergy: Number((35 * (1 - tuning.load * 0.2)).toFixed(2)),
+    maxTimeMin: Number((90 * (1 - tuning.load * 0.2) * safeBudgetMultiplier).toFixed(2)),
+    maxEnergy: Number((35 * (1 - tuning.load * 0.2) * safeBudgetMultiplier).toFixed(2)),
     maxMoney: 5000,
-    maxTimeDebt: 0.25,
-    maxRisk: Number((modeBudgetRisk(state.sirenLevel) * (1 - tuning.cautious * 0.25)).toFixed(4)),
-    maxEntropy: 0.2,
+    maxTimeDebt: Number((0.25 * safeBudgetMultiplier).toFixed(4)),
+    maxRisk: Number((modeBudgetRisk(state.sirenLevel) * (1 - tuning.cautious * 0.25) * safeBudgetMultiplier).toFixed(4)),
+    maxEntropy: Number((0.2 * safeBudgetMultiplier).toFixed(4)),
   }
 
   const modeResults = modes.map((mode) => {
@@ -300,7 +327,7 @@ export function evaluatePolicies(params: {
       .filter((action) => action.preconditions(baseState, ctx))
       .map((action) => {
         const deltas = action.effectsFn(baseState, ctx)
-        const baseScore = scoreAction({ mode, deltas, state })
+        const baseScore = scoreActionWithGuardrails({ mode, deltas, state, safeMode })
         const penalty = penaltyScore(action.defaultCost, tunedCostWeights[mode], budget)
         const score = Number((baseScore - penalty).toFixed(3))
         return {
@@ -313,6 +340,8 @@ export function evaluatePolicies(params: {
       })
       .filter((item) => withinConstraints(item, constraints))
       .filter((item) => (mode === 'risk' ? !item.action.tags.includes('shock') : true))
+      .filter((item) => (safeMode ? !item.action.tags.includes('shock') : true))
+      .filter((item) => (safeMode && mode !== 'risk' ? !item.action.tags.includes('risk') : true))
       .filter((item) => (mode === 'growth' && item.action.tags.includes('shock') ? (state.sirenLevel <= 0.2 && state.shockBudget > 0 && state.recoveryScore >= constraints.minRecoveryScore) : true))
       .sort((a, b) => {
         if (b.score !== a.score) return b.score - a.score
@@ -347,6 +376,39 @@ export function evaluatePolicies(params: {
   })
 
   return modeResults
+}
+
+export function evaluateHonestyGates(params: {
+  modelHealthGrade: 'green' | 'yellow' | 'red'
+  driftDetected: boolean
+  requestedMode: PolicyMode
+}): HonestyGateDecision {
+  const gatesApplied: string[] = []
+  const reasonsRu: string[] = []
+
+  if (params.modelHealthGrade === 'red') {
+    gatesApplied.push('model-health-red')
+    reasonsRu.push('Model Health в красной зоне — включён безопасный режим.')
+  }
+  if (params.driftDetected) {
+    gatesApplied.push('drift-detected')
+    reasonsRu.push('Обнаружен дрейф — включён безопасный режим до стабилизации.')
+  }
+
+  const safeMode = gatesApplied.length > 0
+  if (safeMode) {
+    gatesApplied.push('tight-budget')
+    gatesApplied.push('tail-fail-penalty-up')
+    gatesApplied.push('restrict-risky-paths')
+  }
+
+  return {
+    safeMode,
+    driftDetected: params.driftDetected,
+    gatesApplied,
+    reasonsRu,
+    fallbackPolicy: safeMode ? 'risk' : params.requestedMode,
+  }
 }
 
 export function modeBudgetRisk(sirenLevel: number): number {
@@ -398,10 +460,7 @@ export async function evaluatePoliciesWithAudit(params: {
   tuning?: PolicyTuning
 }): Promise<PolicyResult[]> {
   const actions = buildActionLibrary()
-  const evaluated = evaluatePolicies({ state: params.state, actions, constraints: params.constraints, seed: params.seed, tuning: params.tuning })
-  const selected = evaluated.find((item) => item.mode === params.mode) ?? evaluated[0]
   const stateHash = buildStateHash(toActionState(params.state))
-  const topCandidates = selected.ranked.slice(0, 5).map((item) => ({ actionId: item.action.id, score: item.score, penalty: Number(item.penalty ?? 0) }))
   const catalogHash = buildCatalogHash(actions)
   const horizon = await evaluatePoliciesWithAuditHorizon({ state: params.state, constraints: params.constraints, seed: params.seed, topK: 5, tuning: params.tuning })
   const horizonSummary = (Object.keys(horizon.byHorizon) as Array<'3' | '7'>).flatMap((horizonKey) => {
@@ -428,6 +487,22 @@ export async function evaluatePoliciesWithAudit(params: {
     driftSeries: policyDriftSeries,
     minSamples: 6,
   })
+  const honestyGates = evaluateHonestyGates({
+    modelHealthGrade: policyHealth.grade,
+    driftDetected: policyHealth.drift.triggered,
+    requestedMode: params.mode,
+  })
+
+  const gatedEvaluated = evaluatePolicies({
+    state: params.state,
+    actions,
+    constraints: params.constraints,
+    seed: params.seed,
+    tuning: params.tuning,
+    safeMode: honestyGates.safeMode,
+  })
+  const selected = gatedEvaluated.find((item) => item.mode === honestyGates.fallbackPolicy) ?? gatedEvaluated[0]
+  const topCandidates = selected.ranked.slice(0, 5).map((item) => ({ actionId: item.action.id, score: item.score, penalty: Number(item.penalty ?? 0) }))
 
   if (selected) {
     await saveActionAudit({
@@ -444,10 +519,14 @@ export async function evaluatePoliciesWithAudit(params: {
       },
       topCandidates,
       horizonSummary,
-      whyTopRu: buildWhyTopRu(selected.best.reasonsRu),
+      whyTopRu: buildWhyTopRu([...honestyGates.reasonsRu, ...selected.best.reasonsRu]),
       modelHealth: policyHealth,
+      safeMode: honestyGates.safeMode,
+      gatesApplied: honestyGates.gatesApplied,
+      gateReasonsRu: honestyGates.reasonsRu,
+      fallbackPolicy: honestyGates.fallbackPolicy,
     })
   }
 
-  return evaluated
+  return gatedEvaluated
 }
