@@ -104,8 +104,9 @@ describe('AutopilotPage', () => {
     expect(container.textContent).toContain('Briefing')
     expect(container.textContent).toContain('Policy Duel')
     expect(container.textContent).toContain('Action Drilldown')
-    expect(container.textContent).toContain('Model Health: high · Калибровка стабильная.')
+    expect(container.textContent).toContain('Model Health: High · Калибровка стабильная.')
     expect(container.textContent).toContain('best p50:')
+    expect(container.textContent).toContain('Текущий статус доверия модели: High')
   })
 
   it('maps candidates in deterministic order by p50, p90, actionId', async () => {

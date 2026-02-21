@@ -4,9 +4,10 @@ import { getLastBlackSwanRun } from '../repo/blackSwanRepo'
 import { getLastSnapshot as getLastTimeDebtSnapshot } from '../repo/timeDebtRepo'
 import { getLastSnapshot as getLastAntifragilitySnapshot } from '../repo/antifragilityRepo'
 import { buildStateVector, evaluatePoliciesWithAudit, type PolicyConstraints, type PolicyMode, type PolicyResult, type PolicyTuning } from '../core/engines/policy'
-import { getBriefingBullets, getDrilldownCandidates, getModelHealthView, getPolicyCards, getPolicyDuelSummary } from './autopilotUi'
+import { getBriefingBullets, getDrilldownCandidates, getModelHealthView, getPolicyCards, getPolicyDuelSummary, type ModelHealthView } from './autopilotUi'
 import { createPolicy, getActivePolicy, saveRun, setActivePolicy } from '../repo/policyRepo'
 import { getLastActionAudit, listRecentActionAudits, type ActionAuditRecord } from '../repo/actionAuditRepo'
+import { CalibrationTrustCard } from '../ui/components/CalibrationTrust'
 
 type HorizonDays = 3 | 7
 
@@ -146,7 +147,7 @@ export function AutopilotPage({ onChanged }: { onChanged: () => Promise<void> })
   const briefing = useMemo(() => getBriefingBullets({ selected, whyTopRu: whyTop, constraints }), [selected, whyTop, constraints])
   const duel = useMemo(() => getPolicyDuelSummary({ horizonSummary: latestActionAudit?.horizonSummary ?? [], horizon }), [latestActionAudit, horizon])
   const drilldown = useMemo(() => getDrilldownCandidates({ selected, constraints, topK: 3 }), [selected, constraints])
-  const health = useMemo(() => getModelHealthView(latestActionAudit?.modelHealth), [latestActionAudit])
+  const health = useMemo<ModelHealthView>(() => getModelHealthView(latestActionAudit?.modelHealth), [latestActionAudit])
 
   const fanChartPoints = useMemo(() => {
     const actionId = selected?.best.action.id
@@ -258,6 +259,11 @@ export function AutopilotPage({ onChanged }: { onChanged: () => Promise<void> })
           <button type="button" onClick={() => setTuning((prev) => ({ ...prev, cautious: Math.min(1, Number((prev.cautious + 0.2).toFixed(2))) }))}>more cautious</button>
           <span>load {tuning.load.toFixed(1)} · cautious {tuning.cautious.toFixed(1)}</span>
         </div>
+        <div className="autopilot-health-inline">
+          <span>Model Health:</span>
+          <span className={`status-badge ${health.badgeClass}`}><strong>{health.label}</strong></span>
+          {health.warning ? <span className="autopilot-health-warning">{health.warning}</span> : null}
+        </div>
         <button type="button" className="primary-action" onClick={() => void handleAcceptAction()} disabled={!selected}>Запустить действие сейчас</button>
       </article>
 
@@ -307,6 +313,8 @@ export function AutopilotPage({ onChanged }: { onChanged: () => Promise<void> })
 
       <article className="summary-card panel">
         <h2>Explain</h2>
+        <p>Текущий статус доверия модели: <span className={`status-badge ${health.badgeClass}`}><strong>{health.label}</strong></span></p>
+        {health.warning ? <p className="autopilot-health-warning"><strong>Внимание:</strong> {health.warning}</p> : null}
         <p><strong>whyTopRu</strong></p>
         <ul>
           {whyTop.map((reason) => <li key={reason}>{reason}</li>)}
@@ -320,7 +328,8 @@ export function AutopilotPage({ onChanged }: { onChanged: () => Promise<void> })
         <p>Источник весов: <strong>{audit?.weightsSource ?? '—'}</strong> · mix: <strong>{audit?.mix ?? '—'}</strong></p>
         <p>Последний хвостовой прогон: <strong>{audit?.tailRiskRunTs ? new Date(audit.tailRiskRunTs).toLocaleString('ru-RU') : 'нет'}</strong></p>
         <p>Уверенность прогноза: <strong>{audit?.forecastConfidence ?? '—'}</strong></p>
-        <p>Model Health: <span className="chip"><strong>{health.level}</strong></span> · {health.reason}</p>
+        <p>Model Health: <span className={`status-badge ${health.badgeClass}`}><strong>{health.label}</strong></span> · {health.reason}</p>
+        {latestActionAudit?.modelHealth ? <CalibrationTrustCard title="Policy (audit)" health={latestActionAudit.modelHealth} /> : null}
         <p>Последний запуск автопилота: <strong>{lastRunTs ? new Date(lastRunTs).toLocaleString('ru-RU') : '—'}</strong></p>
 
         <div className="audit-layout">

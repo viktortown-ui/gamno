@@ -150,14 +150,23 @@ export function getDrilldownCandidates(params: {
   })
 }
 
-export function getModelHealthView(modelHealth: unknown): { level: 'high' | 'medium' | 'low'; reason: string } {
-  if (!modelHealth) return { level: 'low', reason: 'Нет данных о здоровье модели.' }
-  if (!modelHealth || typeof modelHealth !== 'object') return { level: 'low', reason: 'Нет данных о здоровье модели.' }
+export interface ModelHealthView {
+  level: 'high' | 'medium' | 'low'
+  label: 'High' | 'Medium' | 'Low'
+  badgeClass: 'status-badge--low' | 'status-badge--mid' | 'status-badge--high'
+  reason: string
+  warning: string | null
+}
+
+export function getModelHealthView(modelHealth: unknown): ModelHealthView {
+  if (!modelHealth || typeof modelHealth !== 'object') {
+    return { level: 'low', label: 'Low', badgeClass: 'status-badge--high', reason: 'Нет данных о здоровье модели.', warning: 'Автопилот работает с низким доверием к калибровке.' }
+  }
   const healthRecord = modelHealth as { grade?: unknown; reasonsRu?: unknown }
   const grade = healthRecord.grade
   const reasons = Array.isArray(healthRecord.reasonsRu) ? healthRecord.reasonsRu.filter((item): item is string => typeof item === 'string') : []
-  if (grade === 'green') return { level: 'high', reason: reasons[0] ?? 'Модель стабильна.' }
-  if (grade === 'yellow') return { level: 'medium', reason: reasons[0] ?? 'Модель требует внимания.' }
-  if (grade === 'red') return { level: 'low', reason: reasons[0] ?? 'Модель нестабильна.' }
-  return { level: 'low', reason: 'Недостаточно сигналов для оценки.' }
+  if (grade === 'green') return { level: 'high', label: 'High', badgeClass: 'status-badge--low', reason: reasons[0] ?? 'Модель стабильна.', warning: null }
+  if (grade === 'yellow') return { level: 'medium', label: 'Medium', badgeClass: 'status-badge--mid', reason: reasons[0] ?? 'Модель требует внимания.', warning: 'Доверие среднее: сверяйте ограничения перед запуском.' }
+  if (grade === 'red') return { level: 'low', label: 'Low', badgeClass: 'status-badge--high', reason: reasons[0] ?? 'Модель нестабильна.', warning: 'Низкое доверие: рекомендуем ручную проверку перед запуском.' }
+  return { level: 'low', label: 'Low', badgeClass: 'status-badge--high', reason: 'Недостаточно сигналов для оценки.', warning: 'Автопилот работает с низким доверием к калибровке.' }
 }

@@ -6,6 +6,7 @@ import { getLastBlackSwanRun } from '../repo/blackSwanRepo'
 import { getLastRun as getLastMultiverseRun } from '../repo/multiverseRepo'
 import { useEffect, useState } from 'react'
 import { evaluateModelHealth, type ModelHealthSnapshot } from '../core/engines/analytics/modelHealth'
+import { CalibrationTrustCard } from '../ui/components/CalibrationTrust'
 
 interface SystemStats {
   frameTs?: number
@@ -14,12 +15,6 @@ interface SystemStats {
   multiverseTs?: number
   counts: Record<string, number>
   health: { learned: ModelHealthSnapshot; forecast: ModelHealthSnapshot; policy: ModelHealthSnapshot } | null
-}
-
-function gradeRu(grade: ModelHealthSnapshot['grade']): string {
-  if (grade === 'green') return 'Зелёный'
-  if (grade === 'yellow') return 'Жёлтый'
-  return 'Красный'
 }
 
 export function SystemPage() {
@@ -91,11 +86,12 @@ export function SystemPage() {
         <p>Последний Мультивселенная: <strong className="mono">{stats.multiverseTs ?? '—'}</strong></p>
         <p>Счётчики: checkins={stats.counts.checkins ?? 0}, events={stats.counts.events ?? 0}, frames={stats.counts.frames ?? 0}, runs={stats.counts.runs ?? 0}</p>
         {stats.health ? (
-          <>
-            <p>Здоровье learned: <strong>{gradeRu(stats.health.learned.grade)}</strong> — {stats.health.learned.reasonsRu[0]}</p>
-            <p>Здоровье forecast: <strong>{gradeRu(stats.health.forecast.grade)}</strong> — {stats.health.forecast.reasonsRu[0]}</p>
-            <p>Здоровье policy: <strong>{gradeRu(stats.health.policy.grade)}</strong> — {stats.health.policy.reasonsRu[0]}</p>
-          </>
+          <section aria-label="Calibration & Trust" className="calibration-grid">
+            <h2>Calibration &amp; Trust</h2>
+            <CalibrationTrustCard title="Learned" health={stats.health.learned} />
+            <CalibrationTrustCard title="Forecast" health={stats.health.forecast} />
+            <CalibrationTrustCard title="Policy" health={stats.health.policy} />
+          </section>
         ) : null}
         <div className="settings-actions">
           <button type="button" onClick={() => {

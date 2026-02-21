@@ -466,3 +466,25 @@ input:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--accent) 70%, #fff 30%);
   outline-offset: 2px;
 }
+
+.calibration-grid {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.calibration-card ul {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
+}
+
+.autopilot-health-inline {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.autopilot-health-warning {
+  color: #ffb3c7;
+}
