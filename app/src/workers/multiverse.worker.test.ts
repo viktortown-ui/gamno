@@ -27,5 +27,6 @@ describe('multiverse worker entry contract', () => {
 
     expect(result.branches).toHaveLength(3)
     expect(result.actionLevers.length).toBeGreaterThan(0)
+    expect(result.tail.collapseTail.es).toBeGreaterThanOrEqual(result.tail.collapseTail.var)
   })
 })

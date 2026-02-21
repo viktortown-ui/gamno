@@ -9,6 +9,7 @@ import type { MultiverseRunRecord } from '../../repo/multiverseRepo'
 import type { TimeDebtSnapshotRecord } from '../models/timeDebt'
 import type { PolicyRecord, PolicyRunRecord } from '../../repo/policyRepo'
 import { dayKeyFromTs } from '../utils/dayKey'
+import type { TailRiskSummaryCompact } from '../risk/tailRisk'
 
 export interface FrameSnapshot {
   ts: number
@@ -59,6 +60,7 @@ export interface FrameSnapshot {
     pRed7d: number
     esCollapse10?: number
     cvar?: number
+    collapseTail?: TailRiskSummaryCompact
     runTs?: number
   }
   multiverseSummary: {
@@ -158,6 +160,17 @@ export function buildFrameSnapshot(input: FrameBuildInput): FrameSnapshot {
       pRed7d: input.blackSwan?.summary.pRed7d ?? 0,
       esCollapse10: input.blackSwan?.summary.esCollapse10,
       cvar: input.blackSwan?.payload.tail.esCollapse,
+      collapseTail: input.blackSwan?.payload.tail.collapseTail
+        ? {
+          alpha: input.blackSwan.payload.tail.collapseTail.alpha,
+          var: input.blackSwan.payload.tail.collapseTail.var,
+          es: input.blackSwan.payload.tail.collapseTail.es,
+          tailMass: input.blackSwan.payload.tail.collapseTail.tailMass,
+          n: input.blackSwan.payload.tail.collapseTail.n,
+          method: input.blackSwan.payload.tail.collapseTail.method,
+          warnings: [...input.blackSwan.payload.tail.collapseTail.warnings],
+        }
+        : undefined,
       runTs: input.blackSwan?.ts,
     },
     multiverseSummary: {

@@ -5,6 +5,7 @@ import type { CheckinRecord, CheckinValues } from '../../models/checkin'
 import { regimeFromDay } from '../../regime/model'
 import type { InfluenceMatrix } from '../influence/types'
 import type { BlackSwanInput, BlackSwanResult, BlackSwanScenarioSpec } from './types'
+import { computeTailRisk } from '../../risk/tailRisk'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
@@ -157,8 +158,24 @@ export function runBlackSwan(input: BlackSwanInput, hooks?: { onProgress?: (done
   const p90Collapse = dayCollapse.map((values) => Number(quantile(values, 0.9).toFixed(4)))
 
   const alpha = input.settings.alpha
-  const esCoreIndex = Number((endIndexValues.sort((a, b) => a - b).slice(0, Math.max(1, Math.floor(endIndexValues.length * alpha))).reduce((s, v) => s + v, 0) / Math.max(1, Math.floor(endIndexValues.length * alpha))).toFixed(4))
-  const esCollapse = Number((endCollapseValues.sort((a, b) => b - a).slice(0, Math.max(1, Math.floor(endCollapseValues.length * alpha))).reduce((s, v) => s + v, 0) / Math.max(1, Math.floor(endCollapseValues.length * alpha))).toFixed(4))
+  const collapseTailRaw = computeTailRisk(endCollapseValues, 1 - alpha)
+  const coreIndexTailRaw = computeTailRisk(endIndexValues.map((value) => -value), 1 - alpha)
+  const esCoreIndex = Number((-coreIndexTailRaw.es).toFixed(4))
+  const esCollapse = Number(collapseTailRaw.es.toFixed(4))
+  const collapseTail = {
+    ...collapseTailRaw,
+    var: Number(collapseTailRaw.var.toFixed(4)),
+    es: Number(collapseTailRaw.es.toFixed(4)),
+    tailMean: Number(collapseTailRaw.tailMean.toFixed(4)),
+    tailMass: Number(collapseTailRaw.tailMass.toFixed(6)),
+  }
+  const coreIndexTail = {
+    ...coreIndexTailRaw,
+    var: Number((-coreIndexTailRaw.var).toFixed(4)),
+    es: Number((-coreIndexTailRaw.es).toFixed(4)),
+    tailMean: Number((-coreIndexTailRaw.tailMean).toFixed(4)),
+    tailMass: Number(coreIndexTailRaw.tailMass.toFixed(6)),
+  }
 
   const drivers = METRICS
     .map((m) => {
@@ -208,6 +225,8 @@ export function runBlackSwan(input: BlackSwanInput, hooks?: { onProgress?: (done
       probThresholdEver: Number((thresholdEver.filter(Boolean).length / Math.max(1, thresholdEver.length)).toFixed(4)),
       esCoreIndex,
       esCollapse,
+      coreIndexTail,
+      collapseTail,
     },
     topDrivers: drivers,
     recommendations,
