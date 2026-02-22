@@ -98,10 +98,10 @@ describe('worldWebglOrbits', () => {
     expect(THREE.MathUtils.radToDeg(outerOrbit.inclination)).toBeLessThanOrEqual(14)
   })
 
-  it('resolves orbit visual hierarchy for selected, near-inner and distant orbits', () => {
+  it('resolves orbit visual hierarchy for selected and dimmed non-selected orbits', () => {
     const style = getOrbitVisualStylePreset()
     expect(resolveOrbitVisualState(4, 4)).toEqual({ opacity: style.selectedOpacity, lineWidth: style.selectedLineWidth })
-    expect(resolveOrbitVisualState(1, 4)).toEqual({ opacity: style.nearOpacity, lineWidth: style.nearLineWidth })
+    expect(resolveOrbitVisualState(1, 4)).toEqual({ opacity: style.baseOpacity, lineWidth: style.baseLineWidth })
     expect(resolveOrbitVisualState(9, 4)).toEqual({ opacity: style.baseOpacity, lineWidth: style.baseLineWidth })
   })
 

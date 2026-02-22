@@ -38,9 +38,9 @@ const BLOOM_LAYER = 1
 const ORBIT_SEGMENTS = 192
 export const WORLD_WEBGL_LEGACY_RING_ORBITS_ENABLED = false
 const BLOOM_PRESETS = {
-  soft: { threshold: 0.92, strength: 0.2, radius: 0.25, exposure: 0.92 },
-  normal: { threshold: 0.89, strength: 0.3, radius: 0.33, exposure: 1 },
-  hot: { threshold: 0.86, strength: 0.44, radius: 0.42, exposure: 1.08 },
+  soft: { threshold: 1.1, strength: 0.25, radius: 0.24, exposure: 0.92 },
+  normal: { threshold: 1.05, strength: 0.35, radius: 0.3, exposure: 1 },
+  hot: { threshold: 1.0, strength: 0.48, radius: 0.35, exposure: 1.08 },
 } as const
 
 type BloomPresetName = keyof typeof BLOOM_PRESETS
@@ -59,6 +59,10 @@ type ExposureMode = 'static' | 'distance'
 
 function readExposureMode(): ExposureMode {
   return globalThis.localStorage?.getItem('worldExposureMode') === 'distance' ? 'distance' : 'static'
+}
+
+function readWorldSelectiveBloomEnabled(): boolean {
+  return globalThis.localStorage?.getItem('worldSelectiveBloom') === '1'
 }
 
 interface PlanetOrbitState {
@@ -130,6 +134,7 @@ export function WorldWebGLScene({
   const [exposureMode] = useState<ExposureMode>(() => readExposureMode())
   const [devBloomStrength, setDevBloomStrength] = useState<number>(BLOOM_PARAMS.strength)
   const [devAAMode, setDevAAMode] = useState<AAMode>('msaa')
+  const [selectiveBloomEnabled] = useState<boolean>(() => readWorldSelectiveBloomEnabled())
   const resetViewRef = useRef<() => void>(() => {})
   const selectedIdRef = useRef<string | null>(selectedPlanetId ?? null)
   const onPlanetSelectRef = useRef(onPlanetSelect)
@@ -235,12 +240,36 @@ export function WorldWebGLScene({
       format: THREE.RGBAFormat,
       colorSpace: THREE.SRGBColorSpace,
       samples: activeAAMode === 'msaa' && isWebGL2 ? 4 : 0,
+      type: THREE.HalfFloatType,
     })
     const composer = new EffectComposer(renderer, renderTarget)
     composer.setPixelRatio(pixelRatio)
     composer.addPass(new RenderPass(scene, camera))
+
+    const bloomRenderTarget = new THREE.WebGLRenderTarget(host.clientWidth * pixelRatio, host.clientHeight * pixelRatio, {
+      format: THREE.RGBAFormat,
+      colorSpace: THREE.SRGBColorSpace,
+      type: THREE.HalfFloatType,
+      samples: 0,
+    })
+    const bloomComposer = new EffectComposer(renderer, bloomRenderTarget)
+    bloomComposer.renderToScreen = false
+    bloomComposer.setPixelRatio(pixelRatio)
+    const bloomRenderPass = new RenderPass(scene, camera)
+    bloomComposer.addPass(bloomRenderPass)
     const bloomPass = new UnrealBloomPass(new THREE.Vector2(host.clientWidth, host.clientHeight), devBloomStrength, BLOOM_PARAMS.radius, BLOOM_PARAMS.threshold)
-    composer.addPass(bloomPass)
+    bloomComposer.addPass(bloomPass)
+
+    const bloomCompositePass = new ShaderPass({
+      uniforms: {
+        tDiffuse: { value: null },
+        bloomTexture: { value: bloomRenderTarget.texture },
+      },
+      vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+      fragmentShader: `uniform sampler2D tDiffuse; uniform sampler2D bloomTexture; varying vec2 vUv; void main() { vec4 baseColor = texture2D(tDiffuse, vUv); vec4 bloomColor = texture2D(bloomTexture, vUv); gl_FragColor = baseColor + bloomColor; }`,
+    })
+    composer.addPass(bloomCompositePass)
+
     const vignettePass = new ShaderPass({
       uniforms: {
         tDiffuse: { value: null },
@@ -287,7 +316,7 @@ export function WorldWebGLScene({
     const coreGroup = new THREE.Group()
     const core = new THREE.Mesh(
       new THREE.SphereGeometry(1.0 * WORLD_SCALE_SPEC.coreRadiusScale, 64, 64),
-      new THREE.MeshStandardMaterial({ color: 0x6baeff, emissive: 0x4bd5ff, emissiveIntensity: 0.72, metalness: 0.06, roughness: 0.58 }),
+      new THREE.MeshStandardMaterial({ color: 0x6baeff, emissive: 0x4bd5ff, emissiveIntensity: 1.18, metalness: 0.06, roughness: 0.58 }),
     )
     const corePointLight = new THREE.PointLight(0x7dbbff, 6.6, 0, 1)
     corePointLight.castShadow = false
@@ -314,6 +343,7 @@ export function WorldWebGLScene({
     halo.rotation.x = Math.PI / 2
     coreGroup.add(core, corePointLight, fresnelShell, halo)
     core.layers.enable(BLOOM_LAYER)
+    fresnelShell.layers.enable(BLOOM_LAYER)
     halo.layers.enable(BLOOM_LAYER)
     if (snapshot.metrics.safeMode) {
       const shield = new THREE.Mesh(
@@ -711,7 +741,14 @@ export function WorldWebGLScene({
       }
       if (worldNoPost) {
         renderer.render(scene, camera)
+      } else if (selectiveBloomEnabled) {
+        const prevMask = camera.layers.mask
+        camera.layers.set(BLOOM_LAYER)
+        bloomComposer.render()
+        camera.layers.mask = prevMask
+        composer.render()
       } else {
+        bloomComposer.render()
         composer.render()
       }
       raf = window.requestAnimationFrame(tick)
@@ -726,6 +763,8 @@ export function WorldWebGLScene({
       renderer.setSize(clientWidth, clientHeight)
       composer.setPixelRatio(nextPixelRatio)
       composer.setSize(clientWidth, clientHeight)
+      bloomComposer.setPixelRatio(nextPixelRatio)
+      bloomComposer.setSize(clientWidth, clientHeight)
       bloomPass.setSize(clientWidth, clientHeight)
       fxaaPass.material.uniforms.resolution.value.set(1 / (clientWidth * nextPixelRatio), 1 / (clientHeight * nextPixelRatio))
       planetOrbitLines.forEach(({ line }) => {
@@ -757,6 +796,8 @@ export function WorldWebGLScene({
       host.removeChild(renderer.domElement)
       renderer.dispose()
       composer.dispose()
+      bloomComposer.dispose()
+      bloomRenderTarget.dispose()
       planetOrbitLines.forEach(({ line }) => {
         line.geometry.dispose()
         const material = line.material as LineMaterial
@@ -783,6 +824,7 @@ export function WorldWebGLScene({
     planets,
     reducedMotion,
     snapshot,
+    selectiveBloomEnabled,
     stormAlpha,
     uiVariant,
   ])
