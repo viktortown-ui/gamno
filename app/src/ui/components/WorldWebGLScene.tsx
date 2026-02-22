@@ -13,7 +13,7 @@ import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js'
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js'
 import { resolveAAMode, type AAMode } from './worldWebglAAMode'
 import type { WorldMapPlanet, WorldMapSnapshot } from '../../core/worldMap/types'
-import { computeFitToViewState, orbitPulseOpacity } from './worldWebglSceneMath'
+import { computeFitToViewState } from './worldWebglSceneMath'
 import type { WorldFxEvent } from '../../pages/worldCockpit'
 import { readWorldCameraState, writeWorldCameraState } from './worldWebglCameraState'
 import { IdleDriftController } from './worldWebglIdleDrift'
@@ -35,6 +35,7 @@ interface WorldWebGLSceneProps {
 
 const BLOOM_LAYER = 1
 const ORBIT_SEGMENTS = 192
+export const WORLD_WEBGL_LEGACY_RING_ORBITS_ENABLED = false
 const BLOOM_PRESETS = {
   soft: { threshold: 0.92, strength: 0.2, radius: 0.25, exposure: 0.92 },
   normal: { threshold: 0.89, strength: 0.3, radius: 0.33, exposure: 1 },
@@ -71,17 +72,6 @@ function toWorldPosition(snapshot: WorldMapSnapshot, planet: WorldMapPlanet): TH
 function seedFloat(seed: number): number {
   const x = Math.sin(seed * 12.9898) * 43758.5453
   return x - Math.floor(x)
-}
-
-function ringPoints(radius: number, flatten: number, tilt: number, segments: number): THREE.Vector3[] {
-  const points: THREE.Vector3[] = []
-  for (let i = 0; i <= segments; i += 1) {
-    const angle = (i / segments) * Math.PI * 2
-    const point = new THREE.Vector3(Math.cos(angle) * radius, 0, Math.sin(angle) * radius * flatten)
-    point.applyAxisAngle(new THREE.Vector3(0, 0, 1), tilt)
-    points.push(point)
-  }
-  return points
 }
 
 const worldDebugIBL = import.meta.env.DEV && globalThis.localStorage?.getItem('worldDebugIBL') === '1'
@@ -281,6 +271,9 @@ export function WorldWebGLScene({
       warnIfLightingInvalid(scene)
     }
 
+    const systemGroup = new THREE.Group()
+    scene.add(systemGroup)
+
     const coreGroup = new THREE.Group()
     const core = new THREE.Mesh(
       new THREE.SphereGeometry(1.0, 64, 64),
@@ -316,55 +309,7 @@ export function WorldWebGLScene({
       )
       coreGroup.add(shield)
     }
-    scene.add(coreGroup)
-
-    const orbitLines: Array<{ core: Line2; glow: Line2; baseOpacityCore: number; baseOpacityGlow: number }> = []
-    snapshot.rings.forEach((ring, index) => {
-      const points = ringPoints(ring.radius * 0.045, 0.72 + seedFloat(index + snapshot.seed) * 0.1, (seedFloat(index + 7) - 0.5) * 0.4, ORBIT_SEGMENTS)
-      const positions = points.flatMap((point) => [point.x, point.y, point.z])
-      const color = new THREE.Color(0x8f6bff).lerp(new THREE.Color(0x43f3d0), ring.stormStrength * 0.45)
-      const indexFalloff = 1 - (index / Math.max(1, snapshot.rings.length - 1)) * 0.2
-      const baseOpacityCore = (0.22 + ring.stormStrength * 0.18) * indexFalloff
-      const baseOpacityGlow = (0.1 + ring.stormStrength * 0.08) * indexFalloff
-
-      const coreGeometry = new LineGeometry()
-      coreGeometry.setPositions(positions)
-      const coreMaterial = new LineMaterial({
-        color,
-        transparent: true,
-        opacity: baseOpacityCore,
-        linewidth: 1.4,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-        depthTest: true,
-      })
-      coreMaterial.resolution.set(host.clientWidth, host.clientHeight)
-      const coreLine = new Line2(coreGeometry, coreMaterial)
-      coreLine.computeLineDistances()
-      coreLine.rotation.x = -0.35
-      coreLine.renderOrder = 1
-
-      const glowGeometry = new LineGeometry()
-      glowGeometry.setPositions(positions)
-      const glowMaterial = new LineMaterial({
-        color,
-        transparent: true,
-        opacity: baseOpacityGlow,
-        linewidth: 2.8,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-        depthTest: true,
-      })
-      glowMaterial.resolution.set(host.clientWidth, host.clientHeight)
-      const glowLine = new Line2(glowGeometry, glowMaterial)
-      glowLine.computeLineDistances()
-      glowLine.rotation.x = -0.35
-      glowLine.renderOrder = 0
-      glowLine.layers.enable(BLOOM_LAYER)
-
-      scene.add(glowLine, coreLine)
-      orbitLines.push({ core: coreLine, glow: glowLine, baseOpacityCore, baseOpacityGlow })
-    })
+    systemGroup.add(coreGroup)
 
     const planetMeshes = new Map<string, THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial | THREE.MeshPhysicalMaterial>>()
     const orbitByPlanetId = new Map<string, OrbitSpec>()
@@ -388,11 +333,10 @@ export function WorldWebGLScene({
       mesh.userData.planetId = planet.id
 
       const orbitGroup = new THREE.Group()
-      orbitGroup.position.y = orbit.yOffset
       orbitGroup.rotation.y = orbit.nodeRotation
       orbitGroup.rotation.x = orbit.inclination
 
-      const curvePoints = orbit.curve.getSpacedPoints(ORBIT_SEGMENTS).map((point) => new THREE.Vector3(point.x, 0, point.y))
+      const curvePoints = orbit.curve.getSpacedPoints(ORBIT_SEGMENTS).map((point) => new THREE.Vector3(point.x, orbit.yOffset, point.y))
       const curvePositions = curvePoints.flatMap((point) => [point.x, point.y, point.z])
       const curveGeometry = new LineGeometry()
       curveGeometry.setPositions(curvePositions)
@@ -410,7 +354,7 @@ export function WorldWebGLScene({
       orbitLine.computeLineDistances()
       orbitLine.renderOrder = 2
       orbitGroup.add(orbitLine, mesh)
-      scene.add(orbitGroup)
+      systemGroup.add(orbitGroup)
       planetOrbitLines.push(orbitLine)
 
       const speedSeed = seedFloat(snapshot.seed + planet.order * 17 + planet.id.length * 13)
@@ -425,10 +369,13 @@ export function WorldWebGLScene({
       const phase = phaseMap.get(state.mesh.userData.planetId as string) ?? state.phase
       state.phase = phase
       orbitLocalPoint(state.orbitCurve, phase, state.mesh.position)
+      state.mesh.position.y = state.orbit.yOffset
     })
 
     const worldToLocal = new THREE.Matrix4()
     const devOrbitEpsilon = 1e-3
+    const systemWorldPos = new THREE.Vector3()
+    const coreWorldPos = new THREE.Vector3()
     const assertPlanetOnOrbit = (state: PlanetOrbitState): void => {
       if (!import.meta.env.DEV) return
       worldToLocal.copy(state.orbitGroup.matrixWorld).invert()
@@ -448,6 +395,15 @@ export function WorldWebGLScene({
       if (distance > devOrbitEpsilon) {
         const planetId = state.mesh.userData.planetId as string
         console.warn('[World] Planet drifted off orbit curve', { planetId, distance, epsilon: devOrbitEpsilon, orbitNearest: orbitNearest.toArray(), orbitLocal: orbitLocal.toArray() })
+      }
+    }
+    const assertSystemCentered = (): void => {
+      if (!import.meta.env.DEV) return
+      systemGroup.getWorldPosition(systemWorldPos)
+      coreGroup.getWorldPosition(coreWorldPos)
+      const distance = coreWorldPos.distanceTo(systemWorldPos)
+      if (distance > devOrbitEpsilon) {
+        console.warn('[World] systemGroup is not centered on core', { distance, epsilon: devOrbitEpsilon })
       }
     }
     const stars = new THREE.BufferGeometry()
@@ -493,6 +449,11 @@ export function WorldWebGLScene({
     const raycaster = new THREE.Raycaster()
     const pointer = new THREE.Vector2()
     const intersectTargets = [...planetMeshes.values()]
+    const driftController = new IdleDriftController(
+      { reduceMotion: reducedMotion, idleTimeoutMs: import.meta.env.MODE === 'test' ? 0 : undefined },
+      performance.now(),
+    )
+    driftController.setSelectedId(selectedIdRef.current, performance.now())
     let hoveredPlanetId: string | null = null
     const hoveredWorldPosition = new THREE.Vector3()
     const selectedWorldPosition = new THREE.Vector3()
@@ -552,7 +513,6 @@ export function WorldWebGLScene({
     resetViewRef.current = resetView
 
     const onPointerMove = (event: PointerEvent) => {
-      driftController.notifyUserAction(performance.now())
       const nextHoveredId = pickPlanet(event)
       if (hoveredPlanetId === nextHoveredId) return
       hoveredPlanetId = nextHoveredId
@@ -567,7 +527,6 @@ export function WorldWebGLScene({
       applyHighlight()
     }
     const onPointerLeave = () => {
-      driftController.notifyUserAction(performance.now())
       hoveredPlanetId = null
       setHoveredPlanetLabel(null)
       applyHighlight()
@@ -590,6 +549,7 @@ export function WorldWebGLScene({
     renderer.domElement.addEventListener('pointerdown', onPointerDown)
 
     const onWindowKeyDown = (event: KeyboardEvent) => {
+      driftController.notifyUserAction(performance.now())
       if (event.key.toLowerCase() === 'r') {
         resetView()
       }
@@ -603,25 +563,17 @@ export function WorldWebGLScene({
     }
     const onControlsChange = () => {
       schedulePersist()
-      driftController.notifyUserAction(performance.now())
     }
+    const onControlsStart = () => driftController.notifyUserAction(performance.now())
+    const onControlsEnd = () => driftController.notifyUserAction(performance.now())
     controls.addEventListener('change', onControlsChange)
-
-    const driftController = new IdleDriftController(
-      { reduceMotion: reducedMotion, idleTimeoutMs: import.meta.env.MODE === 'test' ? 0 : undefined },
-      performance.now(),
-    )
-    driftController.setSelectedId(selectedIdRef.current, performance.now())
-
+    controls.addEventListener('start', onControlsStart)
+    controls.addEventListener('end', onControlsEnd)
     let raf = 0
     const tick = (time: number) => {
       const t = time * 0.001
       driftController.setSelectedId(selectedIdRef.current, time)
-      orbitLines.forEach((line) => {
-        line.glow.material.opacity = orbitPulseOpacity(line.baseOpacityGlow, reducedMotion, t, line.glow.id)
-        line.core.material.opacity = orbitPulseOpacity(line.baseOpacityCore, reducedMotion, t, line.core.id)
-      })
-      const driftEnabled = driftController.isEnabled(time)
+      const driftEnabled = !reducedMotion && !selectedIdRef.current
       planetOrbitStates.forEach((orbitState) => {
         const id = orbitState.mesh.userData.planetId as string
         const pulse = pulseRef.current.get(id) ?? 0
@@ -629,11 +581,13 @@ export function WorldWebGLScene({
         orbitState.mesh.scale.setScalar(1 + scaleBoost)
         orbitState.mesh.rotation.y += reducedMotion ? 0 : 0.0035
         if (driftEnabled) {
-          orbitState.phase = (orbitState.phase + orbitState.driftSpeed * 0.001) % 1
+          orbitState.phase = (orbitState.phase + orbitState.driftSpeed * 0.15 * 0.001) % 1
         }
         orbitLocalPoint(orbitState.orbitCurve, orbitState.phase, orbitState.mesh.position)
+        orbitState.mesh.position.y = orbitState.orbit.yOffset
         assertPlanetOnOrbit(orbitState)
       })
+      assertSystemCentered()
       core.rotation.y += reducedMotion ? 0 : 0.004
       const corePulse = reducedMotion ? 0 : (Math.sin(t * 1.4) + 1) * 0.22
       if (core.material instanceof THREE.MeshStandardMaterial) {
@@ -702,10 +656,6 @@ export function WorldWebGLScene({
       composer.setSize(clientWidth, clientHeight)
       bloomPass.setSize(clientWidth, clientHeight)
       fxaaPass.material.uniforms.resolution.value.set(1 / (clientWidth * nextPixelRatio), 1 / (clientHeight * nextPixelRatio))
-      orbitLines.forEach((line) => {
-        line.core.material.resolution.set(clientWidth, clientHeight)
-        line.glow.material.resolution.set(clientWidth, clientHeight)
-      })
       planetOrbitLines.forEach((line) => {
         const material = line.material as LineMaterial
         material.resolution.set(clientWidth, clientHeight)
@@ -724,6 +674,8 @@ export function WorldWebGLScene({
       window.removeEventListener('keydown', onWindowKeyDown)
       window.clearTimeout(persistTimer)
       controls.removeEventListener('change', onControlsChange)
+      controls.removeEventListener('start', onControlsStart)
+      controls.removeEventListener('end', onControlsEnd)
       renderer.domElement.removeEventListener('pointermove', onPointerMove)
       renderer.domElement.removeEventListener('pointerleave', onPointerLeave)
       renderer.domElement.removeEventListener('click', onClick)
@@ -733,12 +685,6 @@ export function WorldWebGLScene({
       host.removeChild(renderer.domElement)
       renderer.dispose()
       composer.dispose()
-      orbitLines.forEach((line) => {
-        line.core.geometry.dispose()
-        line.glow.geometry.dispose()
-        line.core.material.dispose()
-        line.glow.material.dispose()
-      })
       planetOrbitLines.forEach((line) => {
         line.geometry.dispose()
         const material = line.material as LineMaterial

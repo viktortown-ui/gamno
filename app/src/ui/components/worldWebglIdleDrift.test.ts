@@ -28,6 +28,11 @@ describe('IdleDriftController', () => {
     expect(controller.isEnabled(11_001)).toBe(true)
   })
 
+
+  it('can still reach idle without explicit start events', () => {
+    const controller = new IdleDriftController({ reduceMotion: false, idleTimeoutMs: 1_000 }, 0)
+    expect(controller.isEnabled(1_001)).toBe(true)
+  })
   it('is permanently disabled when reduce motion is on', () => {
     const controller = new IdleDriftController({ reduceMotion: true, idleTimeoutMs: 10 }, 0)
     expect(controller.isEnabled(1_000_000)).toBe(false)
