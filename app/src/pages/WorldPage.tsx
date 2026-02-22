@@ -219,6 +219,7 @@ export function WorldPage({ uiVariant = 'instrument' }: { uiVariant?: 'instrumen
             selectedPlanetId={selectedPlanetId}
             showNeighborLabels
             fxEvents={fxEvents}
+            targetPlanetId={bestAction ? (worldMapSnapshot?.planets[0]?.id ?? null) : null}
             onPlanetSelect={(planetId, origin) => {
               if (origin) lastOriginRef.current = origin
               setHashPlanetId(planetId)
@@ -244,7 +245,7 @@ export function WorldPage({ uiVariant = 'instrument' }: { uiVariant?: 'instrumen
           ))}
         </div>
         <div className="world-action-rail__primary">
-          <strong>Следующий шаг</strong>
+          <strong>Следующий шаг · {uiVariant === 'cinematic' ? 'cinematic' : 'instrument'}</strong>
           <button type="button" className="start-primary" onClick={handleNextAction}>
             {frames.length === 0 || !bestAction ? 'First check-in' : `Next Action: ${bestAction.titleRu}`}
           </button>

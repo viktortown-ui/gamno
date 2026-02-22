@@ -18,6 +18,7 @@ interface WorldMapViewProps {
   showNeighborLabels?: boolean
   fxEvents?: WorldFxEvent[]
   uiVariant?: 'instrument' | 'cinematic'
+  targetPlanetId?: string | null
 }
 
 interface PointerData {
@@ -51,7 +52,7 @@ function dustField(snapshot: WorldMapSnapshot): Array<{ key: string; x: number; 
   })
 }
 
-export function WorldMapView({ snapshot, onPlanetSelect, selectedPlanetId, showNeighborLabels = true, fxEvents = [], uiVariant = 'instrument' }: WorldMapViewProps) {
+export function WorldMapView({ snapshot, onPlanetSelect, selectedPlanetId, showNeighborLabels = true, fxEvents = [], uiVariant = 'instrument', targetPlanetId = null }: WorldMapViewProps) {
   const planets = useMemo(() => [...snapshot.planets].sort((a, b) => (a.order - b.order) || a.id.localeCompare(b.id, 'ru')), [snapshot.planets])
   const [internalSelectedId, setInternalSelectedId] = useState<string | null>(null)
   const [focusedId, setFocusedId] = useState<string>(planets[0]?.id ?? '')
@@ -236,8 +237,8 @@ export function WorldMapView({ snapshot, onPlanetSelect, selectedPlanetId, showN
   return (
     <div
       data-ui-variant={uiVariant}
-      className={`world-map world-map--${uiVariant} ${stormIntensity > 0 ? 'world-map--storm' : ''} ${safeModeIntensity > 0 ? 'world-map--safe' : ''} ${reducedMotion ? 'world-map--reduced-motion' : ''}`.trim()}
-      style={{ '--storm-alpha': String(Math.min(0.56, 0.08 + stormIntensity * 0.38)), '--safe-alpha': String(Math.min(0.42, 0.08 + safeModeIntensity * 0.3)) } as CSSProperties}
+      className={`world-map world-map--${uiVariant} ${stormIntensity > 0 ? 'world-map--storm' : ''} ${safeModeIntensity > 0 ? 'world-map--safe' : ''} ${snapshot.metrics.safeMode ? 'world-map--safe-mode' : ''} ${reducedMotion ? 'world-map--reduced-motion' : ''}`.trim()}
+      style={{ '--storm-alpha': String(Math.min(0.56, 0.08 + stormIntensity * 0.38)), '--safe-alpha': String(Math.min(0.42, 0.08 + safeModeIntensity * 0.3)), '--tail-alpha': String(Math.min(0.42, snapshot.metrics.esCollapse10 * 0.9 + (snapshot.metrics.sirenLevel === 'red' ? 0.14 : 0.04))) } as CSSProperties}
       role="region"
       aria-label="Карта мира"
     >
@@ -258,19 +259,35 @@ export function WorldMapView({ snapshot, onPlanetSelect, selectedPlanetId, showN
           </radialGradient>
         </defs>
         <g transform={`translate(${transform.translateX} ${transform.translateY}) scale(${transform.scale})`}>
-          {snapshot.rings.map((ring) => (
-            <circle
-              key={ring.id}
-              id={`svg-${ring.id}`}
-              cx={snapshot.center.x}
-              cy={snapshot.center.y}
-              r={ring.radius}
-              fill="none"
-              stroke={uiVariant === 'cinematic' ? 'rgba(143, 107, 255, 0.24)' : 'rgba(143, 107, 255, 0.36)'}
-              strokeWidth={ring.width}
-              aria-label={`Орбита ${ring.domainId}`}
-            />
-          ))}
+          {snapshot.rings.map((ring, index) => {
+            const flatten = uiVariant === 'cinematic' ? 0.62 : 0.72
+            const riskWarp = 1 + Math.min(0.12, ring.stormStrength * 0.16)
+            const rx = ring.radius * riskWarp
+            const ry = ring.radius * flatten
+            const rotate = (index % 2 === 0 ? -8 : 9) + ring.stormStrength * 11
+            return (
+              <ellipse
+                key={ring.id}
+                id={`svg-${ring.id}`}
+                cx={snapshot.center.x}
+                cy={snapshot.center.y}
+                rx={rx}
+                ry={ry}
+                transform={`rotate(${rotate} ${snapshot.center.x} ${snapshot.center.y})`}
+                fill="none"
+                stroke={uiVariant === 'cinematic' ? 'rgba(143, 107, 255, 0.24)' : 'rgba(143, 107, 255, 0.36)'}
+                strokeWidth={ring.width}
+                aria-label={`Орбита ${ring.domainId}`}
+              />
+            )
+          })}
+
+
+          <g className="world-map__core">
+            <circle cx={snapshot.center.x} cy={snapshot.center.y} r={28} className="world-map__core-reactor" />
+            <circle cx={snapshot.center.x} cy={snapshot.center.y} r={44} className="world-map__core-halo" />
+            {snapshot.metrics.safeMode ? <circle cx={snapshot.center.x} cy={snapshot.center.y} r={60} className="world-map__core-shield" /> : null}
+          </g>
 
           {dust.map((item) => (
             <circle key={item.key} cx={item.x} cy={item.y} r={item.r} fill={`rgba(205,225,255,${item.alpha})`} className="world-map__dust" />
@@ -278,6 +295,7 @@ export function WorldMapView({ snapshot, onPlanetSelect, selectedPlanetId, showN
 
           {planets.map((planet) => {
             const selected = selectedId === planet.id
+            const isTarget = targetPlanetId === planet.id
             const planetFx = fxByPlanet.get(planet.id) ?? []
             const pulse = planetFx.find((item) => item.type === 'pulse')
             const burst = planetFx.find((item) => item.type === 'burst')
@@ -287,6 +305,12 @@ export function WorldMapView({ snapshot, onPlanetSelect, selectedPlanetId, showN
                 <circle cx={planet.x} cy={planet.y} r={planet.radius + 5 + emphasis * 4} fill={planet.renderHints.drawTailGlow ? 'rgba(60, 255, 214, 0.16)' : 'rgba(111, 162, 255, 0.11)'} />
                 {pulse ? <circle cx={planet.x} cy={planet.y} r={planet.radius + 10 + pulse.intensity * 8} fill="none" stroke="rgba(67, 243, 208, 0.7)" strokeWidth={1.5 + pulse.intensity * 1.5} className="world-map__pulse" /> : null}
                 {burst ? <circle cx={planet.x} cy={planet.y} r={planet.radius + 4 + burst.intensity * 6} fill="rgba(125, 255, 186, 0.25)" className="world-map__pulse" /> : null}
+                {isTarget && !reducedMotion ? (
+                  <g className="world-map__comet">
+                    <path d={`M ${planet.x - 58} ${planet.y - 28} Q ${planet.x - 24} ${planet.y - 8} ${planet.x - 6} ${planet.y - 3}`} stroke="rgba(159,235,255,0.58)" strokeWidth={2} fill="none" />
+                    <circle cx={planet.x - 6} cy={planet.y - 3} r={3.2} fill="rgba(200,244,255,0.95)" />
+                  </g>
+                ) : null}
                 <circle
                   cx={planet.x}
                   cy={planet.y}
