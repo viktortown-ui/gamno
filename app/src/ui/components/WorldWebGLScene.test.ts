@@ -7,6 +7,7 @@ import { resolveAAMode } from './worldWebglAAMode'
 import { readWorldCameraState, writeWorldCameraState } from './worldWebglCameraState'
 import { createPlanetMaterial, planetMaterialTuningFromPalette, planetPaletteFromId } from './worldWebglPlanetStyle'
 import { collectWorldDebugHUDState } from './worldWebglDiagnostics'
+import { WORLD_WEBGL_LEGACY_RING_ORBITS_ENABLED } from './WorldWebGLScene'
 
 const snapshot: WorldMapSnapshot = {
   id: 'snapshot:test',
@@ -89,6 +90,10 @@ describe('WorldWebGLScene helpers', () => {
     expect(state.lightCount).toBe(1)
     expect(state.environmentUuid).not.toBeNull()
     expect(state.selectedMaterial).toBe('MeshPhysicalMaterial')
+  })
+
+  it('keeps legacy orbit renderer disabled in Line2 mode', () => {
+    expect(WORLD_WEBGL_LEGACY_RING_ORBITS_ENABLED).toBe(false)
   })
   it('falls back to FXAA when MSAA is not available', () => {
     expect(resolveAAMode(null, false)).toBe('fxaa')

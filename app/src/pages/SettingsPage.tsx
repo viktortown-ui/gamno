@@ -2,6 +2,7 @@ import type { ChangeEventHandler } from 'react'
 import { clearAllData, exportDataBlob, importDataBlob, seedTestData } from '../core/storage/repo'
 import type { AppearanceSettings } from '../ui/appearance'
 import { SparkButton } from '../ui/SparkButton'
+import { hardCacheResetAndReload } from '../core/cacheReset'
 
 interface SettingsPageProps {
   onDataChanged: () => Promise<void>
@@ -34,6 +35,12 @@ export function SettingsPage({ onDataChanged, appearance, onAppearanceChange }: 
     await importDataBlob(file)
     await onDataChanged()
     event.target.value = ''
+  }
+
+
+  const handleHardCacheReset = async () => {
+    if (!window.confirm('Сбросить service worker, CacheStorage и перезагрузить страницу?')) return
+    await hardCacheResetAndReload()
   }
 
   const handleSeed = async () => {
@@ -106,6 +113,7 @@ export function SettingsPage({ onDataChanged, appearance, onAppearanceChange }: 
         <label className="import-label">Импорт данных<input type="file" onChange={handleImport} /></label>
         <SparkButton type="button" onClick={handleClear}>Очистить данные</SparkButton>
         <SparkButton type="button" onClick={handleSeed}>Сгенерировать тестовые данные (30 дней)</SparkButton>
+        {import.meta.env.DEV ? <SparkButton type="button" onClick={handleHardCacheReset}>Сброс кэша и перезагрузка</SparkButton> : null}
       </div>
     </section>
   )
