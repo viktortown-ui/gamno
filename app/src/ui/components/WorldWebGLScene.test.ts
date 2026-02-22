@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { WorldMapSnapshot } from '../../core/worldMap/types'
 import { computeFitToViewState, orbitPulseOpacity } from './worldWebglSceneMath'
+import { resolveAAMode } from './worldWebglAAMode'
 
 const snapshot: WorldMapSnapshot = {
   id: 'snapshot:test',
@@ -30,5 +31,12 @@ describe('WorldWebGLScene helpers', () => {
   it('respects reduced-motion by disabling orbit pulse opacity animation', () => {
     expect(orbitPulseOpacity(0.5, true, 4, 12)).toBe(0.5)
     expect(orbitPulseOpacity(0.5, false, 4, 12)).not.toBe(0.5)
+  })
+
+  it('falls back to FXAA when MSAA is not available', () => {
+    expect(resolveAAMode(null, false)).toBe('fxaa')
+    expect(resolveAAMode('msaa', false)).toBe('fxaa')
+    expect(resolveAAMode('fxaa', true)).toBe('fxaa')
+    expect(resolveAAMode(null, true)).toBe('msaa')
   })
 })

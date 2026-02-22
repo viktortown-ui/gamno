@@ -8,6 +8,8 @@ import { FXAAShader } from 'three/examples/jsm/shaders/FXAAShader.js'
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js'
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js'
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js'
+import { WebGLRenderTarget } from 'three'
+import { resolveAAMode, type AAMode } from './worldWebglAAMode'
 import type { WorldMapPlanet, WorldMapSnapshot } from '../../core/worldMap/types'
 import { computeFitToViewState, orbitPulseOpacity } from './worldWebglSceneMath'
 import type { WorldFxEvent } from '../../pages/worldCockpit'
@@ -23,7 +25,8 @@ interface WorldWebGLSceneProps {
 }
 
 const BLOOM_LAYER = 1
-const ORBIT_SEGMENTS = 128
+const ORBIT_SEGMENTS = 192
+const ORBIT_RADIAL_SEGMENTS = 20
 const BLOOM_PARAMS = {
   threshold: 0.62,
   strength: 0.62,
@@ -114,6 +117,9 @@ export function WorldWebGLScene({
   const [focusedId, setFocusedId] = useState<string>(snapshot.planets[0]?.id ?? '')
   const [reducedMotion, setReducedMotion] = useState(false)
   const [debugState, setDebugState] = useState<{ cameraDistance: number; boundingRadius: number; exposure: number; overlayAlpha: number } | null>(null)
+  const [devExposure, setDevExposure] = useState(BLOOM_PARAMS.exposure)
+  const [devBloomStrength, setDevBloomStrength] = useState(BLOOM_PARAMS.strength)
+  const [devAAMode, setDevAAMode] = useState<AAMode>('msaa')
   const resetViewRef = useRef<() => void>(() => {})
   const selectedIdRef = useRef<string | null>(selectedPlanetId ?? null)
   const onPlanetSelectRef = useRef(onPlanetSelect)
@@ -164,12 +170,13 @@ export function WorldWebGLScene({
     const host = sceneRef.current
     if (!host) return
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
-    renderer.setPixelRatio(window.devicePixelRatio || 1)
+    const renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true })
+    const pixelRatio = Math.min(window.devicePixelRatio || 1, 2)
+    renderer.setPixelRatio(pixelRatio)
     renderer.setSize(host.clientWidth, host.clientHeight)
     renderer.outputColorSpace = THREE.SRGBColorSpace
     renderer.toneMapping = THREE.ACESFilmicToneMapping
-    renderer.toneMappingExposure = THREE.MathUtils.clamp(BLOOM_PARAMS.exposure, EXPOSURE_RANGE.min, EXPOSURE_RANGE.max)
+    renderer.toneMappingExposure = THREE.MathUtils.clamp(devExposure, EXPOSURE_RANGE.min, EXPOSURE_RANGE.max)
     host.appendChild(renderer.domElement)
 
     const scene = new THREE.Scene()
@@ -207,10 +214,17 @@ export function WorldWebGLScene({
     }
     updateControlBounds(fit)
 
-    const composer = new EffectComposer(renderer)
-    composer.setPixelRatio(window.devicePixelRatio || 1)
+    const isWebGL2 = renderer.capabilities.isWebGL2
+    const activeAAMode = resolveAAMode(import.meta.env.DEV ? devAAMode : null, isWebGL2)
+    const renderTarget = new WebGLRenderTarget(host.clientWidth * pixelRatio, host.clientHeight * pixelRatio, {
+      format: THREE.RGBAFormat,
+      colorSpace: THREE.SRGBColorSpace,
+      samples: activeAAMode === 'msaa' && isWebGL2 ? 4 : 0,
+    })
+    const composer = new EffectComposer(renderer, renderTarget)
+    composer.setPixelRatio(pixelRatio)
     composer.addPass(new RenderPass(scene, camera))
-    const bloomPass = new UnrealBloomPass(new THREE.Vector2(host.clientWidth, host.clientHeight), BLOOM_PARAMS.strength, BLOOM_PARAMS.radius, BLOOM_PARAMS.threshold)
+    const bloomPass = new UnrealBloomPass(new THREE.Vector2(host.clientWidth, host.clientHeight), devBloomStrength, BLOOM_PARAMS.radius, BLOOM_PARAMS.threshold)
     composer.addPass(bloomPass)
     const vignettePass = new ShaderPass({
       uniforms: {
@@ -222,7 +236,8 @@ export function WorldWebGLScene({
     })
     composer.addPass(vignettePass)
     const fxaaPass = new ShaderPass(FXAAShader)
-    fxaaPass.material.uniforms.resolution.value.set(1 / (host.clientWidth * (window.devicePixelRatio || 1)), 1 / (host.clientHeight * (window.devicePixelRatio || 1)))
+    fxaaPass.enabled = activeAAMode === 'fxaa'
+    fxaaPass.material.uniforms.resolution.value.set(1 / (host.clientWidth * pixelRatio), 1 / (host.clientHeight * pixelRatio))
     composer.addPass(fxaaPass)
     composer.addPass(new OutputPass())
 
@@ -266,9 +281,10 @@ export function WorldWebGLScene({
     snapshot.rings.forEach((ring, index) => {
       const points = ringPoints(ring.radius * 0.045, 0.72 + seedFloat(index + snapshot.seed) * 0.1, (seedFloat(index + 7) - 0.5) * 0.4, ORBIT_SEGMENTS)
       const curve = new THREE.CatmullRomCurve3(points, true, 'catmullrom', 0.1)
-      const geometry = new THREE.TubeGeometry(curve, ORBIT_SEGMENTS, 0.022 + ring.stormStrength * 0.008, 12, true)
+      const geometry = new THREE.TubeGeometry(curve, ORBIT_SEGMENTS, 0.022 + ring.stormStrength * 0.008, ORBIT_RADIAL_SEGMENTS, true)
       const color = new THREE.Color(0x8f6bff).lerp(new THREE.Color(0x43f3d0), ring.stormStrength * 0.45)
-      const material = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.35 + ring.stormStrength * 0.24, blending: THREE.AdditiveBlending, depthWrite: false })
+      const indexFalloff = 1 - (index / Math.max(1, snapshot.rings.length - 1)) * 0.2
+      const material = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: (0.35 + ring.stormStrength * 0.24) * indexFalloff, blending: THREE.AdditiveBlending, depthWrite: false })
       const orbit = new THREE.Mesh(geometry, material)
       orbit.rotation.x = -0.35
       orbit.layers.enable(BLOOM_LAYER)
@@ -307,7 +323,6 @@ export function WorldWebGLScene({
     }
     stars.setAttribute('position', new THREE.BufferAttribute(positions, 3))
     const dust = new THREE.Points(stars, new THREE.PointsMaterial({ color: 0xb9daff, size: 0.09, transparent: true, opacity: 0.62, blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: true }))
-    dust.layers.enable(BLOOM_LAYER)
     scene.add(dust)
 
     const hoverRing = new THREE.Mesh(
@@ -330,6 +345,23 @@ export function WorldWebGLScene({
     const pointer = new THREE.Vector2()
     const intersectTargets = [...planetMeshes.values()]
     let hoveredPlanetId: string | null = null
+    const darkMaterial = new THREE.MeshBasicMaterial({ color: 'black' })
+    const restoredMaterials = new Map<string, THREE.Material | THREE.Material[]>()
+
+    const darkenNonBloomed = (obj: THREE.Object3D) => {
+      if (!(obj instanceof THREE.Mesh)) return
+      if (bloomLayer.test(obj.layers)) return
+      restoredMaterials.set(obj.uuid, obj.material)
+      obj.material = darkMaterial
+    }
+
+    const restoreMaterial = (obj: THREE.Object3D) => {
+      if (!(obj instanceof THREE.Mesh)) return
+      const material = restoredMaterials.get(obj.uuid)
+      if (!material) return
+      obj.material = material
+      restoredMaterials.delete(obj.uuid)
+    }
 
     const applyHighlight = () => {
       planetMeshes.forEach((mesh, id) => {
@@ -452,7 +484,9 @@ export function WorldWebGLScene({
           overlayAlpha: stormAlpha,
         })
       }
+      scene.traverse(darkenNonBloomed)
       composer.render()
+      scene.traverse(restoreMaterial)
       raf = window.requestAnimationFrame(tick)
     }
     raf = window.requestAnimationFrame(tick)
@@ -460,9 +494,12 @@ export function WorldWebGLScene({
     const onResize = () => {
       if (!host) return
       const { clientWidth, clientHeight } = host
+      const nextPixelRatio = Math.min(window.devicePixelRatio || 1, 2)
+      renderer.setPixelRatio(nextPixelRatio)
       renderer.setSize(clientWidth, clientHeight)
+      composer.setPixelRatio(nextPixelRatio)
       composer.setSize(clientWidth, clientHeight)
-      fxaaPass.material.uniforms.resolution.value.set(1 / (clientWidth * (window.devicePixelRatio || 1)), 1 / (clientHeight * (window.devicePixelRatio || 1)))
+      fxaaPass.material.uniforms.resolution.value.set(1 / (clientWidth * nextPixelRatio), 1 / (clientHeight * nextPixelRatio))
       camera.aspect = clientWidth / clientHeight
       const nextFit = computeFitToViewState(snapshot, planets, camera.aspect)
       camera.position.copy(nextFit.position)
@@ -491,6 +528,7 @@ export function WorldWebGLScene({
       host.removeChild(renderer.domElement)
       renderer.dispose()
       composer.dispose()
+      darkMaterial.dispose()
       scene.traverse((obj: THREE.Object3D) => {
         if (obj instanceof THREE.Mesh) {
           obj.geometry.dispose()
@@ -501,7 +539,7 @@ export function WorldWebGLScene({
       stars.dispose()
       environmentMap.dispose()
     }
-  }, [planets, reducedMotion, snapshot, stormAlpha, uiVariant])
+  }, [devAAMode, devBloomStrength, devExposure, planets, reducedMotion, snapshot, stormAlpha, uiVariant])
 
   useEffect(() => {
     const next = new Map<string, number>()
@@ -585,6 +623,21 @@ export function WorldWebGLScene({
       {import.meta.env.DEV && debugState ? (
         <div className="world-webgl__debug" data-testid="world-webgl-debug">
           <span>cam {debugState.cameraDistance.toFixed(2)} · r {debugState.boundingRadius.toFixed(2)} · exp {debugState.exposure.toFixed(2)} · α {debugState.overlayAlpha.toFixed(2)}</span>
+          <label>
+            exp {devExposure.toFixed(2)}
+            <input type="range" min={EXPOSURE_RANGE.min} max={EXPOSURE_RANGE.max} step={0.01} value={devExposure} onChange={(event) => setDevExposure(Number(event.target.value))} />
+          </label>
+          <label>
+            bloom {devBloomStrength.toFixed(2)}
+            <input type="range" min={0.3} max={1.2} step={0.01} value={devBloomStrength} onChange={(event) => setDevBloomStrength(Number(event.target.value))} />
+          </label>
+          <label>
+            AA
+            <select value={devAAMode} onChange={(event) => setDevAAMode(event.target.value as AAMode)}>
+              <option value="msaa">msaa</option>
+              <option value="fxaa">fxaa</option>
+            </select>
+          </label>
           <button type="button" className="button-secondary" onClick={handleResetView}>Reset view (R)</button>
         </div>
       ) : null}
