@@ -3,6 +3,8 @@ import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent } from 'react'
 import * as THREE from 'three'
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js'
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js'
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
+import { FXAAShader } from 'three/examples/jsm/shaders/FXAAShader.js'
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js'
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js'
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js'
@@ -112,6 +114,9 @@ export function WorldWebGLScene({
   const [focusedId, setFocusedId] = useState<string>(snapshot.planets[0]?.id ?? '')
   const [reducedMotion, setReducedMotion] = useState(false)
   const [debugState, setDebugState] = useState<{ cameraDistance: number; boundingRadius: number; exposure: number; overlayAlpha: number } | null>(null)
+  const resetViewRef = useRef<() => void>(() => {})
+  const selectedIdRef = useRef<string | null>(selectedPlanetId ?? null)
+  const onPlanetSelectRef = useRef(onPlanetSelect)
 
   const planets = useMemo(() => [...snapshot.planets].sort((a, b) => (a.order - b.order) || a.id.localeCompare(b.id, 'ru')), [snapshot.planets])
 
@@ -125,6 +130,14 @@ export function WorldWebGLScene({
   }, [])
 
   const selectedId = selectedPlanetId ?? null
+
+  useEffect(() => {
+    selectedIdRef.current = selectedPlanetId ?? null
+  }, [selectedPlanetId])
+
+  useEffect(() => {
+    onPlanetSelectRef.current = onPlanetSelect
+  }, [onPlanetSelect])
 
   const visibleLabelIds = useMemo(() => {
     if (!selectedId) return new Set<string>()
@@ -152,7 +165,7 @@ export function WorldWebGLScene({
     if (!host) return
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
+    renderer.setPixelRatio(window.devicePixelRatio || 1)
     renderer.setSize(host.clientWidth, host.clientHeight)
     renderer.outputColorSpace = THREE.SRGBColorSpace
     renderer.toneMapping = THREE.ACESFilmicToneMapping
@@ -167,7 +180,35 @@ export function WorldWebGLScene({
     camera.position.copy(fit.position)
     camera.lookAt(fit.target)
 
+    const controls = new OrbitControls(camera, renderer.domElement)
+    controls.enableDamping = true
+    controls.dampingFactor = 0.08
+    controls.rotateSpeed = 0.75
+    controls.zoomSpeed = 0.9
+    controls.panSpeed = 0.75
+    controls.mouseButtons = {
+      LEFT: THREE.MOUSE.ROTATE,
+      MIDDLE: THREE.MOUSE.DOLLY,
+      RIGHT: THREE.MOUSE.PAN,
+    }
+    controls.listenToKeyEvents(window)
+    controls.keys = {
+      LEFT: 'ArrowLeft',
+      UP: 'ArrowUp',
+      RIGHT: 'ArrowRight',
+      BOTTOM: 'ArrowDown',
+    }
+    const updateControlBounds = (fitState: { position: THREE.Vector3; target: THREE.Vector3 }) => {
+      const distance = fitState.position.distanceTo(fitState.target)
+      controls.minDistance = Math.max(2.4, distance * 0.45)
+      controls.maxDistance = Math.max(5.5, distance * 1.9)
+      controls.target.copy(fitState.target)
+      controls.update()
+    }
+    updateControlBounds(fit)
+
     const composer = new EffectComposer(renderer)
+    composer.setPixelRatio(window.devicePixelRatio || 1)
     composer.addPass(new RenderPass(scene, camera))
     const bloomPass = new UnrealBloomPass(new THREE.Vector2(host.clientWidth, host.clientHeight), BLOOM_PARAMS.strength, BLOOM_PARAMS.radius, BLOOM_PARAMS.threshold)
     composer.addPass(bloomPass)
@@ -180,6 +221,9 @@ export function WorldWebGLScene({
       fragmentShader: `uniform sampler2D tDiffuse; uniform float strength; varying vec2 vUv; void main() { vec4 color = texture2D(tDiffuse, vUv); vec2 centered = vUv - 0.5; float vig = smoothstep(0.82, 0.22, dot(centered, centered)); color.rgb *= mix(1.0 - strength, 1.0, vig); gl_FragColor = color; }`,
     })
     composer.addPass(vignettePass)
+    const fxaaPass = new ShaderPass(FXAAShader)
+    fxaaPass.material.uniforms.resolution.value.set(1 / (host.clientWidth * (window.devicePixelRatio || 1)), 1 / (host.clientHeight * (window.devicePixelRatio || 1)))
+    composer.addPass(fxaaPass)
     composer.addPass(new OutputPass())
 
     const bloomLayer = new THREE.Layers()
@@ -266,6 +310,110 @@ export function WorldWebGLScene({
     dust.layers.enable(BLOOM_LAYER)
     scene.add(dust)
 
+    const hoverRing = new THREE.Mesh(
+      new THREE.TorusGeometry(0.72, 0.04, 10, 42),
+      new THREE.MeshBasicMaterial({ color: 0x8df9ff, transparent: true, opacity: 0.82, blending: THREE.AdditiveBlending, depthWrite: false }),
+    )
+    hoverRing.visible = false
+    hoverRing.layers.enable(BLOOM_LAYER)
+    scene.add(hoverRing)
+
+    const selectionRing = new THREE.Mesh(
+      new THREE.TorusGeometry(0.92, 0.05, 12, 48),
+      new THREE.MeshBasicMaterial({ color: 0xffd06a, transparent: true, opacity: 0.84, blending: THREE.AdditiveBlending, depthWrite: false }),
+    )
+    selectionRing.visible = false
+    selectionRing.layers.enable(BLOOM_LAYER)
+    scene.add(selectionRing)
+
+    const raycaster = new THREE.Raycaster()
+    const pointer = new THREE.Vector2()
+    const intersectTargets = [...planetMeshes.values()]
+    let hoveredPlanetId: string | null = null
+
+    const applyHighlight = () => {
+      planetMeshes.forEach((mesh, id) => {
+        const material = mesh.material
+        if (!(material instanceof THREE.MeshPhysicalMaterial)) return
+        const selectedBoost = selectedIdRef.current === id ? 0.4 : 0
+        const hoverBoost = hoveredPlanetId === id ? 0.25 : 0
+        material.emissiveIntensity = 0.52 + selectedBoost + hoverBoost
+      })
+
+      const hoveredMesh = hoveredPlanetId ? planetMeshes.get(hoveredPlanetId) : null
+      if (hoveredMesh) {
+        hoverRing.visible = true
+        hoverRing.position.copy(hoveredMesh.position)
+        hoverRing.rotation.x = Math.PI / 2
+        hoverRing.scale.setScalar(Math.max(1.1, hoveredMesh.scale.x * 1.1 + 0.1))
+      } else {
+        hoverRing.visible = false
+      }
+
+      const selectedMesh = selectedIdRef.current ? planetMeshes.get(selectedIdRef.current) : null
+      if (selectedMesh) {
+        selectionRing.visible = true
+        selectionRing.position.copy(selectedMesh.position)
+        selectionRing.rotation.x = Math.PI / 2
+        selectionRing.scale.setScalar(Math.max(1.15, selectedMesh.scale.x * 1.15 + 0.12))
+      } else {
+        selectionRing.visible = false
+      }
+    }
+    applyHighlight()
+
+    const pickPlanet = (event: PointerEvent | MouseEvent): string | null => {
+      const bounds = renderer.domElement.getBoundingClientRect()
+      pointer.x = ((event.clientX - bounds.left) / bounds.width) * 2 - 1
+      pointer.y = -((event.clientY - bounds.top) / bounds.height) * 2 + 1
+      raycaster.setFromCamera(pointer, camera)
+      const hit = raycaster.intersectObjects(intersectTargets, false)[0]
+      return (hit?.object.userData.planetId as string | undefined) ?? null
+    }
+
+    const resetView = () => {
+      const resetFit = computeFitToViewState(snapshot, planets, camera.aspect)
+      camera.position.copy(resetFit.position)
+      controls.target.copy(resetFit.target)
+      updateControlBounds(resetFit)
+    }
+    resetViewRef.current = resetView
+
+    const onPointerMove = (event: PointerEvent) => {
+      const nextHoveredId = pickPlanet(event)
+      if (hoveredPlanetId === nextHoveredId) return
+      hoveredPlanetId = nextHoveredId
+      applyHighlight()
+    }
+    const onPointerLeave = () => {
+      hoveredPlanetId = null
+      applyHighlight()
+    }
+    const onClick = (event: MouseEvent) => {
+      const picked = pickPlanet(event)
+      if (picked) {
+        onPlanetSelectRef.current?.(picked)
+      } else {
+        onPlanetSelectRef.current?.(null)
+      }
+    }
+    const onDoubleClick = (event: MouseEvent) => {
+      if (!pickPlanet(event)) {
+        resetView()
+      }
+    }
+    renderer.domElement.addEventListener('pointermove', onPointerMove)
+    renderer.domElement.addEventListener('pointerleave', onPointerLeave)
+    renderer.domElement.addEventListener('click', onClick)
+    renderer.domElement.addEventListener('dblclick', onDoubleClick)
+
+    const onWindowKeyDown = (event: KeyboardEvent) => {
+      if (event.key.toLowerCase() === 'r') {
+        resetView()
+      }
+    }
+    window.addEventListener('keydown', onWindowKeyDown)
+
     let raf = 0
     const tick = (time: number) => {
       const t = time * 0.001
@@ -284,16 +432,21 @@ export function WorldWebGLScene({
         mesh.rotation.y += reducedMotion ? 0 : 0.0035
       })
       core.rotation.y += reducedMotion ? 0 : 0.004
+      const corePulse = reducedMotion ? 0 : (Math.sin(t * 1.4) + 1) * 0.22
+      if (core.material instanceof THREE.MeshStandardMaterial) {
+        core.material.emissiveIntensity = 1.05 + corePulse
+      }
       halo.scale.setScalar(1 + (reducedMotion ? 0 : Math.sin(t * 1.4) * 0.03))
       if (!reducedMotion) {
-        camera.position.x = fit.position.x + Math.sin(t * 0.08) * 0.42
-        camera.position.z = fit.position.z + Math.cos(t * 0.07) * 0.34
+        dust.position.x = Math.sin(t * 0.05) * 0.35
+        dust.position.z = Math.cos(t * 0.045) * 0.3
         dust.rotation.y += 0.00035
       }
-      camera.lookAt(fit.target)
+      controls.update()
+      applyHighlight()
       if (import.meta.env.DEV) {
         setDebugState({
-          cameraDistance: camera.position.distanceTo(fit.target),
+          cameraDistance: camera.position.distanceTo(controls.target),
           boundingRadius: computeDebugBoundingRadius(snapshot, planets),
           exposure: renderer.toneMappingExposure,
           overlayAlpha: stormAlpha,
@@ -309,14 +462,15 @@ export function WorldWebGLScene({
       const { clientWidth, clientHeight } = host
       renderer.setSize(clientWidth, clientHeight)
       composer.setSize(clientWidth, clientHeight)
+      fxaaPass.material.uniforms.resolution.value.set(1 / (clientWidth * (window.devicePixelRatio || 1)), 1 / (clientHeight * (window.devicePixelRatio || 1)))
       camera.aspect = clientWidth / clientHeight
       const nextFit = computeFitToViewState(snapshot, planets, camera.aspect)
       camera.position.copy(nextFit.position)
-      camera.lookAt(nextFit.target)
+      updateControlBounds(nextFit)
       camera.updateProjectionMatrix()
       if (import.meta.env.DEV) {
         setDebugState({
-          cameraDistance: camera.position.distanceTo(nextFit.target),
+          cameraDistance: camera.position.distanceTo(controls.target),
           boundingRadius: computeDebugBoundingRadius(snapshot, planets),
           exposure: renderer.toneMappingExposure,
           overlayAlpha: stormAlpha,
@@ -328,6 +482,12 @@ export function WorldWebGLScene({
     return () => {
       window.cancelAnimationFrame(raf)
       window.removeEventListener('resize', onResize)
+      window.removeEventListener('keydown', onWindowKeyDown)
+      renderer.domElement.removeEventListener('pointermove', onPointerMove)
+      renderer.domElement.removeEventListener('pointerleave', onPointerLeave)
+      renderer.domElement.removeEventListener('click', onClick)
+      renderer.domElement.removeEventListener('dblclick', onDoubleClick)
+      controls.dispose()
       host.removeChild(renderer.domElement)
       renderer.dispose()
       composer.dispose()
@@ -356,6 +516,10 @@ export function WorldWebGLScene({
     if (currentIndex < 0) return
     const next = planets[(currentIndex + direction + planets.length) % planets.length]
     if (next) setFocusedId(next.id)
+  }
+
+  const handleResetView = () => {
+    resetViewRef.current()
   }
 
   const handlePlanetKey = (event: ReactKeyboardEvent<HTMLButtonElement>, planet: WorldMapPlanet) => {
@@ -419,9 +583,10 @@ export function WorldWebGLScene({
         ))}
       </div>
       {import.meta.env.DEV && debugState ? (
-        <output className="world-webgl__debug" data-testid="world-webgl-debug">
-          cam {debugState.cameraDistance.toFixed(2)} · r {debugState.boundingRadius.toFixed(2)} · exp {debugState.exposure.toFixed(2)} · α {debugState.overlayAlpha.toFixed(2)}
-        </output>
+        <div className="world-webgl__debug" data-testid="world-webgl-debug">
+          <span>cam {debugState.cameraDistance.toFixed(2)} · r {debugState.boundingRadius.toFixed(2)} · exp {debugState.exposure.toFixed(2)} · α {debugState.overlayAlpha.toFixed(2)}</span>
+          <button type="button" className="button-secondary" onClick={handleResetView}>Reset view (R)</button>
+        </div>
       ) : null}
     </div>
   )

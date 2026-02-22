@@ -771,10 +771,13 @@ input:focus-visible {
   z-index: 4;
   font-size: 11px;
   border-radius: 8px;
-  padding: 4px 8px;
+  padding: 6px 8px;
   color: #d8e8ff;
   background: rgba(4, 10, 24, 0.62);
   border: 1px solid rgba(122, 192, 255, .2);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .world-page { position: relative; min-height: calc(100vh - 32px); display: block; }

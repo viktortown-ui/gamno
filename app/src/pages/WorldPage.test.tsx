@@ -104,6 +104,23 @@ describe('WorldPage', () => {
     container.remove()
   })
 
+
+  it('opens planet panel from deep-link hash on initial load', async () => {
+    window.location.hash = '#/world?planet=planet:core:0'
+    const { WorldPage } = await import('./WorldPage')
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+
+    await act(async () => { root.render(<WorldPage />) })
+    await act(async () => { await flush() })
+
+    expect(container.querySelector('.planet-panel')).toBeTruthy()
+
+    await act(async () => { root.unmount() })
+    container.remove()
+  })
+
   it('supports planet panel open and back-close by hash', async () => {
     const { WorldPage } = await import('./WorldPage')
     const container = document.createElement('div')
