@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import * as THREE from 'three'
 import type { WorldMapPlanet } from '../../core/worldMap/types'
-import { advanceOrbitPhase, buildPlanetOrbitSpec, orbitLocalPoint, relaxOrbitPhases } from './worldWebglOrbits'
+import { advanceOrbitPhase, buildPlanetOrbitSpec, orbitLocalPoint, relaxOrbitPhases, resolveOrbitVisualState } from './worldWebglOrbits'
 
 const planet: WorldMapPlanet = {
   id: 'planet:alpha',
@@ -85,4 +85,15 @@ describe('worldWebglOrbits', () => {
     expect(THREE.MathUtils.radToDeg(innerOrbit.inclination)).toBeLessThanOrEqual(8)
     expect(THREE.MathUtils.radToDeg(outerOrbit.inclination)).toBeLessThanOrEqual(14)
   })
+
+  it('resolves orbit visual hierarchy for selected, neighbor and distant orbits', () => {
+    expect(resolveOrbitVisualState(4, 4)).toEqual({ opacity: 0.86, lineWidth: 1.5 })
+    expect(resolveOrbitVisualState(5, 4)).toEqual({ opacity: 0.32, lineWidth: 1.25 })
+    expect(resolveOrbitVisualState(9, 4)).toEqual({ opacity: 0.12, lineWidth: 1.1 })
+  })
+
+  it('keeps all orbits quietly visible when nothing is selected', () => {
+    expect(resolveOrbitVisualState(2, null)).toEqual({ opacity: 0.14, lineWidth: 1.2 })
+  })
+
 })

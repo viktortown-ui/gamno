@@ -21,6 +21,7 @@ function hashToUnit(seed: number): number {
 
 export interface OrbitSpec {
   id: string
+  orbitIndex: number
   curve: THREE.EllipseCurve
   inclination: number
   nodeRotation: number
@@ -46,6 +47,30 @@ export interface OrbitPhaseInput {
   orbitRadius: number
   planetRadius: number
   phase: number
+}
+
+export interface OrbitVisualState {
+  opacity: number
+  lineWidth: number
+}
+
+export function resolveOrbitVisualState(
+  orbitIndex: number,
+  selectedOrbitIndex: number | null,
+): OrbitVisualState {
+  if (selectedOrbitIndex == null) {
+    return { opacity: 0.14, lineWidth: 1.2 }
+  }
+
+  if (orbitIndex === selectedOrbitIndex) {
+    return { opacity: 0.86, lineWidth: 1.5 }
+  }
+
+  if (Math.abs(orbitIndex - selectedOrbitIndex) === 1) {
+    return { opacity: 0.32, lineWidth: 1.25 }
+  }
+
+  return { opacity: 0.12, lineWidth: 1.1 }
 }
 
 function shortestAngleDelta(a: number, b: number): number {
@@ -114,6 +139,7 @@ export function buildPlanetOrbitSpec(
 
   return {
     id: planet.id,
+    orbitIndex: index,
     curve,
     inclination,
     nodeRotation,

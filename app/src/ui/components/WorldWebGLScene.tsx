@@ -19,7 +19,7 @@ import { readWorldCameraState, writeWorldCameraState } from './worldWebglCameraS
 import { IdleDriftController } from './worldWebglIdleDrift'
 import { createPlanetMaterial, planetMaterialTuningFromPalette, planetPaletteFromId } from './worldWebglPlanetStyle'
 import { applySceneEnvironment, collectLightingDiagnostics, createIBL, warnIfLightingInvalid } from './worldWebglLighting'
-import { advanceOrbitPhase, buildPlanetOrbitSpec, orbitLocalPoint, relaxOrbitPhases, type OrbitSpec } from './worldWebglOrbits'
+import { advanceOrbitPhase, buildPlanetOrbitSpec, orbitLocalPoint, relaxOrbitPhases, resolveOrbitVisualState, type OrbitSpec } from './worldWebglOrbits'
 import { getWorldScaleSpec } from './worldWebglScaleSpec'
 
 interface WorldWebGLSceneProps {
@@ -317,7 +317,7 @@ export function WorldWebGLScene({
     const planetMeshes = new Map<string, THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial | THREE.MeshPhysicalMaterial>>()
     const orbitByPlanetId = new Map<string, OrbitSpec>()
     const planetOrbitStates: PlanetOrbitState[] = []
-    const planetOrbitLines: Line2[] = []
+    const planetOrbitLines: Array<{ line: Line2; orbitIndex: number }> = []
     const phaseInputs: Array<{ id: string; orbitRadius: number; planetRadius: number; phase: number }> = []
     const orbitTmp = new THREE.Vector3()
     const orbitNearest = new THREE.Vector3()
@@ -345,7 +345,7 @@ export function WorldWebGLScene({
       const curveMaterial = new LineMaterial({
         color: new THREE.Color(0x6ca0ff),
         transparent: true,
-        opacity: 0.22,
+        opacity: 0.14,
         linewidth: 1.2,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
@@ -357,7 +357,7 @@ export function WorldWebGLScene({
       orbitLine.renderOrder = 2
       orbitGroup.add(orbitLine, mesh)
       systemGroup.add(orbitGroup)
-      planetOrbitLines.push(orbitLine)
+      planetOrbitLines.push({ line: orbitLine, orbitIndex: orbit.orbitIndex })
 
       const speedSeed = seedFloat(snapshot.seed + planet.order * 17 + planet.id.length * 13)
       const driftSpeed = orbit.speed + speedSeed * 0.003
@@ -630,6 +630,15 @@ export function WorldWebGLScene({
         dust.rotation.y += 0.00035
       }
       controls.update()
+      const selectedOrbitIndex = selectedIdRef.current
+        ? orbitByPlanetId.get(selectedIdRef.current)?.orbitIndex ?? null
+        : null
+      planetOrbitLines.forEach(({ line, orbitIndex }) => {
+        const material = line.material as LineMaterial
+        const visual = resolveOrbitVisualState(orbitIndex, selectedOrbitIndex)
+        material.opacity = visual.opacity
+        material.linewidth = visual.lineWidth
+      })
       applyHighlight()
       if (worldDebugHUD || (import.meta.env.DEV && worldDebugLighting)) {
         const selectedMesh = selectedIdRef.current ? planetMeshes.get(selectedIdRef.current) : null
@@ -685,7 +694,7 @@ export function WorldWebGLScene({
       composer.setSize(clientWidth, clientHeight)
       bloomPass.setSize(clientWidth, clientHeight)
       fxaaPass.material.uniforms.resolution.value.set(1 / (clientWidth * nextPixelRatio), 1 / (clientHeight * nextPixelRatio))
-      planetOrbitLines.forEach((line) => {
+      planetOrbitLines.forEach(({ line }) => {
         const material = line.material as LineMaterial
         material.resolution.set(clientWidth * nextPixelRatio, clientHeight * nextPixelRatio)
       })
@@ -714,7 +723,7 @@ export function WorldWebGLScene({
       host.removeChild(renderer.domElement)
       renderer.dispose()
       composer.dispose()
-      planetOrbitLines.forEach((line) => {
+      planetOrbitLines.forEach(({ line }) => {
         line.geometry.dispose()
         const material = line.material as LineMaterial
         material.dispose()
