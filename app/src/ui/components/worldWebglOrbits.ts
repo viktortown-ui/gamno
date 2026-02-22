@@ -54,6 +54,8 @@ export interface OrbitVisualState {
   lineWidth: number
   colorMultiplier: number
   glowOpacity: number
+  blending: THREE.Blending
+  glowVisible: boolean
 }
 
 export interface OrbitStyleSpec {
@@ -61,6 +63,8 @@ export interface OrbitStyleSpec {
   lineWidthScale: number
   colorMultiplier: number
   glowOpacity: number
+  blending: THREE.Blending
+  glowVisible: boolean
 }
 
 export interface OrbitVisualStylePreset {
@@ -72,16 +76,16 @@ export interface OrbitVisualStylePreset {
 
 const ORBIT_VISUAL_STYLE_DEFAULT: OrbitVisualStylePreset = {
   baseLineWidth: 0.77,
-  baseOrbit: { opacity: 0.08, lineWidthScale: 1, colorMultiplier: 1, glowOpacity: 0 },
-  nearOrbit: { opacity: 0.14, lineWidthScale: 1.2, colorMultiplier: 1, glowOpacity: 0.04 },
-  selectedOrbit: { opacity: 0.82, lineWidthScale: 1.56, colorMultiplier: 1, glowOpacity: 0.12 },
+  baseOrbit: { opacity: 0.08, lineWidthScale: 1, colorMultiplier: 1, glowOpacity: 0, blending: THREE.NormalBlending, glowVisible: false },
+  nearOrbit: { opacity: 0.14, lineWidthScale: 1.2, colorMultiplier: 1, glowOpacity: 0.04, blending: THREE.NormalBlending, glowVisible: true },
+  selectedOrbit: { opacity: 0.82, lineWidthScale: 1.56, colorMultiplier: 1, glowOpacity: 0.12, blending: THREE.AdditiveBlending, glowVisible: true },
 }
 
 const ORBIT_VISUAL_STYLE_HARD_DIM: OrbitVisualStylePreset = {
   baseLineWidth: 0.77,
-  baseOrbit: { opacity: 0.02, lineWidthScale: 0.62, colorMultiplier: 0.1, glowOpacity: 0 },
-  nearOrbit: { opacity: 0.13, lineWidthScale: 0.85, colorMultiplier: 0.3, glowOpacity: 0 },
-  selectedOrbit: { opacity: 0.86, lineWidthScale: 1.35, colorMultiplier: 1, glowOpacity: 0.35 },
+  baseOrbit: { opacity: 0.03, lineWidthScale: 0.65, colorMultiplier: 0.12, glowOpacity: 0, blending: THREE.NormalBlending, glowVisible: false },
+  nearOrbit: { opacity: 0.03, lineWidthScale: 0.65, colorMultiplier: 0.12, glowOpacity: 0, blending: THREE.NormalBlending, glowVisible: false },
+  selectedOrbit: { opacity: 0.85, lineWidthScale: 1.35, colorMultiplier: 1, glowOpacity: 0.22, blending: THREE.AdditiveBlending, glowVisible: true },
 }
 
 function isHardOrbitDimEnabled(): boolean {
@@ -102,6 +106,8 @@ export function resolveOrbitVisualState(
     lineWidth: style.baseLineWidth * spec.lineWidthScale,
     colorMultiplier: spec.colorMultiplier,
     glowOpacity: spec.glowOpacity,
+    blending: spec.blending,
+    glowVisible: spec.glowVisible,
   })
 
   if (selectedOrbitIndex == null) {

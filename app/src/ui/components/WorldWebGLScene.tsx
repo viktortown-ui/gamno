@@ -84,6 +84,31 @@ interface PlanetOrbitState {
   phase: number
 }
 
+interface OrbitMaterialDebugState {
+  selectedOrbitIndex: number | null
+  sampleOpacity: number
+  sampleUniformOpacity: number | null
+  sampleGlowVisible: boolean
+}
+
+function applyLineMaterialStyle(
+  mat: LineMaterial,
+  style: { opacity: number; lineWidth: number; colorMultiplier: number; blending: THREE.Blending },
+  baseColor: THREE.Color,
+): number | null {
+  mat.transparent = true
+  mat.opacity = style.opacity
+  mat.linewidth = style.lineWidth
+  mat.blending = style.blending
+  mat.color.copy(baseColor).multiplyScalar(style.colorMultiplier)
+  const uniformOpacity = mat.uniforms?.opacity
+  if (uniformOpacity) {
+    uniformOpacity.value = style.opacity
+    return uniformOpacity.value as number
+  }
+  return null
+}
+
 function toWorldPosition(snapshot: WorldMapSnapshot, planet: WorldMapPlanet): THREE.Vector3 {
   const x = (planet.x - snapshot.center.x) * 0.042
   const y = (snapshot.center.y - planet.y) * 0.027
@@ -151,6 +176,7 @@ export function WorldWebGLScene({
   const onPlanetSelectRef = useRef(onPlanetSelect)
   const [hoveredPlanetLabel, setHoveredPlanetLabel] = useState<{ id: string; labelRu: string; x: number; y: number; radius: number } | null>(null)
   const [selectedPlanetLabel, setSelectedPlanetLabel] = useState<{ id: string; labelRu: string; x: number; y: number } | null>(null)
+  const [orbitMaterialDebugState, setOrbitMaterialDebugState] = useState<OrbitMaterialDebugState | null>(null)
 
   const planets = useMemo(() => [...snapshot.planets].sort((a, b) => (a.order - b.order) || a.id.localeCompare(b.id, 'ru')), [snapshot.planets])
 
@@ -720,16 +746,33 @@ export function WorldWebGLScene({
       const selectedOrbitIndex = selectedIdRef.current
         ? orbitByPlanetId.get(selectedIdRef.current)?.orbitIndex ?? null
         : null
+      let nextOrbitMaterialDebugState: OrbitMaterialDebugState | null = null
       planetOrbitLines.forEach(({ line, glowLine, orbitIndex }) => {
         const material = line.material as LineMaterial
         const glowMaterial = glowLine.material as LineMaterial
         const visual = resolveOrbitVisualState(orbitIndex, selectedOrbitIndex)
-        material.opacity = visual.opacity
-        material.linewidth = visual.lineWidth
-        material.color.copy(orbitBaseColor).multiplyScalar(visual.colorMultiplier)
-        glowMaterial.opacity = visual.glowOpacity
-        glowMaterial.linewidth = visual.lineWidth * 1.2
+        const opacityUniform = applyLineMaterialStyle(material, visual, orbitBaseColor)
+        applyLineMaterialStyle(
+          glowMaterial,
+          {
+            opacity: visual.glowOpacity,
+            lineWidth: visual.lineWidth * 1.2,
+            colorMultiplier: visual.colorMultiplier,
+            blending: THREE.AdditiveBlending,
+          },
+          orbitBaseColor,
+        )
+        glowLine.visible = visual.glowVisible
+        if (!nextOrbitMaterialDebugState && (orbitIndex === selectedOrbitIndex || selectedOrbitIndex == null)) {
+          nextOrbitMaterialDebugState = {
+            selectedOrbitIndex,
+            sampleOpacity: visual.opacity,
+            sampleUniformOpacity: opacityUniform,
+            sampleGlowVisible: visual.glowVisible,
+          }
+        }
       })
+      setOrbitMaterialDebugState(nextOrbitMaterialDebugState)
       applyHighlight()
       const selectedMeshForLabel = selectedIdRef.current ? planetMeshes.get(selectedIdRef.current) : null
       if (selectedMeshForLabel && selectedIdRef.current) {
@@ -990,6 +1033,14 @@ export function WorldWebGLScene({
         <span>BloomPreset {readWorldBloomPresetName()}</span>
         <span>base o:{orbitVisualStyle.baseOrbit.opacity.toFixed(2)} lw×{orbitVisualStyle.baseOrbit.lineWidthScale.toFixed(2)} rgb×{orbitVisualStyle.baseOrbit.colorMultiplier.toFixed(2)} g:{orbitVisualStyle.baseOrbit.glowOpacity.toFixed(2)}</span>
         <span>sel o:{orbitVisualStyle.selectedOrbit.opacity.toFixed(2)} lw×{orbitVisualStyle.selectedOrbit.lineWidthScale.toFixed(2)} rgb×{orbitVisualStyle.selectedOrbit.colorMultiplier.toFixed(2)} g:{orbitVisualStyle.selectedOrbit.glowOpacity.toFixed(2)}</span>
+        {import.meta.env.DEV ? (
+          <span>
+            uniforms.opacity {orbitMaterialDebugState?.sampleUniformOpacity == null ? 'n/a' : orbitMaterialDebugState.sampleUniformOpacity.toFixed(2)} ·
+            mat.opacity {orbitMaterialDebugState?.sampleOpacity.toFixed(2) ?? 'n/a'} ·
+            glow {orbitMaterialDebugState?.sampleGlowVisible ? 'on' : 'off'} ·
+            selIdx {orbitMaterialDebugState?.selectedOrbitIndex ?? 'none'}
+          </span>
+        ) : null}
       </div>
       {(worldDebugHUD || (import.meta.env.DEV && worldDebugLighting) || worldOrbitFadeDebug) && debugState ? (
         <div className="world-webgl__debug" data-testid="world-webgl-debug">
