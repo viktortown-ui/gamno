@@ -8,8 +8,6 @@ import { FXAAShader } from 'three/examples/jsm/shaders/FXAAShader.js'
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js'
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js'
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js'
-import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
-import { WebGLRenderTarget } from 'three'
 import { resolveAAMode, type AAMode } from './worldWebglAAMode'
 import type { WorldMapPlanet, WorldMapSnapshot } from '../../core/worldMap/types'
 import { computeFitToViewState, orbitPulseOpacity } from './worldWebglSceneMath'
@@ -17,7 +15,7 @@ import type { WorldFxEvent } from '../../pages/worldCockpit'
 import { readWorldCameraState, writeWorldCameraState } from './worldWebglCameraState'
 import { IdleDriftController } from './worldWebglIdleDrift'
 import { applyPlanetMaterialTuning, planetMaterialTuningFromPalette, planetPaletteFromId } from './worldWebglPlanetStyle'
-import { applySceneEnvironment } from './worldWebglLighting'
+import { applySceneEnvironment, createIBL } from './worldWebglLighting'
 
 interface WorldWebGLSceneProps {
   snapshot: WorldMapSnapshot
@@ -73,19 +71,8 @@ function ringPoints(radius: number, flatten: number, tilt: number, segments: num
   return points
 }
 
-function createIBL(renderer: THREE.WebGLRenderer): { texture: THREE.Texture; dispose: () => void } {
-  const pmrem = new THREE.PMREMGenerator(renderer)
-  const room = new RoomEnvironment()
-  const texture = pmrem.fromScene(room).texture
-  room.dispose()
-  return {
-    texture,
-    dispose: () => {
-      texture.dispose()
-      pmrem.dispose()
-    },
-  }
-}
+const worldDebugIBL = import.meta.env.DEV && globalThis.localStorage?.getItem('worldDebugIBL') === '1'
+let iblDebugLogged = false
 
 
 function computeDebugBoundingRadius(snapshot: WorldMapSnapshot, planets: WorldMapPlanet[]): number {
@@ -212,7 +199,7 @@ export function WorldWebGLScene({
 
     const isWebGL2 = renderer.capabilities.isWebGL2
     const activeAAMode = resolveAAMode(import.meta.env.DEV ? devAAMode : null, isWebGL2)
-    const renderTarget = new WebGLRenderTarget(host.clientWidth * pixelRatio, host.clientHeight * pixelRatio, {
+    const renderTarget = new THREE.WebGLRenderTarget(host.clientWidth * pixelRatio, host.clientHeight * pixelRatio, {
       format: THREE.RGBAFormat,
       colorSpace: THREE.SRGBColorSpace,
       samples: activeAAMode === 'msaa' && isWebGL2 ? 4 : 0,
@@ -243,6 +230,16 @@ export function WorldWebGLScene({
     scene.fog = new THREE.FogExp2(uiVariant === 'cinematic' ? 0x060d1d : 0x071022, 0.032)
     const ibl = createIBL(renderer)
     applySceneEnvironment(scene, ibl.texture)
+    if (!scene.environment) {
+      console.warn('[World] scene.environment missing; PBR will look black')
+    } else if (worldDebugIBL && !iblDebugLogged) {
+      iblDebugLogged = true
+      console.info('[World] IBL initialized', {
+        exists: Boolean(scene.environment),
+        type: scene.environment.type,
+        uuid: scene.environment.uuid,
+      })
+    }
 
     const ambient = new THREE.AmbientLight(0xaad0ff, 0.74)
     const key = new THREE.DirectionalLight(0xd8e8ff, 1.05)
@@ -318,6 +315,7 @@ export function WorldWebGLScene({
         envMap: ibl.texture,
       })
       applyPlanetMaterialTuning(material, tuning)
+      material.color.copy(palette.baseColor)
       material.userData.baseEmissiveIntensity = tuning.emissiveIntensity
       const mesh = new THREE.Mesh(new THREE.SphereGeometry(planet.radius * 0.042, 36, 36), material)
       const basePosition = toWorldPosition(snapshot, planet)
@@ -488,7 +486,10 @@ export function WorldWebGLScene({
     }
     controls.addEventListener('change', onControlsChange)
 
-    const driftController = new IdleDriftController({ reduceMotion: reducedMotion }, performance.now())
+    const driftController = new IdleDriftController(
+      { reduceMotion: reducedMotion, idleTimeoutMs: import.meta.env.MODE === 'test' ? 0 : undefined },
+      performance.now(),
+    )
     driftController.setSelectedId(selectedIdRef.current, performance.now())
 
     let raf = 0

@@ -1,5 +1,5 @@
 export interface IdleDriftControllerOptions {
-  idleMs?: number
+  idleTimeoutMs?: number
   reduceMotion: boolean
 }
 
@@ -21,7 +21,7 @@ export class IdleDriftController {
   private panelInteracting = false
 
   constructor(options: IdleDriftControllerOptions, nowMs: number) {
-    this.idleMs = options.idleMs ?? 60_000
+    this.idleMs = options.idleTimeoutMs ?? 60_000
     this.reduceMotion = options.reduceMotion
     this.lastActionMs = nowMs
   }
@@ -46,6 +46,7 @@ export class IdleDriftController {
 
   isEnabled(nowMs: number): boolean {
     if (this.reduceMotion) return false
+    if (this.idleMs <= 0) return false
     if (this.selectedId) return false
     if (this.panelInteracting) return false
     return nowMs - this.lastActionMs >= this.idleMs

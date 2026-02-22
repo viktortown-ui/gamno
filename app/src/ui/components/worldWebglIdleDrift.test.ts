@@ -4,7 +4,7 @@ import { IdleDriftController } from './worldWebglIdleDrift'
 
 describe('IdleDriftController', () => {
   it('activates after idle timeout and pauses on user action', () => {
-    const controller = new IdleDriftController({ reduceMotion: false, idleMs: 60_000 }, 0)
+    const controller = new IdleDriftController({ reduceMotion: false, idleTimeoutMs: 60_000 }, 0)
 
     expect(controller.isEnabled(59_999)).toBe(false)
     expect(controller.isEnabled(60_000)).toBe(true)
@@ -15,7 +15,7 @@ describe('IdleDriftController', () => {
   })
 
   it('stays disabled when a planet is selected or panel interaction is active', () => {
-    const controller = new IdleDriftController({ reduceMotion: false, idleMs: 1_000 }, 0)
+    const controller = new IdleDriftController({ reduceMotion: false, idleTimeoutMs: 1_000 }, 0)
 
     controller.setSelectedId('planet:1', 900)
     expect(controller.isEnabled(5_000)).toBe(false)
@@ -29,7 +29,12 @@ describe('IdleDriftController', () => {
   })
 
   it('is permanently disabled when reduce motion is on', () => {
-    const controller = new IdleDriftController({ reduceMotion: true, idleMs: 10 }, 0)
+    const controller = new IdleDriftController({ reduceMotion: true, idleTimeoutMs: 10 }, 0)
+    expect(controller.isEnabled(1_000_000)).toBe(false)
+  })
+
+  it('is disabled when idle timeout is set to zero', () => {
+    const controller = new IdleDriftController({ reduceMotion: false, idleTimeoutMs: 0 }, 0)
     expect(controller.isEnabled(1_000_000)).toBe(false)
   })
 })
