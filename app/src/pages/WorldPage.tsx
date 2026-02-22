@@ -17,6 +17,18 @@ const DEFAULT_WORLD_MAP_FRAME: FrameSnapshot = buildFrameSnapshot({ nowTs: Date.
 const WORLD_ROUTE = '/world'
 const MAX_TIMELINE_FRAMES = 30
 
+
+const PANEL_COLLAPSED_STORAGE_KEY = 'world:action-rail:collapsed'
+const MOBILE_PANEL_WIDTH = 1180
+
+function readPanelCollapsed(): boolean {
+  if (typeof window === 'undefined') return false
+  const stored = window.localStorage.getItem(PANEL_COLLAPSED_STORAGE_KEY)
+  if (stored === '1') return true
+  if (stored === '0') return false
+  return window.innerWidth <= MOBILE_PANEL_WIDTH
+}
+
 const DOMAIN_BY_PLANET: Record<string, ActionDomain> = {
   core: 'фокус',
   risk: 'восстановление',
@@ -64,6 +76,7 @@ export function WorldPage({ uiVariant = 'instrument', renderMode = 'webgl' }: { 
   const [policyMode, setPolicyMode] = useState('balanced')
   const [selectedPlanetId, setSelectedPlanetId] = useState<string | null>(() => getHashPlanetId())
   const [lastActionReason, setLastActionReason] = useState('Сделайте первый шаг: чек-ин или автопилот.')
+  const [isRailCollapsed, setIsRailCollapsed] = useState<boolean>(() => readPanelCollapsed())
   const lastOriginRef = useRef<HTMLElement | null>(null)
   const prevSelectedRef = useRef<string | null>(selectedPlanetId)
 
@@ -71,6 +84,32 @@ export function WorldPage({ uiVariant = 'instrument', renderMode = 'webgl' }: { 
     const syncFromHash = () => setSelectedPlanetId(getHashPlanetId())
     window.addEventListener('hashchange', syncFromHash)
     return () => window.removeEventListener('hashchange', syncFromHash)
+  }, [])
+
+
+  useEffect(() => {
+    window.localStorage.setItem(PANEL_COLLAPSED_STORAGE_KEY, isRailCollapsed ? '1' : '0')
+  }, [isRailCollapsed])
+
+  useEffect(() => {
+    const onResize = () => {
+      if (window.innerWidth <= MOBILE_PANEL_WIDTH) setIsRailCollapsed(true)
+    }
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key.toLowerCase() === 'h') {
+        setIsRailCollapsed((prev) => !prev)
+      }
+      if (event.key === 'Escape') {
+        setIsRailCollapsed(true)
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
   }, [])
 
   useEffect(() => {
@@ -254,7 +293,22 @@ export function WorldPage({ uiVariant = 'instrument', renderMode = 'webgl' }: { 
         ) : null}
       </div>
 
-      <aside className={`world-action-rail world-action-rail--${uiVariant} panel`.trim()} aria-label="Action rail">
+      {isRailCollapsed ? (
+        <button
+          type="button"
+          className="world-action-rail__collapsed-cta start-primary"
+          onClick={() => setIsRailCollapsed(false)}
+          aria-label="Развернуть панель следующего шага"
+        >
+          Следующий шаг
+        </button>
+      ) : null}
+
+      <aside className={`world-action-rail world-action-rail--${uiVariant} panel ${isRailCollapsed ? 'world-action-rail--collapsed' : ''}`.trim()} aria-label="Action rail" aria-hidden={isRailCollapsed}>
+        <div className="world-action-rail__toolbar">
+          <span className="mono">H — скрыть · Esc — закрыть</span>
+          <button type="button" className="button-secondary" onClick={() => setIsRailCollapsed(true)}>Свернуть</button>
+        </div>
         <div className="world-hud-grid" role="list" aria-label="Сигналы cockpit">
           {hudSignals.map((signal) => (
             <span key={signal.key} role="listitem"><strong>{signal.label}</strong> {signal.value}</span>

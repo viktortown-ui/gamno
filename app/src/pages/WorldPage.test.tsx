@@ -83,6 +83,7 @@ async function flush(): Promise<void> {
 describe('WorldPage', () => {
   beforeEach(() => {
     window.location.hash = '#/world'
+    window.localStorage.clear()
     dbMock.frameRows = [...seededFrameRows]
     navigateMock.mockReset()
   })
@@ -128,6 +129,36 @@ describe('WorldPage', () => {
       await flush()
     })
     expect(container.querySelector('.planet-panel')).toBeFalsy()
+
+    await act(async () => { root.unmount() })
+    container.remove()
+  })
+
+
+  it('toggles action rail and persists collapsed state', async () => {
+    const { WorldPage } = await import('./WorldPage')
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+
+    await act(async () => { root.render(<WorldPage />) })
+    await act(async () => { await flush() })
+
+    const collapse = Array.from(container.querySelectorAll('button')).find((item) => item.textContent?.includes('Свернуть')) as HTMLButtonElement | undefined
+    await act(async () => { collapse?.dispatchEvent(new MouseEvent('click', { bubbles: true })) })
+
+    expect(window.localStorage.getItem('world:action-rail:collapsed')).toBe('1')
+    expect(container.querySelector('.world-action-rail__collapsed-cta')).toBeTruthy()
+
+    const cta = container.querySelector('.world-action-rail__collapsed-cta') as HTMLButtonElement | null
+    await act(async () => { cta?.dispatchEvent(new MouseEvent('click', { bubbles: true })) })
+    expect(window.localStorage.getItem('world:action-rail:collapsed')).toBe('0')
+
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'h', bubbles: true }))
+      await flush()
+    })
+    expect(window.localStorage.getItem('world:action-rail:collapsed')).toBe('1')
 
     await act(async () => { root.unmount() })
     container.remove()

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent } from 'react'
 import * as THREE from 'three'
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js'
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js'
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js'
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js'
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js'
@@ -22,11 +23,12 @@ interface WorldWebGLSceneProps {
 const BLOOM_LAYER = 1
 const ORBIT_SEGMENTS = 128
 const BLOOM_PARAMS = {
-  threshold: 0.56,
-  strength: 1.2,
-  radius: 0.58,
-  exposure: 1.18,
+  threshold: 0.62,
+  strength: 0.62,
+  radius: 0.36,
+  exposure: 1.25,
 }
+const EXPOSURE_RANGE = { min: 1.1, max: 1.4 }
 
 function toWorldPosition(snapshot: WorldMapSnapshot, planet: WorldMapPlanet): THREE.Vector3 {
   const x = (planet.x - snapshot.center.x) * 0.042
@@ -85,6 +87,16 @@ function buildGradientEnvironmentMap(renderer: THREE.WebGLRenderer): THREE.Textu
   return envMap
 }
 
+
+function computeDebugBoundingRadius(snapshot: WorldMapSnapshot, planets: WorldMapPlanet[]): number {
+  const maxPlanetRadius = planets.reduce((acc, planet) => {
+    const point = toWorldPosition(snapshot, planet)
+    return Math.max(acc, point.length())
+  }, 0)
+  const maxRingRadius = snapshot.rings.reduce((acc, ring) => Math.max(acc, ring.radius * 0.045), 0)
+  return Math.max(maxPlanetRadius, maxRingRadius)
+}
+
 export function WorldWebGLScene({
   snapshot,
   onPlanetSelect,
@@ -99,6 +111,7 @@ export function WorldWebGLScene({
   const pulseRef = useRef<Map<string, number>>(new Map())
   const [focusedId, setFocusedId] = useState<string>(snapshot.planets[0]?.id ?? '')
   const [reducedMotion, setReducedMotion] = useState(false)
+  const [debugState, setDebugState] = useState<{ cameraDistance: number; boundingRadius: number; exposure: number; overlayAlpha: number } | null>(null)
 
   const planets = useMemo(() => [...snapshot.planets].sort((a, b) => (a.order - b.order) || a.id.localeCompare(b.id, 'ru')), [snapshot.planets])
 
@@ -127,10 +140,12 @@ export function WorldWebGLScene({
     return ids
   }, [planets, selectedId, showNeighborLabels])
 
+  const stormAlpha = Math.min(0.45, Math.max(0.08, snapshot.metrics.risk * 0.22 + (snapshot.metrics.sirenLevel === 'red' ? 0.14 : 0.05)))
+  const tailAlpha = Math.min(0.32, snapshot.metrics.esCollapse10 * 0.66 + 0.06)
   const overlayStyle = useMemo(() => ({
-    '--storm-alpha': String(Math.min(0.42, snapshot.metrics.risk * 0.28 + (snapshot.metrics.sirenLevel === 'red' ? 0.2 : 0.08))),
-    '--tail-alpha': String(Math.min(0.32, snapshot.metrics.esCollapse10 * 0.7 + 0.06)),
-  } as CSSProperties), [snapshot.metrics])
+    '--storm-alpha': String(stormAlpha),
+    '--tail-alpha': String(tailAlpha),
+  } as CSSProperties), [stormAlpha, tailAlpha])
 
   useEffect(() => {
     const host = sceneRef.current
@@ -141,7 +156,7 @@ export function WorldWebGLScene({
     renderer.setSize(host.clientWidth, host.clientHeight)
     renderer.outputColorSpace = THREE.SRGBColorSpace
     renderer.toneMapping = THREE.ACESFilmicToneMapping
-    renderer.toneMappingExposure = BLOOM_PARAMS.exposure
+    renderer.toneMappingExposure = THREE.MathUtils.clamp(BLOOM_PARAMS.exposure, EXPOSURE_RANGE.min, EXPOSURE_RANGE.max)
     host.appendChild(renderer.domElement)
 
     const scene = new THREE.Scene()
@@ -165,6 +180,7 @@ export function WorldWebGLScene({
       fragmentShader: `uniform sampler2D tDiffuse; uniform float strength; varying vec2 vUv; void main() { vec4 color = texture2D(tDiffuse, vUv); vec2 centered = vUv - 0.5; float vig = smoothstep(0.82, 0.22, dot(centered, centered)); color.rgb *= mix(1.0 - strength, 1.0, vig); gl_FragColor = color; }`,
     })
     composer.addPass(vignettePass)
+    composer.addPass(new OutputPass())
 
     const bloomLayer = new THREE.Layers()
     bloomLayer.set(BLOOM_LAYER)
@@ -275,6 +291,14 @@ export function WorldWebGLScene({
         dust.rotation.y += 0.00035
       }
       camera.lookAt(fit.target)
+      if (import.meta.env.DEV) {
+        setDebugState({
+          cameraDistance: camera.position.distanceTo(fit.target),
+          boundingRadius: computeDebugBoundingRadius(snapshot, planets),
+          exposure: renderer.toneMappingExposure,
+          overlayAlpha: stormAlpha,
+        })
+      }
       composer.render()
       raf = window.requestAnimationFrame(tick)
     }
@@ -290,6 +314,14 @@ export function WorldWebGLScene({
       camera.position.copy(nextFit.position)
       camera.lookAt(nextFit.target)
       camera.updateProjectionMatrix()
+      if (import.meta.env.DEV) {
+        setDebugState({
+          cameraDistance: camera.position.distanceTo(nextFit.target),
+          boundingRadius: computeDebugBoundingRadius(snapshot, planets),
+          exposure: renderer.toneMappingExposure,
+          overlayAlpha: stormAlpha,
+        })
+      }
     }
     window.addEventListener('resize', onResize)
 
@@ -309,7 +341,7 @@ export function WorldWebGLScene({
       stars.dispose()
       environmentMap.dispose()
     }
-  }, [planets, reducedMotion, snapshot, uiVariant])
+  }, [planets, reducedMotion, snapshot, stormAlpha, uiVariant])
 
   useEffect(() => {
     const next = new Map<string, number>()
@@ -386,6 +418,11 @@ export function WorldWebGLScene({
           <span key={`label:${planet.id}`} style={{ left: `${planet.x}px`, top: `${planet.y - planet.radius - 8}px` }}>{planet.labelRu}</span>
         ))}
       </div>
+      {import.meta.env.DEV && debugState ? (
+        <output className="world-webgl__debug" data-testid="world-webgl-debug">
+          cam {debugState.cameraDistance.toFixed(2)} · r {debugState.boundingRadius.toFixed(2)} · exp {debugState.exposure.toFixed(2)} · α {debugState.overlayAlpha.toFixed(2)}
+        </output>
+      ) : null}
     </div>
   )
 }
