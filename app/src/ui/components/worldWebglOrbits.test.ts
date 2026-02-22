@@ -149,8 +149,8 @@ describe('worldWebglOrbits', () => {
     globalThis.localStorage.setItem('worldOrbitDim', '1')
     const style = getOrbitVisualStylePreset()
 
-    expect(style.baseOrbit.opacity).toBe(0.03)
-    expect(style.baseOrbit.colorMultiplier).toBe(0.14)
+    expect(style.baseOrbit.opacity).toBe(0.02)
+    expect(style.baseOrbit.colorMultiplier).toBe(0.1)
     expect(style.selectedOrbit.lineWidthScale).toBe(1.35)
 
     globalThis.localStorage.removeItem('worldOrbitDim')

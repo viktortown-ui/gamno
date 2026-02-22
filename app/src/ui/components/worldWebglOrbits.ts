@@ -79,9 +79,9 @@ const ORBIT_VISUAL_STYLE_DEFAULT: OrbitVisualStylePreset = {
 
 const ORBIT_VISUAL_STYLE_HARD_DIM: OrbitVisualStylePreset = {
   baseLineWidth: 0.77,
-  baseOrbit: { opacity: 0.03, lineWidthScale: 0.7, colorMultiplier: 0.14, glowOpacity: 0 },
+  baseOrbit: { opacity: 0.02, lineWidthScale: 0.62, colorMultiplier: 0.1, glowOpacity: 0 },
   nearOrbit: { opacity: 0.13, lineWidthScale: 0.85, colorMultiplier: 0.3, glowOpacity: 0 },
-  selectedOrbit: { opacity: 0.86, lineWidthScale: 1.35, colorMultiplier: 1, glowOpacity: 0.12 },
+  selectedOrbit: { opacity: 0.86, lineWidthScale: 1.35, colorMultiplier: 1, glowOpacity: 0.35 },
 }
 
 function isHardOrbitDimEnabled(): boolean {

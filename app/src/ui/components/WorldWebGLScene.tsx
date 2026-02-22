@@ -65,6 +65,16 @@ function readWorldSelectiveBloomEnabled(): boolean {
   return globalThis.localStorage?.getItem('worldSelectiveBloom') === '1'
 }
 
+function readWorldOrbitDimEnabled(): boolean {
+  return globalThis.localStorage?.getItem('worldOrbitDim') === '1'
+}
+
+function readWorldBloomPresetName(): BloomPresetName {
+  const preset = globalThis.localStorage?.getItem('worldBloomPreset')
+  if (preset === 'soft' || preset === 'hot') return preset
+  return 'normal'
+}
+
 interface PlanetOrbitState {
   mesh: THREE.Mesh
   orbit: OrbitSpec
@@ -140,6 +150,7 @@ export function WorldWebGLScene({
   const selectedIdRef = useRef<string | null>(selectedPlanetId ?? null)
   const onPlanetSelectRef = useRef(onPlanetSelect)
   const [hoveredPlanetLabel, setHoveredPlanetLabel] = useState<{ id: string; labelRu: string; x: number; y: number; radius: number } | null>(null)
+  const [selectedPlanetLabel, setSelectedPlanetLabel] = useState<{ id: string; labelRu: string; x: number; y: number } | null>(null)
 
   const planets = useMemo(() => [...snapshot.planets].sort((a, b) => (a.order - b.order) || a.id.localeCompare(b.id, 'ru')), [snapshot.planets])
 
@@ -162,7 +173,6 @@ export function WorldWebGLScene({
     onPlanetSelectRef.current = onPlanetSelect
   }, [onPlanetSelect])
 
-  const visibleLabelIds = useMemo(() => (selectedId ? new Set<string>([selectedId]) : new Set<string>()), [selectedId])
 
   const stormAlpha = Math.min(0.45, Math.max(0.08, snapshot.metrics.risk * 0.22 + (snapshot.metrics.sirenLevel === 'red' ? 0.14 : 0.05)))
   const tailAlpha = Math.min(0.32, snapshot.metrics.esCollapse10 * 0.66 + 0.06)
@@ -553,6 +563,7 @@ export function WorldWebGLScene({
     let hoveredPlanetId: string | null = null
     const hoveredWorldPosition = new THREE.Vector3()
     const selectedWorldPosition = new THREE.Vector3()
+    const projectedSelectedWorldPosition = new THREE.Vector3()
     const applyHighlight = () => {
       planetMeshes.forEach((mesh, id) => {
         const material = mesh.material
@@ -720,6 +731,33 @@ export function WorldWebGLScene({
         glowMaterial.linewidth = visual.lineWidth * 1.2
       })
       applyHighlight()
+      const selectedMeshForLabel = selectedIdRef.current ? planetMeshes.get(selectedIdRef.current) : null
+      if (selectedMeshForLabel && selectedIdRef.current) {
+        selectedMeshForLabel.getWorldPosition(projectedSelectedWorldPosition)
+        projectedSelectedWorldPosition.project(camera)
+        const isOutOfFrustum = projectedSelectedWorldPosition.z < -1 || projectedSelectedWorldPosition.z > 1
+        if (isOutOfFrustum) {
+          setSelectedPlanetLabel(null)
+        } else {
+          const hostWidth = host.clientWidth
+          const hostHeight = host.clientHeight
+          const rawX = ((projectedSelectedWorldPosition.x + 1) * 0.5) * hostWidth
+          const rawY = ((1 - projectedSelectedWorldPosition.y) * 0.5) * hostHeight - 14
+          const x = THREE.MathUtils.clamp(rawX, 32, Math.max(32, hostWidth - 32))
+          const y = THREE.MathUtils.clamp(rawY, 18, Math.max(18, hostHeight - 18))
+          const planetLabel = planets.find((planet) => planet.id === selectedIdRef.current)
+          if (planetLabel) {
+            setSelectedPlanetLabel((prev) => {
+              if (prev && prev.id === planetLabel.id && Math.abs(prev.x - x) < 0.5 && Math.abs(prev.y - y) < 0.5) return prev
+              return { id: planetLabel.id, labelRu: planetLabel.labelRu, x, y }
+            })
+          } else {
+            setSelectedPlanetLabel(null)
+          }
+        }
+      } else {
+        setSelectedPlanetLabel(null)
+      }
       if (worldDebugHUD || (import.meta.env.DEV && worldDebugLighting) || worldOrbitFadeDebug) {
         const selectedMesh = selectedIdRef.current ? planetMeshes.get(selectedIdRef.current) : null
         const selectedMaterial = selectedMesh?.material
@@ -938,14 +976,21 @@ export function WorldWebGLScene({
         ))}
       </div>
       <div className="world-webgl__labels" aria-hidden="true">
-        {planets.filter((planet) => visibleLabelIds.has(planet.id)).map((planet) => (
-          <span key={`label:${planet.id}`} style={{ left: `${planet.x}px`, top: `${planet.y - planet.radius - 8}px` }}>{planet.labelRu}</span>
-        ))}
-        {hoveredPlanetLabel && !visibleLabelIds.has(hoveredPlanetLabel.id) ? (
-          <span key={`hover:${hoveredPlanetLabel.id}`} style={{ left: `${hoveredPlanetLabel.x}px`, top: `${hoveredPlanetLabel.y - hoveredPlanetLabel.radius - 8}px` }}>{hoveredPlanetLabel.labelRu}</span>
+        {selectedPlanetLabel ? (
+          <span key={`label:selected:${selectedPlanetLabel.id}`} className="world-webgl__label--selected" style={{ left: `${selectedPlanetLabel.x}px`, top: `${selectedPlanetLabel.y}px` }}>{selectedPlanetLabel.labelRu}</span>
+        ) : null}
+        {hoveredPlanetLabel ? (
+          <span key={`hover:${hoveredPlanetLabel.id}`} className="world-webgl__label--hover" style={{ left: `${hoveredPlanetLabel.x}px`, top: `${hoveredPlanetLabel.y - hoveredPlanetLabel.radius - 8}px` }}>{hoveredPlanetLabel.labelRu}</span>
         ) : null}
       </div>
       <button type="button" className="world-webgl__reset-view button-secondary" onClick={handleResetView}>Сброс вида (R)</button>
+      <div className="world-webgl__orbit-chip" aria-live="polite">
+        <span>OrbitDim {readWorldOrbitDimEnabled() ? 'ON' : 'OFF'}</span>
+        <span>SelectiveBloom {readWorldSelectiveBloomEnabled() ? 'ON' : 'OFF'}</span>
+        <span>BloomPreset {readWorldBloomPresetName()}</span>
+        <span>base o:{orbitVisualStyle.baseOrbit.opacity.toFixed(2)} lw×{orbitVisualStyle.baseOrbit.lineWidthScale.toFixed(2)} rgb×{orbitVisualStyle.baseOrbit.colorMultiplier.toFixed(2)} g:{orbitVisualStyle.baseOrbit.glowOpacity.toFixed(2)}</span>
+        <span>sel o:{orbitVisualStyle.selectedOrbit.opacity.toFixed(2)} lw×{orbitVisualStyle.selectedOrbit.lineWidthScale.toFixed(2)} rgb×{orbitVisualStyle.selectedOrbit.colorMultiplier.toFixed(2)} g:{orbitVisualStyle.selectedOrbit.glowOpacity.toFixed(2)}</span>
+      </div>
       {(worldDebugHUD || (import.meta.env.DEV && worldDebugLighting) || worldOrbitFadeDebug) && debugState ? (
         <div className="world-webgl__debug" data-testid="world-webgl-debug">
           <span>gl {debugState.webglVersion}</span>

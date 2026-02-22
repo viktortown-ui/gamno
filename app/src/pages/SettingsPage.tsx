@@ -113,7 +113,7 @@ export function SettingsPage({ onDataChanged, appearance, onAppearanceChange }: 
         <label className="import-label">Импорт данных<input type="file" onChange={handleImport} /></label>
         <SparkButton type="button" onClick={handleClear}>Очистить данные</SparkButton>
         <SparkButton type="button" onClick={handleSeed}>Сгенерировать тестовые данные (30 дней)</SparkButton>
-        {import.meta.env.DEV ? <SparkButton type="button" onClick={handleHardCacheReset}>Сброс кэша и перезагрузка</SparkButton> : null}
+        <SparkButton type="button" onClick={handleHardCacheReset}>Сброс кэша и перезагрузка</SparkButton>
       </div>
     </section>
   )
