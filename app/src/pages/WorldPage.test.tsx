@@ -26,6 +26,16 @@ const runWorldMapInWorkerMock = vi.fn((worker: { _onMessage: (message: unknown) 
 })
 
 vi.mock('../ui/components/FanChart', () => ({ FanChart: () => <div data-testid="fan-chart" /> }))
+vi.mock('../ui/components/WorldWebGLScene', () => ({
+  WorldWebGLScene: ({ snapshot, onPlanetSelect }: { snapshot: { planets: Array<{ labelRu: string }> }; onPlanetSelect?: (planetId: string | null, origin?: HTMLElement | null) => void }) => (
+    <div data-testid="webgl-scene">
+      <canvas data-testid="world-canvas" />
+      <span data-testid="snapshot-id">{snapshot.planets[0]?.labelRu}</span>
+      <button type="button" onClick={(event) => onPlanetSelect?.('planet:core:0', event.currentTarget)}>pick</button>
+    </div>
+  ),
+}))
+
 vi.mock('../ui/components/WorldMapView', () => ({
   WorldMapView: ({ snapshot, onPlanetSelect }: { snapshot: { planets: Array<{ labelRu: string }> }; onPlanetSelect?: (planetId: string | null, origin?: HTMLElement | null) => void }) => (
     <div>
@@ -77,6 +87,22 @@ describe('WorldPage', () => {
     navigateMock.mockReset()
   })
 
+  
+  it('renders webgl mode by default with canvas smoke check', async () => {
+    const { WorldPage } = await import('./WorldPage')
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+
+    await act(async () => { root.render(<WorldPage />) })
+    await act(async () => { await flush() })
+
+    expect(container.querySelector('[data-testid="world-canvas"]')).toBeTruthy()
+
+    await act(async () => { root.unmount() })
+    container.remove()
+  })
+
   it('supports planet panel open and back-close by hash', async () => {
     const { WorldPage } = await import('./WorldPage')
     const container = document.createElement('div')
@@ -117,7 +143,7 @@ describe('WorldPage', () => {
     await act(async () => { root.render(<WorldPage />) })
     await act(async () => { await flush() })
 
-    const cta = [...container.querySelectorAll('button')].find((node) => node.textContent?.includes('First check-in'))
+    const cta = container.querySelector('aside .start-primary') as HTMLButtonElement | null
     await act(async () => { cta?.dispatchEvent(new MouseEvent('click', { bubbles: true })) })
 
     expect(navigateMock).toHaveBeenCalledWith('/core')
@@ -135,7 +161,7 @@ describe('WorldPage', () => {
     await act(async () => { root.render(<WorldPage />) })
     await act(async () => { await flush() })
 
-    const cta = [...container.querySelectorAll('button')].find((node) => node.textContent?.includes('Next Action'))
+    const cta = container.querySelector('aside .start-primary') as HTMLButtonElement | null
     await act(async () => {
       cta?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
       window.dispatchEvent(new HashChangeEvent('hashchange'))

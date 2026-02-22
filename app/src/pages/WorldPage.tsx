@@ -5,6 +5,7 @@ import { buildUnifiedActionCatalog } from '../core/actions/catalog'
 import type { ActionDomain } from '../core/actions/types'
 import { PlanetPanel, type PlanetLever } from '../ui/components/PlanetPanel'
 import { WorldMapView } from '../ui/components/WorldMapView'
+import { WorldWebGLScene } from '../ui/components/WorldWebGLScene'
 import { createWorldMapWorker, runWorldMapInWorker, type WorldMapWorkerMessage } from '../core/workers/worldMapClient'
 import type { WorldMapSnapshot } from '../core/worldMap/types'
 import type { FrameSnapshot } from '../core/frame/frameEngine'
@@ -50,7 +51,7 @@ function setHashPlanetId(planetId: string | null): void {
   window.location.hash = query ? `${WORLD_ROUTE}?${query}` : WORLD_ROUTE
 }
 
-export function WorldPage({ uiVariant = 'instrument' }: { uiVariant?: 'instrument' | 'cinematic' }) {
+export function WorldPage({ uiVariant = 'instrument', renderMode = 'webgl' }: { uiVariant?: 'instrument' | 'cinematic'; renderMode?: 'svg' | 'webgl' }) {
   const navigate = useNavigate()
   const [worldMapSnapshot, setWorldMapSnapshot] = useState<WorldMapSnapshot | null>(null)
   const [frames, setFrames] = useState<Array<{ ts: number; payload: FrameSnapshot }>>([])
@@ -213,18 +214,33 @@ export function WorldPage({ uiVariant = 'instrument' }: { uiVariant?: 'instrumen
     <section className="world-page" aria-label="Кокпит мира">
       <div className="world-stage">
         {worldMapSnapshot ? (
-          <WorldMapView
-            snapshot={worldMapSnapshot}
-            uiVariant={uiVariant}
-            selectedPlanetId={selectedPlanetId}
-            showNeighborLabels
-            fxEvents={fxEvents}
-            targetPlanetId={bestAction ? (worldMapSnapshot?.planets[0]?.id ?? null) : null}
-            onPlanetSelect={(planetId, origin) => {
-              if (origin) lastOriginRef.current = origin
-              setHashPlanetId(planetId)
-            }}
-          />
+          renderMode === 'svg' ? (
+            <WorldMapView
+              snapshot={worldMapSnapshot}
+              uiVariant={uiVariant}
+              selectedPlanetId={selectedPlanetId}
+              showNeighborLabels
+              fxEvents={fxEvents}
+              targetPlanetId={bestAction ? (worldMapSnapshot?.planets[0]?.id ?? null) : null}
+              onPlanetSelect={(planetId, origin) => {
+                if (origin) lastOriginRef.current = origin
+                setHashPlanetId(planetId)
+              }}
+            />
+          ) : (
+            <WorldWebGLScene
+              snapshot={worldMapSnapshot}
+              uiVariant={uiVariant}
+              selectedPlanetId={selectedPlanetId}
+              showNeighborLabels
+              fxEvents={fxEvents}
+              targetPlanetId={bestAction ? (worldMapSnapshot?.planets[0]?.id ?? null) : null}
+              onPlanetSelect={(planetId, origin) => {
+                if (origin) lastOriginRef.current = origin
+                setHashPlanetId(planetId)
+              }}
+            />
+          )
         ) : <p>Карта мира готовится…</p>}
         {selectedPlanet ? (
           <PlanetPanel
@@ -245,9 +261,9 @@ export function WorldPage({ uiVariant = 'instrument' }: { uiVariant?: 'instrumen
           ))}
         </div>
         <div className="world-action-rail__primary">
-          <strong>Следующий шаг · {uiVariant === 'cinematic' ? 'cinematic' : 'instrument'}</strong>
+          <strong>Следующий шаг</strong>
           <button type="button" className="start-primary" onClick={handleNextAction}>
-            {frames.length === 0 || !bestAction ? 'First check-in' : `Next Action: ${bestAction.titleRu}`}
+            {frames.length === 0 || !bestAction ? 'Сделать check-in' : bestAction.titleRu}
           </button>
           <p className="mono">Почему: {lastActionReason}</p>
         </div>

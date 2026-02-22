@@ -78,6 +78,16 @@ export function SettingsPage({ onDataChanged, appearance, onAppearanceChange }: 
               <option value="reduced">Сниженная</option>
             </select>
           </label>
+          <label>Рендер мира (dev)
+            <select
+              value={appearance.worldRenderMode}
+              onChange={(event) => onAppearanceChange({ ...appearance, worldRenderMode: event.target.value === 'svg' ? 'svg' : 'webgl' })}
+            >
+              <option value="webgl">WebGL</option>
+              <option value="svg">SVG</option>
+            </select>
+          </label>
+
           <label>Мир (dev)
             <select
               value={appearance.worldUiVariant}
