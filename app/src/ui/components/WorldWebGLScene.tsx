@@ -53,7 +53,13 @@ function readBloomPreset(): BloomPresetName {
 
 const BLOOM_PARAMS = BLOOM_PRESETS[readBloomPreset()]
 const EXPOSURE_RANGE = { min: 0.9, max: 1.1 }
+const EXPOSURE_DISTANCE_RANGE = { min: 1, max: 1.15 }
 const WORLD_SCALE_SPEC = getWorldScaleSpec()
+type ExposureMode = 'static' | 'distance'
+
+function readExposureMode(): ExposureMode {
+  return globalThis.localStorage?.getItem('worldExposureMode') === 'distance' ? 'distance' : 'static'
+}
 
 interface PlanetOrbitState {
   mesh: THREE.Mesh
@@ -117,8 +123,9 @@ export function WorldWebGLScene({
   const pulseRef = useRef<Map<string, number>>(new Map())
   const [focusedId, setFocusedId] = useState<string>(snapshot.planets[0]?.id ?? '')
   const [reducedMotion, setReducedMotion] = useState(false)
-  const [debugState, setDebugState] = useState<{ cameraDistance: number; boundingRadius: number; exposure: number; overlayAlpha: number; toneMapping: string; outputColorSpace: string; hasEnvironment: boolean; environmentType: string; environmentUuid: string; webglVersion: string; lightCount: number; lights: string; selectedMesh: string; selectedMaterial: string; selectedColor: string; selectedEmissive: string; selectedMetalness: number; selectedRoughness: number; selectedEnvMapIntensity: number; selectedEmissiveIntensity: number; selectedTransparent: boolean; selectedDepthWrite: boolean; selectedDepthTest: boolean; selectedToneMapped: boolean } | null>(null)
+  const [debugState, setDebugState] = useState<{ cameraDistance: number; boundingRadius: number; exposure: number; overlayAlpha: number; toneMapping: string; outputColorSpace: string; hasEnvironment: boolean; environmentType: string; environmentUuid: string; webglVersion: string; lightCount: number; lights: string; exposureMode: ExposureMode; coreLightIntensity: number; coreLightDistance: number; coreLightDecay: number; fillLightIntensity: number; selectedMesh: string; selectedMaterial: string; selectedColor: string; selectedEmissive: string; selectedMetalness: number; selectedRoughness: number; selectedEnvMapIntensity: number; selectedEmissiveIntensity: number; selectedTransparent: boolean; selectedDepthWrite: boolean; selectedDepthTest: boolean; selectedToneMapped: boolean } | null>(null)
   const [devExposure, setDevExposure] = useState<number>(BLOOM_PARAMS.exposure)
+  const [exposureMode] = useState<ExposureMode>(() => readExposureMode())
   const [devBloomStrength, setDevBloomStrength] = useState<number>(BLOOM_PARAMS.strength)
   const [devAAMode, setDevAAMode] = useState<AAMode>('msaa')
   const resetViewRef = useRef<() => void>(() => {})
@@ -262,14 +269,12 @@ export function WorldWebGLScene({
       })
     }
 
-    const hemi = new THREE.HemisphereLight(0x9cc1ff, 0x071022, 0.3)
-    const key = new THREE.DirectionalLight(0xd8e8ff, 1.1)
+    const hemi = new THREE.HemisphereLight(0x9cc1ff, 0x071022, 0.16)
+    const key = new THREE.DirectionalLight(0xd8e8ff, 0.9)
     key.position.set(12, 10, 7)
-    const fill = new THREE.DirectionalLight(0x6effdf, 0.26)
+    const fill = new THREE.DirectionalLight(0x6effdf, 0.2)
     fill.position.set(-10, 5, 9)
-    const coreLight = new THREE.PointLight(0x66d6ff, 2.2, 40)
-    coreLight.position.set(0, 0, 0)
-    scene.add(hemi, key, fill, coreLight)
+    scene.add(hemi, key, fill)
     if (import.meta.env.DEV) {
       warnIfLightingInvalid(scene)
     }
@@ -282,6 +287,9 @@ export function WorldWebGLScene({
       new THREE.SphereGeometry(1.0 * WORLD_SCALE_SPEC.coreRadiusScale, 64, 64),
       new THREE.MeshStandardMaterial({ color: 0x6baeff, emissive: 0x4bd5ff, emissiveIntensity: 0.72, metalness: 0.06, roughness: 0.58 }),
     )
+    const corePointLight = new THREE.PointLight(0x7dbbff, 6.6, 0, 1)
+    corePointLight.castShadow = false
+    corePointLight.position.set(0, 0, 0)
     const fresnelShell = new THREE.Mesh(
       new THREE.SphereGeometry(1.18 * WORLD_SCALE_SPEC.coreRadiusScale, 64, 64),
       new THREE.ShaderMaterial({
@@ -302,7 +310,7 @@ export function WorldWebGLScene({
       new THREE.MeshBasicMaterial({ color: 0x67ffdb, transparent: true, opacity: 0.14, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }),
     )
     halo.rotation.x = Math.PI / 2
-    coreGroup.add(core, fresnelShell, halo)
+    coreGroup.add(core, corePointLight, fresnelShell, halo)
     core.layers.enable(BLOOM_LAYER)
     halo.layers.enable(BLOOM_LAYER)
     if (snapshot.metrics.safeMode) {
@@ -622,6 +630,14 @@ export function WorldWebGLScene({
       if (core.material instanceof THREE.MeshStandardMaterial) {
         core.material.emissiveIntensity = 0.68 + corePulse
       }
+      corePointLight.intensity = 6.1 + corePulse * 1.4
+      const cameraDistance = camera.position.distanceTo(controls.target)
+      const farDistance = Math.max(4, computeDebugBoundingRadius(snapshot, planets) * 3.6)
+      const exposureBlend = THREE.MathUtils.clamp((cameraDistance - controls.minDistance) / Math.max(0.001, farDistance - controls.minDistance), 0, 1)
+      const targetExposure = exposureMode === 'distance'
+        ? THREE.MathUtils.lerp(EXPOSURE_DISTANCE_RANGE.min, EXPOSURE_DISTANCE_RANGE.max, exposureBlend)
+        : THREE.MathUtils.clamp(devExposure, EXPOSURE_RANGE.min, EXPOSURE_RANGE.max)
+      renderer.toneMappingExposure = THREE.MathUtils.lerp(renderer.toneMappingExposure, targetExposure, 0.08)
       halo.scale.setScalar(1 + (reducedMotion ? 0 : Math.sin(t * 1.4) * 0.02))
       fresnelShell.rotation.y += reducedMotion ? 0 : 0.0018
       if (!reducedMotion) {
@@ -661,6 +677,11 @@ export function WorldWebGLScene({
           webglVersion,
           lightCount: diagnostics.lightCount,
           lights: lightLines,
+          exposureMode,
+          coreLightIntensity: corePointLight.intensity,
+          coreLightDistance: corePointLight.distance,
+          coreLightDecay: corePointLight.decay,
+          fillLightIntensity: hemi.intensity,
           selectedMesh: selectedMesh ? `${selectedMesh.name || 'planet'}#${selectedMesh.id}` : 'n/a',
           selectedMaterial: selectedMaterial?.type ?? 'n/a',
           selectedColor: selectedMaterial instanceof THREE.MeshBasicMaterial || selectedMaterial instanceof THREE.MeshPhysicalMaterial ? selectedMaterial.color.getHexString() : 'n/a',
@@ -739,7 +760,7 @@ export function WorldWebGLScene({
       dustTexture.dispose()
       ibl.dispose()
     }
-  }, [devAAMode, devBloomStrength, devExposure, planets, reducedMotion, snapshot, stormAlpha, uiVariant])
+  }, [devAAMode, devBloomStrength, devExposure, exposureMode, planets, reducedMotion, snapshot, stormAlpha, uiVariant])
 
   useEffect(() => {
     const next = new Map<string, number>()
@@ -831,6 +852,7 @@ export function WorldWebGLScene({
           <span>tm {debugState.toneMapping} · cs {debugState.outputColorSpace}</span>
           <span>env {String(debugState.hasEnvironment)} ({debugState.environmentType}) · {debugState.environmentUuid}</span>
           <span>lights {debugState.lightCount} · {debugState.lights}</span>
+          <span>expMode {debugState.exposureMode} · core i {debugState.coreLightIntensity.toFixed(2)} d {debugState.coreLightDistance.toFixed(2)} decay {debugState.coreLightDecay.toFixed(2)} · fill {debugState.fillLightIntensity.toFixed(2)}</span>
           <span>sel {debugState.selectedMesh} · {debugState.selectedMaterial} · #{debugState.selectedColor} · em #{debugState.selectedEmissive}</span>
           <span>m {debugState.selectedMetalness.toFixed(2)} · r {debugState.selectedRoughness.toFixed(2)} · env {debugState.selectedEnvMapIntensity.toFixed(2)} · ei {debugState.selectedEmissiveIntensity.toFixed(2)}</span>
           <span>flags t:{String(debugState.selectedTransparent)} dw:{String(debugState.selectedDepthWrite)} dt:{String(debugState.selectedDepthTest)} tm:{String(debugState.selectedToneMapped)}</span>
