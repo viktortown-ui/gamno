@@ -100,15 +100,61 @@ describe('worldWebglOrbits', () => {
 
   it('resolves orbit visual hierarchy for selected and dimmed non-selected orbits', () => {
     const style = getOrbitVisualStylePreset()
-    expect(resolveOrbitVisualState(4, 4)).toEqual({ opacity: style.selectedOpacity, lineWidth: style.selectedLineWidth })
-    expect(resolveOrbitVisualState(1, 4)).toEqual({ opacity: style.baseOpacity, lineWidth: style.baseLineWidth })
-    expect(resolveOrbitVisualState(9, 4)).toEqual({ opacity: style.baseOpacity, lineWidth: style.baseLineWidth })
+    expect(resolveOrbitVisualState(4, 4)).toEqual({
+      opacity: style.selectedOrbit.opacity,
+      lineWidth: style.baseLineWidth * style.selectedOrbit.lineWidthScale,
+      colorMultiplier: style.selectedOrbit.colorMultiplier,
+      glowOpacity: style.selectedOrbit.glowOpacity,
+    })
+    expect(resolveOrbitVisualState(1, 4)).toEqual({
+      opacity: style.baseOrbit.opacity,
+      lineWidth: style.baseLineWidth * style.baseOrbit.lineWidthScale,
+      colorMultiplier: style.baseOrbit.colorMultiplier,
+      glowOpacity: style.baseOrbit.glowOpacity,
+    })
+    expect(resolveOrbitVisualState(9, 4)).toEqual({
+      opacity: style.baseOrbit.opacity,
+      lineWidth: style.baseLineWidth * style.baseOrbit.lineWidthScale,
+      colorMultiplier: style.baseOrbit.colorMultiplier,
+      glowOpacity: style.baseOrbit.glowOpacity,
+    })
   })
 
   it('keeps inner near orbits readable when nothing is selected', () => {
     const style = getOrbitVisualStylePreset()
-    expect(resolveOrbitVisualState(2, null)).toEqual({ opacity: style.nearOpacity, lineWidth: style.nearLineWidth })
-    expect(resolveOrbitVisualState(5, null)).toEqual({ opacity: style.baseOpacity, lineWidth: style.baseLineWidth })
+    expect(resolveOrbitVisualState(2, null)).toEqual({
+      opacity: style.nearOrbit.opacity,
+      lineWidth: style.baseLineWidth * style.nearOrbit.lineWidthScale,
+      colorMultiplier: style.nearOrbit.colorMultiplier,
+      glowOpacity: style.nearOrbit.glowOpacity,
+    })
+    expect(resolveOrbitVisualState(5, null)).toEqual({
+      opacity: style.baseOrbit.opacity,
+      lineWidth: style.baseLineWidth * style.baseOrbit.lineWidthScale,
+      colorMultiplier: style.baseOrbit.colorMultiplier,
+      glowOpacity: style.baseOrbit.glowOpacity,
+    })
+  })
+
+  it('applies stronger dim preset when worldOrbitDim=1', () => {
+    const originalLocalStorage = globalThis.localStorage
+    const storage = new Map<string, string>()
+    const fakeStorage = {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => { storage.set(key, value) },
+      removeItem: (key: string) => { storage.delete(key) },
+      clear: () => { storage.clear() },
+    }
+    Object.defineProperty(globalThis, 'localStorage', { value: fakeStorage, configurable: true })
+    globalThis.localStorage.setItem('worldOrbitDim', '1')
+    const style = getOrbitVisualStylePreset()
+
+    expect(style.baseOrbit.opacity).toBe(0.03)
+    expect(style.baseOrbit.colorMultiplier).toBe(0.14)
+    expect(style.selectedOrbit.lineWidthScale).toBe(1.35)
+
+    globalThis.localStorage.removeItem('worldOrbitDim')
+    Object.defineProperty(globalThis, 'localStorage', { value: originalLocalStorage, configurable: true })
   })
 
 })

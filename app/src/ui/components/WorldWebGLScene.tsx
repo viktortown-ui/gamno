@@ -38,9 +38,9 @@ const BLOOM_LAYER = 1
 const ORBIT_SEGMENTS = 192
 export const WORLD_WEBGL_LEGACY_RING_ORBITS_ENABLED = false
 const BLOOM_PRESETS = {
-  soft: { threshold: 1.1, strength: 0.25, radius: 0.24, exposure: 0.92 },
-  normal: { threshold: 1.05, strength: 0.35, radius: 0.3, exposure: 1 },
-  hot: { threshold: 1.0, strength: 0.48, radius: 0.35, exposure: 1.08 },
+  soft: { threshold: 1.2, strength: 0.26, radius: 0.24, exposure: 0.92 },
+  normal: { threshold: 1.1, strength: 0.35, radius: 0.3, exposure: 1 },
+  hot: { threshold: 1.02, strength: 0.48, radius: 0.36, exposure: 1.08 },
 } as const
 
 type BloomPresetName = keyof typeof BLOOM_PRESETS
@@ -129,6 +129,7 @@ export function WorldWebGLScene({
   const [focusedId, setFocusedId] = useState<string>(snapshot.planets[0]?.id ?? '')
   const [reducedMotion, setReducedMotion] = useState(false)
   const orbitVisualStyle = useMemo(() => getOrbitVisualStylePreset(), [])
+  const orbitBaseColor = useMemo(() => new THREE.Color(0x6ca0ff), [])
   const [debugState, setDebugState] = useState<{ cameraDistance: number; boundingRadius: number; exposure: number; overlayAlpha: number; toneMapping: string; outputColorSpace: string; hasEnvironment: boolean; environmentType: string; environmentUuid: string; webglVersion: string; lightCount: number; lights: string; exposureMode: ExposureMode; coreLightIntensity: number; coreLightDistance: number; coreLightDecay: number; fillLightIntensity: number; selectedMesh: string; selectedMaterial: string; selectedColor: string; selectedEmissive: string; selectedMetalness: number; selectedRoughness: number; selectedEnvMapIntensity: number; selectedEmissiveIntensity: number; selectedTransparent: boolean; selectedDepthWrite: boolean; selectedDepthTest: boolean; selectedToneMapped: boolean } | null>(null)
   const [devExposure, setDevExposure] = useState<number>(BLOOM_PARAMS.exposure)
   const [exposureMode] = useState<ExposureMode>(() => readExposureMode())
@@ -357,7 +358,7 @@ export function WorldWebGLScene({
     const planetMeshes = new Map<string, THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial | THREE.MeshPhysicalMaterial>>()
     const orbitByPlanetId = new Map<string, OrbitSpec>()
     const planetOrbitStates: PlanetOrbitState[] = []
-    const planetOrbitLines: Array<{ line: Line2; orbitIndex: number }> = []
+    const planetOrbitLines: Array<{ line: Line2; glowLine: Line2; orbitIndex: number }> = []
     const phaseInputs: Array<{ id: string; orbitRadius: number; planetRadius: number; phase: number }> = []
     const orbitTmp = new THREE.Vector3()
     const orbitNearest = new THREE.Vector3()
@@ -393,12 +394,13 @@ export function WorldWebGLScene({
       const curvePositions = curvePoints.flatMap((point) => [point.x, point.y, point.z])
       const curveGeometry = new LineGeometry()
       curveGeometry.setPositions(curvePositions)
+      const baseVisual = resolveOrbitVisualState(orbit.orbitIndex, null)
       const curveMaterial = new LineMaterial({
-        color: new THREE.Color(0x6ca0ff),
+        color: orbitBaseColor.clone().multiplyScalar(baseVisual.colorMultiplier),
         transparent: true,
-        opacity: orbitVisualStyle.baseOpacity,
-        linewidth: orbitVisualStyle.baseLineWidth,
-        blending: THREE.AdditiveBlending,
+        opacity: baseVisual.opacity,
+        linewidth: baseVisual.lineWidth,
+        blending: THREE.NormalBlending,
         depthWrite: false,
         depthTest: true,
       })
@@ -406,9 +408,24 @@ export function WorldWebGLScene({
       const orbitLine = new Line2(curveGeometry, curveMaterial)
       orbitLine.computeLineDistances()
       orbitLine.renderOrder = 1
-      orbitGroup.add(orbitLine, mesh)
+
+      const glowMaterial = new LineMaterial({
+        color: orbitBaseColor.clone(),
+        transparent: true,
+        opacity: baseVisual.glowOpacity,
+        linewidth: baseVisual.lineWidth * 1.2,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        depthTest: true,
+      })
+      glowMaterial.resolution.set(host.clientWidth * pixelRatio, host.clientHeight * pixelRatio)
+      const glowLine = new Line2(curveGeometry, glowMaterial)
+      glowLine.computeLineDistances()
+      glowLine.renderOrder = 2
+
+      orbitGroup.add(orbitLine, glowLine, mesh)
       systemGroup.add(orbitGroup)
-      planetOrbitLines.push({ line: orbitLine, orbitIndex: orbit.orbitIndex })
+      planetOrbitLines.push({ line: orbitLine, glowLine, orbitIndex: orbit.orbitIndex })
 
       const speedSeed = seedFloat(snapshot.seed + planet.order * 17 + planet.id.length * 13)
       const driftSpeed = orbit.speed + speedSeed * 0.003
@@ -692,11 +709,15 @@ export function WorldWebGLScene({
       const selectedOrbitIndex = selectedIdRef.current
         ? orbitByPlanetId.get(selectedIdRef.current)?.orbitIndex ?? null
         : null
-      planetOrbitLines.forEach(({ line, orbitIndex }) => {
+      planetOrbitLines.forEach(({ line, glowLine, orbitIndex }) => {
         const material = line.material as LineMaterial
+        const glowMaterial = glowLine.material as LineMaterial
         const visual = resolveOrbitVisualState(orbitIndex, selectedOrbitIndex)
         material.opacity = visual.opacity
         material.linewidth = visual.lineWidth
+        material.color.copy(orbitBaseColor).multiplyScalar(visual.colorMultiplier)
+        glowMaterial.opacity = visual.glowOpacity
+        glowMaterial.linewidth = visual.lineWidth * 1.2
       })
       applyHighlight()
       if (worldDebugHUD || (import.meta.env.DEV && worldDebugLighting) || worldOrbitFadeDebug) {
@@ -739,6 +760,9 @@ export function WorldWebGLScene({
           selectedToneMapped: Boolean(selectedMaterial?.toneMapped),
         })
       }
+      bloomPass.threshold = BLOOM_PARAMS.threshold
+      bloomPass.radius = BLOOM_PARAMS.radius
+      bloomPass.strength = devBloomStrength
       if (worldNoPost) {
         renderer.render(scene, camera)
       } else if (selectiveBloomEnabled) {
@@ -767,9 +791,11 @@ export function WorldWebGLScene({
       bloomComposer.setSize(clientWidth, clientHeight)
       bloomPass.setSize(clientWidth, clientHeight)
       fxaaPass.material.uniforms.resolution.value.set(1 / (clientWidth * nextPixelRatio), 1 / (clientHeight * nextPixelRatio))
-      planetOrbitLines.forEach(({ line }) => {
+      planetOrbitLines.forEach(({ line, glowLine }) => {
         const material = line.material as LineMaterial
+        const glowMaterial = glowLine.material as LineMaterial
         material.resolution.set(clientWidth * nextPixelRatio, clientHeight * nextPixelRatio)
+        glowMaterial.resolution.set(clientWidth * nextPixelRatio, clientHeight * nextPixelRatio)
       })
       camera.aspect = clientWidth / clientHeight
       const nextFit = computeFitToViewState(snapshot, planets, camera.aspect)
@@ -798,10 +824,12 @@ export function WorldWebGLScene({
       composer.dispose()
       bloomComposer.dispose()
       bloomRenderTarget.dispose()
-      planetOrbitLines.forEach(({ line }) => {
+      planetOrbitLines.forEach(({ line, glowLine }) => {
         line.geometry.dispose()
         const material = line.material as LineMaterial
         material.dispose()
+        const glowMaterial = glowLine.material as LineMaterial
+        glowMaterial.dispose()
       })
       scene.traverse((obj: THREE.Object3D) => {
         if (obj instanceof THREE.Mesh) {
@@ -819,8 +847,14 @@ export function WorldWebGLScene({
     devBloomStrength,
     devExposure,
     exposureMode,
+    orbitBaseColor,
     orbitVisualStyle.baseLineWidth,
-    orbitVisualStyle.baseOpacity,
+    orbitVisualStyle.baseOrbit.opacity,
+    orbitVisualStyle.baseOrbit.lineWidthScale,
+    orbitVisualStyle.nearOrbit.opacity,
+    orbitVisualStyle.nearOrbit.lineWidthScale,
+    orbitVisualStyle.selectedOrbit.opacity,
+    orbitVisualStyle.selectedOrbit.lineWidthScale,
     planets,
     reducedMotion,
     snapshot,
@@ -925,9 +959,9 @@ export function WorldWebGLScene({
           <span>flags t:{String(debugState.selectedTransparent)} dw:{String(debugState.selectedDepthWrite)} dt:{String(debugState.selectedDepthTest)} tm:{String(debugState.selectedToneMapped)}</span>
           {worldOrbitFadeDebug ? (
             <span>
-              orbitFade base o:{orbitVisualStyle.baseOpacity.toFixed(2)} lw:{orbitVisualStyle.baseLineWidth.toFixed(2)} ·
-              near o:{orbitVisualStyle.nearOpacity.toFixed(2)} lw:{orbitVisualStyle.nearLineWidth.toFixed(2)} ·
-              sel o:{orbitVisualStyle.selectedOpacity.toFixed(2)} lw:{orbitVisualStyle.selectedLineWidth.toFixed(2)} · inner idx:0/1
+              orbitFade base o:{orbitVisualStyle.baseOrbit.opacity.toFixed(2)} lw×{orbitVisualStyle.baseOrbit.lineWidthScale.toFixed(2)} rgb×{orbitVisualStyle.baseOrbit.colorMultiplier.toFixed(2)} ·
+              near o:{orbitVisualStyle.nearOrbit.opacity.toFixed(2)} lw×{orbitVisualStyle.nearOrbit.lineWidthScale.toFixed(2)} rgb×{orbitVisualStyle.nearOrbit.colorMultiplier.toFixed(2)} ·
+              sel o:{orbitVisualStyle.selectedOrbit.opacity.toFixed(2)} lw×{orbitVisualStyle.selectedOrbit.lineWidthScale.toFixed(2)} rgb×{orbitVisualStyle.selectedOrbit.colorMultiplier.toFixed(2)} · inner idx:0/1
             </span>
           ) : null}
           {import.meta.env.DEV ? (

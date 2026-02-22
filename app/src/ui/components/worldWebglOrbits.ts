@@ -52,33 +52,36 @@ export interface OrbitPhaseInput {
 export interface OrbitVisualState {
   opacity: number
   lineWidth: number
+  colorMultiplier: number
+  glowOpacity: number
+}
+
+export interface OrbitStyleSpec {
+  opacity: number
+  lineWidthScale: number
+  colorMultiplier: number
+  glowOpacity: number
 }
 
 export interface OrbitVisualStylePreset {
-  baseOpacity: number
-  nearOpacity: number
-  selectedOpacity: number
   baseLineWidth: number
-  nearLineWidth: number
-  selectedLineWidth: number
+  baseOrbit: OrbitStyleSpec
+  nearOrbit: OrbitStyleSpec
+  selectedOrbit: OrbitStyleSpec
 }
 
 const ORBIT_VISUAL_STYLE_DEFAULT: OrbitVisualStylePreset = {
-  baseOpacity: 0.08,
-  nearOpacity: 0.14,
-  selectedOpacity: 0.82,
   baseLineWidth: 0.77,
-  nearLineWidth: 0.92,
-  selectedLineWidth: 1.2,
+  baseOrbit: { opacity: 0.08, lineWidthScale: 1, colorMultiplier: 1, glowOpacity: 0 },
+  nearOrbit: { opacity: 0.14, lineWidthScale: 1.2, colorMultiplier: 1, glowOpacity: 0.04 },
+  selectedOrbit: { opacity: 0.82, lineWidthScale: 1.56, colorMultiplier: 1, glowOpacity: 0.12 },
 }
 
 const ORBIT_VISUAL_STYLE_HARD_DIM: OrbitVisualStylePreset = {
-  baseOpacity: 0.06,
-  nearOpacity: 0.12,
-  selectedOpacity: 0.82,
   baseLineWidth: 0.77,
-  nearLineWidth: 0.92,
-  selectedLineWidth: 1.2,
+  baseOrbit: { opacity: 0.03, lineWidthScale: 0.7, colorMultiplier: 0.14, glowOpacity: 0 },
+  nearOrbit: { opacity: 0.13, lineWidthScale: 0.85, colorMultiplier: 0.3, glowOpacity: 0 },
+  selectedOrbit: { opacity: 0.86, lineWidthScale: 1.35, colorMultiplier: 1, glowOpacity: 0.12 },
 }
 
 function isHardOrbitDimEnabled(): boolean {
@@ -94,18 +97,25 @@ export function resolveOrbitVisualState(
   selectedOrbitIndex: number | null,
 ): OrbitVisualState {
   const style = getOrbitVisualStylePreset()
+  const asVisual = (spec: OrbitStyleSpec): OrbitVisualState => ({
+    opacity: spec.opacity,
+    lineWidth: style.baseLineWidth * spec.lineWidthScale,
+    colorMultiplier: spec.colorMultiplier,
+    glowOpacity: spec.glowOpacity,
+  })
+
   if (selectedOrbitIndex == null) {
     if (orbitIndex <= 2) {
-      return { opacity: style.nearOpacity, lineWidth: style.nearLineWidth }
+      return asVisual(style.nearOrbit)
     }
-    return { opacity: style.baseOpacity, lineWidth: style.baseLineWidth }
+    return asVisual(style.baseOrbit)
   }
 
   if (orbitIndex === selectedOrbitIndex) {
-    return { opacity: style.selectedOpacity, lineWidth: style.selectedLineWidth }
+    return asVisual(style.selectedOrbit)
   }
 
-  return { opacity: style.baseOpacity, lineWidth: style.baseLineWidth }
+  return asVisual(style.baseOrbit)
 }
 
 export interface InnerOrbitLayoutInput {
