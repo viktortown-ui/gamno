@@ -35,6 +35,7 @@ describe('worldWebglPlanetStyle', () => {
 
     expect(hsl.l).toBeGreaterThanOrEqual(0.42)
     expect(hsl.s).toBeGreaterThanOrEqual(0.45)
+    expect(Math.min(palette.baseColor.r, palette.baseColor.g, palette.baseColor.b)).toBeGreaterThan(0.08)
   })
 
   it('keeps pbr tuning values away from black-sphere defaults', () => {

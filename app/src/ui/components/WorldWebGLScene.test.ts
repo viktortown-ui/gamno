@@ -5,6 +5,8 @@ import * as THREE from 'three'
 import { computeFitToViewState, orbitPulseOpacity } from './worldWebglSceneMath'
 import { resolveAAMode } from './worldWebglAAMode'
 import { readWorldCameraState, writeWorldCameraState } from './worldWebglCameraState'
+import { createPlanetMaterial, planetMaterialTuningFromPalette, planetPaletteFromId } from './worldWebglPlanetStyle'
+import { collectWorldDebugHUDState } from './worldWebglDiagnostics'
 
 const snapshot: WorldMapSnapshot = {
   id: 'snapshot:test',
@@ -60,6 +62,33 @@ describe('WorldWebGLScene helpers', () => {
   it('ignores malformed worldCameraState payloads', () => {
     window.localStorage.setItem('worldCameraState', JSON.stringify({ version: 1, position: [1, 2], quaternion: [1, 2, 3, 4], zoom: 1, target: [1, 2, 3] }))
     expect(readWorldCameraState()).toBeNull()
+  })
+
+
+  it('forces unlit planet material when debug flag mode is enabled', () => {
+    const palette = planetPaletteFromId('planet:diag', 42)
+    const tuning = planetMaterialTuningFromPalette(palette.type, snapshot.planets[0])
+    const material = createPlanetMaterial(palette, tuning, new THREE.Texture(), true)
+
+    expect(material).toBeInstanceOf(THREE.MeshBasicMaterial)
+    if (material instanceof THREE.MeshBasicMaterial) {
+      expect(material.color.getHex()).not.toBe(0x000000)
+    }
+  })
+
+  it('collects debug HUD diagnostics without throwing', () => {
+    const scene = new THREE.Scene()
+    scene.environment = new THREE.Texture()
+    scene.add(new THREE.DirectionalLight(0xffffff, 1))
+    const state = collectWorldDebugHUDState(
+      { toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.2, outputColorSpace: THREE.SRGBColorSpace },
+      scene,
+      new THREE.MeshPhysicalMaterial({ color: 0x4488ff }),
+    )
+
+    expect(state.lightCount).toBe(1)
+    expect(state.environmentUuid).not.toBeNull()
+    expect(state.selectedMaterial).toBe('MeshPhysicalMaterial')
   })
   it('falls back to FXAA when MSAA is not available', () => {
     expect(resolveAAMode(null, false)).toBe('fxaa')

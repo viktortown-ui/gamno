@@ -89,3 +89,28 @@ export function applyPlanetMaterialTuning(material: THREE.MeshPhysicalMaterial, 
   material.clearcoat = tuning.clearcoat
   material.clearcoatRoughness = tuning.clearcoatRoughness
 }
+
+export function createPlanetMaterial(
+  palette: PlanetPalette,
+  tuning: PlanetMaterialTuning,
+  envMap: THREE.Texture,
+  forceUnlit: boolean,
+): THREE.MeshBasicMaterial | THREE.MeshPhysicalMaterial {
+  if (forceUnlit) {
+    return new THREE.MeshBasicMaterial({ color: palette.baseColor.clone() })
+  }
+
+  const material = new THREE.MeshPhysicalMaterial({
+    color: palette.baseColor.clone(),
+    emissive: palette.baseColor.clone().multiplyScalar(0.2),
+    ior: 1.38,
+    envMapIntensity: Math.max(1.2, tuning.envMapIntensity),
+    envMap,
+  })
+  applyPlanetMaterialTuning(material, tuning)
+  material.metalness = Math.min(material.metalness, 0.15)
+  material.color.copy(palette.baseColor)
+  material.emissiveIntensity = THREE.MathUtils.clamp(tuning.emissiveIntensity, 0.08, 0.15)
+  material.userData.baseEmissiveIntensity = material.emissiveIntensity
+  return material
+}
