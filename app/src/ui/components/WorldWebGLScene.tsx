@@ -13,6 +13,7 @@ import { resolveAAMode, type AAMode } from './worldWebglAAMode'
 import type { WorldMapPlanet, WorldMapSnapshot } from '../../core/worldMap/types'
 import { computeFitToViewState, orbitPulseOpacity } from './worldWebglSceneMath'
 import type { WorldFxEvent } from '../../pages/worldCockpit'
+import { readWorldCameraState, writeWorldCameraState } from './worldWebglCameraState'
 
 interface WorldWebGLSceneProps {
   snapshot: WorldMapSnapshot
@@ -24,13 +25,7 @@ interface WorldWebGLSceneProps {
   targetPlanetId?: string | null
 }
 
-interface WorldCameraStateV1 {
-  version: 1
-  position: [number, number, number]
-  quaternion: [number, number, number, number]
-  zoom: number
-  target: [number, number, number]
-}
+
 
 const BLOOM_LAYER = 1
 const ORBIT_SEGMENTS = 192
@@ -42,33 +37,6 @@ const BLOOM_PARAMS = {
   exposure: 1.25,
 }
 const EXPOSURE_RANGE = { min: 1.1, max: 1.4 }
-const WORLD_CAMERA_STATE_KEY = 'worldCameraState'
-
-function readWorldCameraState(): WorldCameraStateV1 | null {
-  if (typeof window === 'undefined') return null
-  const raw = window.localStorage.getItem(WORLD_CAMERA_STATE_KEY)
-  if (!raw) return null
-  try {
-    const parsed = JSON.parse(raw) as WorldCameraStateV1
-    if (parsed.version !== 1) return null
-    if (parsed.position.length !== 3 || parsed.quaternion.length !== 4 || parsed.target.length !== 3) return null
-    return parsed
-  } catch {
-    return null
-  }
-}
-
-function writeWorldCameraState(camera: THREE.PerspectiveCamera, controls: OrbitControls): void {
-  if (typeof window === 'undefined') return
-  const state: WorldCameraStateV1 = {
-    version: 1,
-    position: [camera.position.x, camera.position.y, camera.position.z],
-    quaternion: [camera.quaternion.x, camera.quaternion.y, camera.quaternion.z, camera.quaternion.w],
-    zoom: camera.zoom,
-    target: [controls.target.x, controls.target.y, controls.target.z],
-  }
-  window.localStorage.setItem(WORLD_CAMERA_STATE_KEY, JSON.stringify(state))
-}
 
 function toWorldPosition(snapshot: WorldMapSnapshot, planet: WorldMapPlanet): THREE.Vector3 {
   const x = (planet.x - snapshot.center.x) * 0.042
@@ -284,12 +252,12 @@ export function WorldWebGLScene({
     const environmentMap = buildGradientEnvironmentMap(renderer)
     scene.environment = environmentMap
 
-    const ambient = new THREE.AmbientLight(0xaad0ff, 0.85)
-    const key = new THREE.DirectionalLight(0xd8e8ff, 1.15)
+    const ambient = new THREE.AmbientLight(0xaad0ff, 0.74)
+    const key = new THREE.DirectionalLight(0xd8e8ff, 1.05)
     key.position.set(16, 14, 10)
-    const fill = new THREE.DirectionalLight(0x6effdf, 0.62)
-    fill.position.set(-14, 4, 11)
-    const hemi = new THREE.HemisphereLight(0x8cb9ff, 0x081225, 0.62)
+    const fill = new THREE.DirectionalLight(0x6effdf, 0.34)
+    fill.position.set(-14, 3, 11)
+    const hemi = new THREE.HemisphereLight(0x8cb9ff, 0x081225, 0.42)
     const coreLight = new THREE.PointLight(0x66d6ff, 2.2, 40)
     coreLight.position.set(0, 0, 0)
     scene.add(ambient, key, fill, hemi, coreLight)
@@ -331,12 +299,12 @@ export function WorldWebGLScene({
 
     const planetMeshes = new Map<string, THREE.Mesh>()
     const DOMAIN_MATERIAL: Record<string, { roughness: number; metalness: number; clearcoat: number; clearcoatRoughness: number; envMapIntensity: number; emissiveIntensity: number }> = {
-      core: { roughness: 0.24, metalness: 0.46, clearcoat: 0.56, clearcoatRoughness: 0.18, envMapIntensity: 1.38, emissiveIntensity: 0.26 },
-      risk: { roughness: 0.34, metalness: 0.24, clearcoat: 0.22, clearcoatRoughness: 0.34, envMapIntensity: 1.2, emissiveIntensity: 0.22 },
-      mission: { roughness: 0.2, metalness: 0.52, clearcoat: 0.62, clearcoatRoughness: 0.16, envMapIntensity: 1.45, emissiveIntensity: 0.28 },
-      stability: { roughness: 0.41, metalness: 0.18, clearcoat: 0.18, clearcoatRoughness: 0.4, envMapIntensity: 1.1, emissiveIntensity: 0.18 },
-      forecast: { roughness: 0.29, metalness: 0.32, clearcoat: 0.48, clearcoatRoughness: 0.22, envMapIntensity: 1.3, emissiveIntensity: 0.24 },
-      social: { roughness: 0.26, metalness: 0.34, clearcoat: 0.44, clearcoatRoughness: 0.2, envMapIntensity: 1.34, emissiveIntensity: 0.25 },
+      core: { roughness: 0.42, metalness: 0.26, clearcoat: 0.46, clearcoatRoughness: 0.24, envMapIntensity: 1.52, emissiveIntensity: 0.24 },
+      risk: { roughness: 0.52, metalness: 0.12, clearcoat: 0.18, clearcoatRoughness: 0.42, envMapIntensity: 1.32, emissiveIntensity: 0.18 },
+      mission: { roughness: 0.36, metalness: 0.24, clearcoat: 0.58, clearcoatRoughness: 0.19, envMapIntensity: 1.58, emissiveIntensity: 0.26 },
+      stability: { roughness: 0.6, metalness: 0.1, clearcoat: 0.12, clearcoatRoughness: 0.48, envMapIntensity: 1.24, emissiveIntensity: 0.16 },
+      forecast: { roughness: 0.47, metalness: 0.18, clearcoat: 0.38, clearcoatRoughness: 0.28, envMapIntensity: 1.42, emissiveIntensity: 0.2 },
+      social: { roughness: 0.4, metalness: 0.22, clearcoat: 0.42, clearcoatRoughness: 0.24, envMapIntensity: 1.48, emissiveIntensity: 0.22 },
     }
     planets.forEach((planet) => {
       const pColor = colorByPlanet(planet)
@@ -351,6 +319,7 @@ export function WorldWebGLScene({
         clearcoatRoughness: domainMaterial.clearcoatRoughness,
         ior: 1.4,
         envMapIntensity: domainMaterial.envMapIntensity,
+        envMap: environmentMap,
       })
       material.userData.baseEmissiveIntensity = domainMaterial.emissiveIntensity
       const mesh = new THREE.Mesh(new THREE.SphereGeometry(planet.radius * 0.042, 28, 28), material)
@@ -487,15 +456,9 @@ export function WorldWebGLScene({
         onPlanetSelectRef.current?.(null)
       }
     }
-    const onDoubleClick = (event: MouseEvent) => {
-      if (!pickPlanet(event)) {
-        resetView()
-      }
-    }
     renderer.domElement.addEventListener('pointermove', onPointerMove)
     renderer.domElement.addEventListener('pointerleave', onPointerLeave)
     renderer.domElement.addEventListener('click', onClick)
-    renderer.domElement.addEventListener('dblclick', onDoubleClick)
 
     const onWindowKeyDown = (event: KeyboardEvent) => {
       if (event.key.toLowerCase() === 'r') {
@@ -590,7 +553,6 @@ export function WorldWebGLScene({
       renderer.domElement.removeEventListener('pointermove', onPointerMove)
       renderer.domElement.removeEventListener('pointerleave', onPointerLeave)
       renderer.domElement.removeEventListener('click', onClick)
-      renderer.domElement.removeEventListener('dblclick', onDoubleClick)
       controls.dispose()
       host.removeChild(renderer.domElement)
       renderer.dispose()

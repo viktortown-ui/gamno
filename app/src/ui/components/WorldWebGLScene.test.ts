@@ -1,7 +1,10 @@
+/* @vitest-environment jsdom */
 import { describe, expect, it } from 'vitest'
 import type { WorldMapSnapshot } from '../../core/worldMap/types'
+import * as THREE from 'three'
 import { computeFitToViewState, orbitPulseOpacity } from './worldWebglSceneMath'
 import { resolveAAMode } from './worldWebglAAMode'
+import { readWorldCameraState, writeWorldCameraState } from './worldWebglCameraState'
 
 const snapshot: WorldMapSnapshot = {
   id: 'snapshot:test',
@@ -33,6 +36,31 @@ describe('WorldWebGLScene helpers', () => {
     expect(orbitPulseOpacity(0.5, false, 4, 12)).not.toBe(0.5)
   })
 
+
+
+  it('roundtrips worldCameraState with camera position and controls target', () => {
+    window.localStorage.clear()
+    const camera = new THREE.PerspectiveCamera(46, 16 / 9, 0.1, 200)
+    camera.position.set(5, 6, 7)
+    camera.quaternion.set(0.1, 0.2, 0.3, 0.9).normalize()
+    camera.zoom = 1.25
+
+    const controls = { target: new THREE.Vector3(1, 2, 3) } as unknown as import('three/examples/jsm/controls/OrbitControls.js').OrbitControls
+    writeWorldCameraState(camera, controls)
+
+    expect(readWorldCameraState()).toEqual({
+      version: 1,
+      position: [5, 6, 7],
+      quaternion: [camera.quaternion.x, camera.quaternion.y, camera.quaternion.z, camera.quaternion.w],
+      zoom: 1.25,
+      target: [1, 2, 3],
+    })
+  })
+
+  it('ignores malformed worldCameraState payloads', () => {
+    window.localStorage.setItem('worldCameraState', JSON.stringify({ version: 1, position: [1, 2], quaternion: [1, 2, 3, 4], zoom: 1, target: [1, 2, 3] }))
+    expect(readWorldCameraState()).toBeNull()
+  })
   it('falls back to FXAA when MSAA is not available', () => {
     expect(resolveAAMode(null, false)).toBe('fxaa')
     expect(resolveAAMode('msaa', false)).toBe('fxaa')
