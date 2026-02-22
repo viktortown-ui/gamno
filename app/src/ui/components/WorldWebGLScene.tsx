@@ -19,7 +19,7 @@ import { readWorldCameraState, writeWorldCameraState } from './worldWebglCameraS
 import { IdleDriftController } from './worldWebglIdleDrift'
 import { createPlanetMaterial, planetMaterialTuningFromPalette, planetPaletteFromId } from './worldWebglPlanetStyle'
 import { applySceneEnvironment, collectLightingDiagnostics, createIBL, warnIfLightingInvalid } from './worldWebglLighting'
-import { buildPlanetOrbitSpec, orbitLocalPoint, relaxOrbitPhases, type OrbitSpec } from './worldWebglOrbits'
+import { advanceOrbitPhase, buildPlanetOrbitSpec, orbitLocalPoint, relaxOrbitPhases, type OrbitSpec } from './worldWebglOrbits'
 
 interface WorldWebGLSceneProps {
   snapshot: WorldMapSnapshot
@@ -79,6 +79,7 @@ const worldDebugLighting = import.meta.env.DEV && globalThis.localStorage?.getIt
 const worldForceUnlitPlanets = globalThis.localStorage?.getItem('worldForceUnlitPlanets') === '1'
 const worldNoPost = globalThis.localStorage?.getItem('worldNoPost') === '1'
 const worldDebugHUD = globalThis.localStorage?.getItem('worldDebugHUD') === '1'
+const worldDebugOrbits = import.meta.env.DEV && globalThis.localStorage?.getItem('worldDebugOrbits') === '1'
 let iblDebugLogged = false
 
 
@@ -326,17 +327,16 @@ export function WorldWebGLScene({
       const material = createPlanetMaterial(palette, tuning, ibl.texture, worldForceUnlitPlanets)
       const mesh = new THREE.Mesh(new THREE.SphereGeometry(radius, 36, 36), material)
       mesh.renderOrder = 3
-      const basePosition = toWorldPosition(snapshot, planet)
-      const orbit = buildPlanetOrbitSpec(planet, snapshot.seed, basePosition, radius)
+      const orbit = buildPlanetOrbitSpec(planet, snapshot.seed, planet.order, radius)
       orbitByPlanetId.set(planet.id, orbit)
       phaseInputs.push({ id: planet.id, orbitRadius: orbit.radiusHint, phase: orbit.phase })
       mesh.userData.planetId = planet.id
 
       const orbitGroup = new THREE.Group()
-      orbitGroup.rotation.y = orbit.nodeRotation
       orbitGroup.rotation.x = orbit.inclination
+      orbitGroup.rotation.z = orbit.nodeRotation
 
-      const curvePoints = orbit.curve.getSpacedPoints(ORBIT_SEGMENTS).map((point) => new THREE.Vector3(point.x, orbit.yOffset, point.y))
+      const curvePoints = orbit.curve.getSpacedPoints(ORBIT_SEGMENTS).map((point) => new THREE.Vector3(point.x, 0, point.y))
       const curvePositions = curvePoints.flatMap((point) => [point.x, point.y, point.z])
       const curveGeometry = new LineGeometry()
       curveGeometry.setPositions(curvePositions)
@@ -349,7 +349,7 @@ export function WorldWebGLScene({
         depthWrite: false,
         depthTest: true,
       })
-      curveMaterial.resolution.set(host.clientWidth, host.clientHeight)
+      curveMaterial.resolution.set(host.clientWidth * pixelRatio, host.clientHeight * pixelRatio)
       const orbitLine = new Line2(curveGeometry, curveMaterial)
       orbitLine.computeLineDistances()
       orbitLine.renderOrder = 2
@@ -369,13 +369,39 @@ export function WorldWebGLScene({
       const phase = phaseMap.get(state.mesh.userData.planetId as string) ?? state.phase
       state.phase = phase
       orbitLocalPoint(state.orbitCurve, phase, state.mesh.position)
-      state.mesh.position.y = state.orbit.yOffset
     })
 
     const worldToLocal = new THREE.Matrix4()
     const devOrbitEpsilon = 1e-3
     const systemWorldPos = new THREE.Vector3()
     const coreWorldPos = new THREE.Vector3()
+    const orbitBounds = new THREE.Box2()
+    if (worldDebugOrbits) {
+      const crossMaterial = new THREE.LineBasicMaterial({ color: 0x00ffaa })
+      const crossGeometry = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(-0.2, 0, 0),
+        new THREE.Vector3(0.2, 0, 0),
+        new THREE.Vector3(0, -0.2, 0),
+        new THREE.Vector3(0, 0.2, 0),
+        new THREE.Vector3(0, 0, -0.2),
+        new THREE.Vector3(0, 0, 0.2),
+      ])
+      const coreCross = new THREE.LineSegments(crossGeometry, crossMaterial)
+      systemGroup.add(coreCross)
+      planetOrbitStates.forEach((state) => {
+        const orbitCenterCross = new THREE.LineSegments(crossGeometry.clone(), new THREE.LineBasicMaterial({ color: 0xff9c4a }))
+        state.orbitGroup.add(orbitCenterCross)
+        orbitBounds.makeEmpty()
+        state.orbitCurve.getSpacedPoints(ORBIT_SEGMENTS).forEach((point) => orbitBounds.expandByPoint(point))
+        const center = orbitBounds.getCenter(new THREE.Vector2())
+        if (center.length() > 1e-3) {
+          console.warn('[World] Orbit curve center offset from origin', {
+            planetId: state.mesh.userData.planetId as string,
+            center: center.toArray(),
+          })
+        }
+      })
+    }
     const assertPlanetOnOrbit = (state: PlanetOrbitState): void => {
       if (!import.meta.env.DEV) return
       worldToLocal.copy(state.orbitGroup.matrixWorld).invert()
@@ -562,16 +588,20 @@ export function WorldWebGLScene({
       persistTimer = window.setTimeout(() => writeWorldCameraState(camera, controls), 180)
     }
     const onControlsChange = () => {
+      driftController.notifyControlsChange()
       schedulePersist()
     }
-    const onControlsStart = () => driftController.notifyUserAction(performance.now())
-    const onControlsEnd = () => driftController.notifyUserAction(performance.now())
+    const onControlsStart = () => driftController.notifyControlsStart(performance.now())
+    const onControlsEnd = () => undefined
     controls.addEventListener('change', onControlsChange)
     controls.addEventListener('start', onControlsStart)
     controls.addEventListener('end', onControlsEnd)
     let raf = 0
+    let lastTickMs: number | null = null
     const tick = (time: number) => {
       const t = time * 0.001
+      const deltaMs = lastTickMs == null ? 16.67 : Math.max(0, Math.min(100, time - lastTickMs))
+      lastTickMs = time
       driftController.setSelectedId(selectedIdRef.current, time)
       const driftEnabled = !reducedMotion && !selectedIdRef.current
       planetOrbitStates.forEach((orbitState) => {
@@ -580,11 +610,8 @@ export function WorldWebGLScene({
         const scaleBoost = reducedMotion ? 0 : pulse * 0.12 * Math.sin(t * 4.5)
         orbitState.mesh.scale.setScalar(1 + scaleBoost)
         orbitState.mesh.rotation.y += reducedMotion ? 0 : 0.0035
-        if (driftEnabled) {
-          orbitState.phase = (orbitState.phase + orbitState.driftSpeed * 0.15 * 0.001) % 1
-        }
+        orbitState.phase = advanceOrbitPhase(orbitState.phase, orbitState.driftSpeed, deltaMs, driftEnabled)
         orbitLocalPoint(orbitState.orbitCurve, orbitState.phase, orbitState.mesh.position)
-        orbitState.mesh.position.y = orbitState.orbit.yOffset
         assertPlanetOnOrbit(orbitState)
       })
       assertSystemCentered()
@@ -658,7 +685,7 @@ export function WorldWebGLScene({
       fxaaPass.material.uniforms.resolution.value.set(1 / (clientWidth * nextPixelRatio), 1 / (clientHeight * nextPixelRatio))
       planetOrbitLines.forEach((line) => {
         const material = line.material as LineMaterial
-        material.resolution.set(clientWidth, clientHeight)
+        material.resolution.set(clientWidth * nextPixelRatio, clientHeight * nextPixelRatio)
       })
       camera.aspect = clientWidth / clientHeight
       const nextFit = computeFitToViewState(snapshot, planets, camera.aspect)

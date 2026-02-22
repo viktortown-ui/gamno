@@ -30,6 +30,15 @@ export class IdleDriftController {
     this.lastActionMs = nowMs
   }
 
+  notifyControlsStart(nowMs: number): void {
+    this.notifyUserAction(nowMs)
+  }
+
+  notifyControlsChange(): void {
+    // OrbitControls change can fire continuously with damping.
+  }
+
+
   setSelectedId(selectedId: string | null, nowMs: number): void {
     this.selectedId = selectedId
     if (selectedId) {

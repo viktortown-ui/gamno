@@ -24,16 +24,21 @@ export interface OrbitSpec {
   curve: THREE.EllipseCurve
   inclination: number
   nodeRotation: number
-  yOffset: number
   phase: number
   speed: number
   radiusHint: number
-  pointAt: (phase: number, out?: THREE.Vector3) => THREE.Vector3
 }
 
 export function orbitLocalPoint(curve: THREE.EllipseCurve, phase: number, out = new THREE.Vector3()): THREE.Vector3 {
   const p = curve.getPointAt(phase)
   return out.set(p.x, 0, p.y)
+}
+
+
+export function advanceOrbitPhase(currentPhase: number, speed: number, deltaMs: number, enabled: boolean): number {
+  if (!enabled) return currentPhase
+  const next = currentPhase + speed * (deltaMs * 0.001)
+  return ((next % 1) + 1) % 1
 }
 
 export interface OrbitPhaseInput {
@@ -81,34 +86,28 @@ export function relaxOrbitPhases(entries: OrbitPhaseInput[], minSep = 0.3, itera
   return relaxed
 }
 
-export function buildPlanetOrbitSpec(planet: WorldMapPlanet, seed: number, basePosition: THREE.Vector3, meshRadius: number): OrbitSpec {
+export function buildPlanetOrbitSpec(planet: WorldMapPlanet, seed: number, orbitIndex: number, meshRadius: number): OrbitSpec {
   const hash = hashString(`${planet.id}:${seed}:orbit`)
-  const eccentricity = 0.72 + hashToUnit(hash ^ 0x9e3779b9) * 0.2
-  const clearance = meshRadius * (1.5 + hashToUnit(hash ^ 0x85ebca6b) * 0.3) + 0.035
-  const semiMajor = Math.max(0.48, Math.abs(basePosition.x) + clearance)
-  const semiMinor = Math.max(0.44, Math.abs(basePosition.z) + clearance) * eccentricity
-  const inclination = (hashToUnit(hash ^ 0xc2b2ae35) - 0.5) * 0.5
+  const index = Math.max(0, orbitIndex)
+  const semiMajorBase = 1.9 + index * 0.63
+  const semiMajor = semiMajorBase + hashToUnit(hash ^ 0x85ebca6b) * 0.16 + meshRadius * 0.7
+  const eccentricity = hashToUnit(hash ^ 0x9e3779b9) * 0.25
+  const semiMinor = semiMajor * (1 - eccentricity)
+  const inclinationDeg = hashToUnit(hash ^ 0xc2b2ae35) * (8 + Math.min(index, 8) * 0.9)
+  const inclination = THREE.MathUtils.degToRad(inclinationDeg)
   const nodeRotation = hashToUnit(hash ^ 0x27d4eb2f) * TWO_PI
   const phase = hashToUnit(hash ^ 0x165667b1)
-  const speed = 0.014 + hashToUnit(hash ^ 0xd3a2646c) * 0.018
+  const speedBase = 0.028 / Math.sqrt(1 + index * 0.6)
+  const speed = speedBase * (0.88 + hashToUnit(hash ^ 0xd3a2646c) * 0.24)
   const curve = new THREE.EllipseCurve(0, 0, semiMajor, semiMinor, 0, TWO_PI, false, 0)
-  const pointAt = (nextPhase: number, out = new THREE.Vector3()): THREE.Vector3 => {
-    orbitLocalPoint(curve, nextPhase, out)
-    out.applyAxisAngle(new THREE.Vector3(1, 0, 0), inclination)
-    out.applyAxisAngle(new THREE.Vector3(0, 1, 0), nodeRotation)
-    out.y += basePosition.y
-    return out
-  }
 
   return {
     id: planet.id,
     curve,
     inclination,
     nodeRotation,
-    yOffset: basePosition.y,
     phase,
     speed,
     radiusHint: Math.max(semiMajor, semiMinor),
-    pointAt,
   }
 }

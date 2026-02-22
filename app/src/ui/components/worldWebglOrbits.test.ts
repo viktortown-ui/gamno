@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import * as THREE from 'three'
 import type { WorldMapPlanet } from '../../core/worldMap/types'
-import { buildPlanetOrbitSpec, orbitLocalPoint, relaxOrbitPhases } from './worldWebglOrbits'
+import { advanceOrbitPhase, buildPlanetOrbitSpec, orbitLocalPoint, relaxOrbitPhases } from './worldWebglOrbits'
 
 const planet: WorldMapPlanet = {
   id: 'planet:alpha',
@@ -20,13 +20,23 @@ const planet: WorldMapPlanet = {
 
 describe('worldWebglOrbits', () => {
   it('returns deterministic orbit parameters for same id + seed', () => {
-    const base = new THREE.Vector3(1.4, -0.2, 1.1)
-    const first = buildPlanetOrbitSpec(planet, 77, base, planet.radius * 0.042)
-    const second = buildPlanetOrbitSpec(planet, 77, base, planet.radius * 0.042)
+    const first = buildPlanetOrbitSpec(planet, 77, planet.order, planet.radius * 0.042)
+    const second = buildPlanetOrbitSpec(planet, 77, planet.order, planet.radius * 0.042)
 
     expect(first.phase).toBe(second.phase)
     expect(first.inclination).toBe(second.inclination)
     expect(first.nodeRotation).toBe(second.nodeRotation)
+    expect(first.curve.xRadius).toBe(second.curve.xRadius)
+    expect(first.curve.yRadius).toBe(second.curve.yRadius)
+  })
+
+  it('builds orbit ellipse centered at local origin', () => {
+    const orbit = buildPlanetOrbitSpec(planet, 111, planet.order, planet.radius * 0.042)
+    const bounds = new THREE.Box2().makeEmpty()
+    orbit.curve.getSpacedPoints(192).forEach((point) => bounds.expandByPoint(point))
+    const center = bounds.getCenter(new THREE.Vector2())
+
+    expect(center.length()).toBeLessThan(1e-6)
   })
 
   it('relaxes phases deterministically', () => {
@@ -42,18 +52,24 @@ describe('worldWebglOrbits', () => {
     expect(first).toEqual(second)
   })
 
-  it('keeps planet position exactly on orbit point for phase', () => {
-    const base = new THREE.Vector3(1.3, 0.4, 1)
-    const orbit = buildPlanetOrbitSpec(planet, 33, base, planet.radius * 0.042)
-    const pos = orbit.pointAt(orbit.phase)
-    const expected = orbit.pointAt(orbit.phase)
+  it('keeps planet position exactly on orbit getPointAt value in local space', () => {
+    const orbit = buildPlanetOrbitSpec(planet, 33, planet.order, planet.radius * 0.042)
+    const phase = orbit.phase
+    const local = orbitLocalPoint(orbit.curve, phase)
+    const fromCurve = orbit.curve.getPointAt(phase)
 
-    expect(pos.distanceTo(expected)).toBeLessThan(1e-6)
+    expect(local.distanceTo(new THREE.Vector3(fromCurve.x, 0, fromCurve.y))).toBeLessThan(1e-6)
+  })
+
+
+
+  it('advances phase only when drift is enabled', () => {
+    expect(advanceOrbitPhase(0.2, 0.05, 1000, true)).toBeCloseTo(0.25)
+    expect(advanceOrbitPhase(0.2, 0.05, 1000, false)).toBeCloseTo(0.2)
   })
 
   it('returns local-space curve points for orbit phases', () => {
-    const base = new THREE.Vector3(1.3, 0.4, 1)
-    const orbit = buildPlanetOrbitSpec(planet, 33, base, planet.radius * 0.042)
+    const orbit = buildPlanetOrbitSpec(planet, 33, planet.order, planet.radius * 0.042)
     const local = orbitLocalPoint(orbit.curve, 0.25)
 
     expect(local.y).toBe(0)

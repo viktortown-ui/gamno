@@ -38,6 +38,20 @@ describe('IdleDriftController', () => {
     expect(controller.isEnabled(1_000_000)).toBe(false)
   })
 
+
+
+  it('ignores controls change events but treats controls start as user action', () => {
+    const controller = new IdleDriftController({ reduceMotion: false, idleTimeoutMs: 1_000 }, 0)
+
+    expect(controller.isEnabled(1_001)).toBe(true)
+    controller.notifyControlsChange()
+    expect(controller.isEnabled(1_001)).toBe(true)
+
+    controller.notifyControlsStart(1_100)
+    expect(controller.isEnabled(1_500)).toBe(false)
+    expect(controller.isEnabled(2_101)).toBe(true)
+  })
+
   it('is disabled when idle timeout is set to zero', () => {
     const controller = new IdleDriftController({ reduceMotion: false, idleTimeoutMs: 0 }, 0)
     expect(controller.isEnabled(1_000_000)).toBe(false)
