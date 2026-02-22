@@ -8,12 +8,16 @@ import { FXAAShader } from 'three/examples/jsm/shaders/FXAAShader.js'
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js'
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js'
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js'
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
 import { WebGLRenderTarget } from 'three'
 import { resolveAAMode, type AAMode } from './worldWebglAAMode'
 import type { WorldMapPlanet, WorldMapSnapshot } from '../../core/worldMap/types'
 import { computeFitToViewState, orbitPulseOpacity } from './worldWebglSceneMath'
 import type { WorldFxEvent } from '../../pages/worldCockpit'
 import { readWorldCameraState, writeWorldCameraState } from './worldWebglCameraState'
+import { IdleDriftController } from './worldWebglIdleDrift'
+import { applyPlanetMaterialTuning, planetMaterialTuningFromPalette, planetPaletteFromId } from './worldWebglPlanetStyle'
+import { applySceneEnvironment } from './worldWebglLighting'
 
 interface WorldWebGLSceneProps {
   snapshot: WorldMapSnapshot
@@ -38,18 +42,19 @@ const BLOOM_PARAMS = {
 }
 const EXPOSURE_RANGE = { min: 1.1, max: 1.4 }
 
+interface PlanetOrbitState {
+  mesh: THREE.Mesh
+  baseY: number
+  orbitRadius: number
+  driftSpeed: number
+  phase: number
+}
+
 function toWorldPosition(snapshot: WorldMapSnapshot, planet: WorldMapPlanet): THREE.Vector3 {
   const x = (planet.x - snapshot.center.x) * 0.042
   const y = (snapshot.center.y - planet.y) * 0.027
   const z = Math.sin(planet.angle * 1.7) * 0.9
   return new THREE.Vector3(x, y, z)
-}
-
-function colorByPlanet(planet: WorldMapPlanet): THREE.Color {
-  const hue = (planet.order * 0.11 + planet.metrics.risk * 0.08) % 1
-  const saturation = 0.46 + planet.metrics.budgetPressure * 0.4
-  const light = 0.5 + planet.metrics.level * 0.04
-  return new THREE.Color().setHSL(hue, Math.min(0.9, saturation), Math.min(0.78, light))
 }
 
 function seedFloat(seed: number): number {
@@ -68,31 +73,18 @@ function ringPoints(radius: number, flatten: number, tilt: number, segments: num
   return points
 }
 
-function buildGradientEnvironmentMap(renderer: THREE.WebGLRenderer): THREE.Texture {
-  const size = 128
-  const canvas = document.createElement('canvas')
-  canvas.width = size
-  canvas.height = size
-  const ctx = canvas.getContext('2d')
-  if (!ctx) {
-    return new THREE.Texture()
-  }
-  const gradient = ctx.createLinearGradient(0, 0, 0, size)
-  gradient.addColorStop(0, '#8ab6ff')
-  gradient.addColorStop(0.4, '#1f305c')
-  gradient.addColorStop(1, '#040812')
-  ctx.fillStyle = gradient
-  ctx.fillRect(0, 0, size, size)
-
-  const texture = new THREE.CanvasTexture(canvas)
-  texture.colorSpace = THREE.SRGBColorSpace
-  texture.mapping = THREE.EquirectangularReflectionMapping
+function createIBL(renderer: THREE.WebGLRenderer): { texture: THREE.Texture; dispose: () => void } {
   const pmrem = new THREE.PMREMGenerator(renderer)
-  pmrem.compileEquirectangularShader()
-  const envMap = pmrem.fromEquirectangular(texture).texture
-  texture.dispose()
-  pmrem.dispose()
-  return envMap
+  const room = new RoomEnvironment()
+  const texture = pmrem.fromScene(room).texture
+  room.dispose()
+  return {
+    texture,
+    dispose: () => {
+      texture.dispose()
+      pmrem.dispose()
+    },
+  }
 }
 
 
@@ -249,8 +241,8 @@ export function WorldWebGLScene({
     bloomLayer.set(BLOOM_LAYER)
 
     scene.fog = new THREE.FogExp2(uiVariant === 'cinematic' ? 0x060d1d : 0x071022, 0.032)
-    const environmentMap = buildGradientEnvironmentMap(renderer)
-    scene.environment = environmentMap
+    const ibl = createIBL(renderer)
+    applySceneEnvironment(scene, ibl.texture)
 
     const ambient = new THREE.AmbientLight(0xaad0ff, 0.74)
     const key = new THREE.DirectionalLight(0xd8e8ff, 1.05)
@@ -264,19 +256,35 @@ export function WorldWebGLScene({
 
     const coreGroup = new THREE.Group()
     const core = new THREE.Mesh(
-      new THREE.SphereGeometry(1.02, 32, 32),
-      new THREE.MeshStandardMaterial({ color: 0x77b8ff, emissive: 0x3ea5ff, emissiveIntensity: 1.25, metalness: 0.2, roughness: 0.28 }),
+      new THREE.SphereGeometry(1.0, 64, 64),
+      new THREE.MeshStandardMaterial({ color: 0x6baeff, emissive: 0x4bd5ff, emissiveIntensity: 0.72, metalness: 0.06, roughness: 0.58 }),
+    )
+    const fresnelShell = new THREE.Mesh(
+      new THREE.SphereGeometry(1.18, 64, 64),
+      new THREE.ShaderMaterial({
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        uniforms: {
+          glowColor: { value: new THREE.Color(0x7ce3ff) },
+          opacity: { value: 0.34 },
+          fresnelPower: { value: 3.6 },
+        },
+        vertexShader: `varying vec3 vNormal; varying vec3 vViewDir; void main() { vec4 worldPos = modelMatrix * vec4(position, 1.0); vNormal = normalize(mat3(modelMatrix) * normal); vViewDir = normalize(cameraPosition - worldPos.xyz); gl_Position = projectionMatrix * viewMatrix * worldPos; }`,
+        fragmentShader: `uniform vec3 glowColor; uniform float opacity; uniform float fresnelPower; varying vec3 vNormal; varying vec3 vViewDir; void main() { float fresnel = pow(1.0 - max(dot(normalize(vNormal), normalize(vViewDir)), 0.0), fresnelPower); gl_FragColor = vec4(glowColor, fresnel * opacity); }`,
+      }),
     )
     const halo = new THREE.Mesh(
-      new THREE.SphereGeometry(1.55, 28, 28),
-      new THREE.MeshBasicMaterial({ color: 0x65ffd1, transparent: true, opacity: 0.16, side: THREE.DoubleSide }),
+      new THREE.RingGeometry(1.35, 1.95, 96),
+      new THREE.MeshBasicMaterial({ color: 0x67ffdb, transparent: true, opacity: 0.14, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }),
     )
-    coreGroup.add(core, halo)
+    halo.rotation.x = Math.PI / 2
+    coreGroup.add(core, fresnelShell, halo)
     core.layers.enable(BLOOM_LAYER)
     halo.layers.enable(BLOOM_LAYER)
     if (snapshot.metrics.safeMode) {
       const shield = new THREE.Mesh(
-        new THREE.SphereGeometry(2.08, 24, 24),
+        new THREE.SphereGeometry(2.08, 48, 48),
         new THREE.MeshBasicMaterial({ color: 0x6fffd8, transparent: true, opacity: 0.12, wireframe: true }),
       )
       coreGroup.add(shield)
@@ -298,34 +306,29 @@ export function WorldWebGLScene({
     })
 
     const planetMeshes = new Map<string, THREE.Mesh>()
-    const DOMAIN_MATERIAL: Record<string, { roughness: number; metalness: number; clearcoat: number; clearcoatRoughness: number; envMapIntensity: number; emissiveIntensity: number }> = {
-      core: { roughness: 0.42, metalness: 0.26, clearcoat: 0.46, clearcoatRoughness: 0.24, envMapIntensity: 1.52, emissiveIntensity: 0.24 },
-      risk: { roughness: 0.52, metalness: 0.12, clearcoat: 0.18, clearcoatRoughness: 0.42, envMapIntensity: 1.32, emissiveIntensity: 0.18 },
-      mission: { roughness: 0.36, metalness: 0.24, clearcoat: 0.58, clearcoatRoughness: 0.19, envMapIntensity: 1.58, emissiveIntensity: 0.26 },
-      stability: { roughness: 0.6, metalness: 0.1, clearcoat: 0.12, clearcoatRoughness: 0.48, envMapIntensity: 1.24, emissiveIntensity: 0.16 },
-      forecast: { roughness: 0.47, metalness: 0.18, clearcoat: 0.38, clearcoatRoughness: 0.28, envMapIntensity: 1.42, emissiveIntensity: 0.2 },
-      social: { roughness: 0.4, metalness: 0.22, clearcoat: 0.42, clearcoatRoughness: 0.24, envMapIntensity: 1.48, emissiveIntensity: 0.22 },
-    }
+    const planetOrbitStates: PlanetOrbitState[] = []
     planets.forEach((planet) => {
-      const pColor = colorByPlanet(planet)
-      const domainMaterial = DOMAIN_MATERIAL[planet.domainId] ?? DOMAIN_MATERIAL.core
+      const palette = planetPaletteFromId(planet.id, snapshot.seed)
+      const tuning = planetMaterialTuningFromPalette(palette.type, planet)
       const material = new THREE.MeshPhysicalMaterial({
-        color: pColor,
-        emissive: pColor.clone().multiplyScalar(0.14 + planet.metrics.risk * 0.03),
-        emissiveIntensity: domainMaterial.emissiveIntensity,
-        metalness: domainMaterial.metalness,
-        roughness: domainMaterial.roughness,
-        clearcoat: domainMaterial.clearcoat,
-        clearcoatRoughness: domainMaterial.clearcoatRoughness,
-        ior: 1.4,
-        envMapIntensity: domainMaterial.envMapIntensity,
-        envMap: environmentMap,
+        color: palette.baseColor,
+        emissive: palette.emissiveColor,
+        ior: 1.38,
+        envMapIntensity: tuning.envMapIntensity,
+        envMap: ibl.texture,
       })
-      material.userData.baseEmissiveIntensity = domainMaterial.emissiveIntensity
-      const mesh = new THREE.Mesh(new THREE.SphereGeometry(planet.radius * 0.042, 28, 28), material)
-      mesh.position.copy(toWorldPosition(snapshot, planet))
+      applyPlanetMaterialTuning(material, tuning)
+      material.userData.baseEmissiveIntensity = tuning.emissiveIntensity
+      const mesh = new THREE.Mesh(new THREE.SphereGeometry(planet.radius * 0.042, 36, 36), material)
+      const basePosition = toWorldPosition(snapshot, planet)
+      const orbitRadius = Math.max(0.45, Math.hypot(basePosition.x, basePosition.z))
+      const speedSeed = seedFloat(snapshot.seed + planet.order * 17 + planet.id.length * 13)
+      const driftSpeed = 0.032 + speedSeed * 0.028
+      const phase = Math.atan2(basePosition.z, basePosition.x)
+      mesh.position.copy(basePosition)
       mesh.userData.planetId = planet.id
       scene.add(mesh)
+      planetOrbitStates.push({ mesh, baseY: basePosition.y, orbitRadius, driftSpeed, phase })
       planetMeshes.set(planet.id, mesh)
     })
 
@@ -430,6 +433,7 @@ export function WorldWebGLScene({
     resetViewRef.current = resetView
 
     const onPointerMove = (event: PointerEvent) => {
+      driftController.notifyUserAction(performance.now())
       const nextHoveredId = pickPlanet(event)
       if (hoveredPlanetId === nextHoveredId) return
       hoveredPlanetId = nextHoveredId
@@ -444,11 +448,13 @@ export function WorldWebGLScene({
       applyHighlight()
     }
     const onPointerLeave = () => {
+      driftController.notifyUserAction(performance.now())
       hoveredPlanetId = null
       setHoveredPlanetLabel(null)
       applyHighlight()
     }
     const onClick = (event: MouseEvent) => {
+      driftController.notifyUserAction(performance.now())
       const picked = pickPlanet(event)
       if (picked) {
         onPlanetSelectRef.current?.(picked)
@@ -458,7 +464,11 @@ export function WorldWebGLScene({
     }
     renderer.domElement.addEventListener('pointermove', onPointerMove)
     renderer.domElement.addEventListener('pointerleave', onPointerLeave)
+    const onWheel = () => driftController.notifyUserAction(performance.now())
+    const onPointerDown = () => driftController.notifyUserAction(performance.now())
     renderer.domElement.addEventListener('click', onClick)
+    renderer.domElement.addEventListener('wheel', onWheel, { passive: true })
+    renderer.domElement.addEventListener('pointerdown', onPointerDown)
 
     const onWindowKeyDown = (event: KeyboardEvent) => {
       if (event.key.toLowerCase() === 'r') {
@@ -472,11 +482,19 @@ export function WorldWebGLScene({
       window.clearTimeout(persistTimer)
       persistTimer = window.setTimeout(() => writeWorldCameraState(camera, controls), 180)
     }
-    controls.addEventListener('change', schedulePersist)
+    const onControlsChange = () => {
+      schedulePersist()
+      driftController.notifyUserAction(performance.now())
+    }
+    controls.addEventListener('change', onControlsChange)
+
+    const driftController = new IdleDriftController({ reduceMotion: reducedMotion }, performance.now())
+    driftController.setSelectedId(selectedIdRef.current, performance.now())
 
     let raf = 0
     const tick = (time: number) => {
       const t = time * 0.001
+      driftController.setSelectedId(selectedIdRef.current, time)
       scene.traverse((object) => {
         if (object instanceof THREE.Mesh && bloomLayer.test(object.layers)) {
           const material = object.material
@@ -485,18 +503,29 @@ export function WorldWebGLScene({
           }
         }
       })
-      planetMeshes.forEach((mesh, id) => {
+      const driftEnabled = driftController.isEnabled(time)
+      planetOrbitStates.forEach((orbitState) => {
+        const id = orbitState.mesh.userData.planetId as string
         const pulse = pulseRef.current.get(id) ?? 0
         const scaleBoost = reducedMotion ? 0 : pulse * 0.12 * Math.sin(t * 4.5)
-        mesh.scale.setScalar(1 + scaleBoost)
-        mesh.rotation.y += reducedMotion ? 0 : 0.0035
+        orbitState.mesh.scale.setScalar(1 + scaleBoost)
+        orbitState.mesh.rotation.y += reducedMotion ? 0 : 0.0035
+        if (driftEnabled) {
+          orbitState.phase += orbitState.driftSpeed * 0.001
+          orbitState.mesh.position.set(
+            Math.cos(orbitState.phase) * orbitState.orbitRadius,
+            orbitState.baseY,
+            Math.sin(orbitState.phase) * orbitState.orbitRadius,
+          )
+        }
       })
       core.rotation.y += reducedMotion ? 0 : 0.004
       const corePulse = reducedMotion ? 0 : (Math.sin(t * 1.4) + 1) * 0.22
       if (core.material instanceof THREE.MeshStandardMaterial) {
-        core.material.emissiveIntensity = 1.05 + corePulse
+        core.material.emissiveIntensity = 0.68 + corePulse
       }
-      halo.scale.setScalar(1 + (reducedMotion ? 0 : Math.sin(t * 1.4) * 0.03))
+      halo.scale.setScalar(1 + (reducedMotion ? 0 : Math.sin(t * 1.4) * 0.02))
+      fresnelShell.rotation.y += reducedMotion ? 0 : 0.0018
       if (!reducedMotion) {
         dust.position.x = Math.sin(t * 0.05) * 0.35
         dust.position.z = Math.cos(t * 0.045) * 0.3
@@ -549,10 +578,12 @@ export function WorldWebGLScene({
       window.removeEventListener('resize', onResize)
       window.removeEventListener('keydown', onWindowKeyDown)
       window.clearTimeout(persistTimer)
-      controls.removeEventListener('change', schedulePersist)
+      controls.removeEventListener('change', onControlsChange)
       renderer.domElement.removeEventListener('pointermove', onPointerMove)
       renderer.domElement.removeEventListener('pointerleave', onPointerLeave)
       renderer.domElement.removeEventListener('click', onClick)
+      renderer.domElement.removeEventListener('wheel', onWheel)
+      renderer.domElement.removeEventListener('pointerdown', onPointerDown)
       controls.dispose()
       host.removeChild(renderer.domElement)
       renderer.dispose()
@@ -566,7 +597,7 @@ export function WorldWebGLScene({
         }
       })
       stars.dispose()
-      environmentMap.dispose()
+      ibl.dispose()
     }
   }, [devAAMode, devBloomStrength, devExposure, planets, reducedMotion, snapshot, stormAlpha, uiVariant])
 
