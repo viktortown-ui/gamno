@@ -29,25 +29,25 @@ type PageKey = 'start' | 'world' | 'core' | 'dashboard' | 'oracle' | 'autopilot'
 type NavItem = { key: PageKey; label: string; icon: string }
 
 const primaryNavItems: NavItem[] = [
-  { key: 'world', label: 'Мир', icon: '🧭' },
-  { key: 'start', label: 'Помощь', icon: '❓' },
-  { key: 'core', label: 'Живое ядро', icon: '💓' },
-  { key: 'dashboard', label: 'Дашборд', icon: '📊' },
-  { key: 'oracle', label: 'Оракул', icon: '🔮' },
-  { key: 'goals', label: 'Цели', icon: '🎯' },
-  { key: 'history', label: 'История', icon: '🕘' },
+  { key: 'world', label: 'Мир', icon: '◎' },
+  { key: 'start', label: 'Старт', icon: '◈' },
+  { key: 'core', label: 'Ядро', icon: '◉' },
+  { key: 'dashboard', label: 'Дашборд', icon: '▦' },
+  { key: 'oracle', label: 'Оракул', icon: '✶' },
+  { key: 'goals', label: 'Цели', icon: '◌' },
+  { key: 'history', label: 'Лента', icon: '◷' },
 ]
 
 const secondaryNavItems: NavItem[] = [
-  { key: 'autopilot', label: 'Автопилот', icon: '🛫' },
-  { key: 'antifragility', label: 'Антихрупкость', icon: '🛡️' },
-  { key: 'multiverse', label: 'Мультивселенная', icon: '🪐' },
-  { key: 'time-debt', label: 'Долг', icon: '⏳' },
-  { key: 'social-radar', label: 'Социальный радар', icon: '📡' },
-  { key: 'black-swans', label: 'Чёрные лебеди', icon: '🦢' },
-  { key: 'graph', label: 'Граф', icon: '🕸️' },
-  { key: 'settings', label: 'Настройки', icon: '⚙️' },
-  { key: 'system', label: 'Система', icon: '⌁' },
+  { key: 'autopilot', label: 'Автопилот', icon: '⌁' },
+  { key: 'antifragility', label: 'Антихрупкость', icon: '⛨' },
+  { key: 'multiverse', label: 'Мульти', icon: '◍' },
+  { key: 'time-debt', label: 'Долг', icon: '◔' },
+  { key: 'social-radar', label: 'Соцрадар', icon: '⌖' },
+  { key: 'black-swans', label: 'Лебеди', icon: '✷' },
+  { key: 'graph', label: 'Граф', icon: '⋰' },
+  { key: 'settings', label: 'Настройки', icon: '⚙' },
+  { key: 'system', label: 'Система', icon: '⌬' },
 ]
 
 function DesktopOnlyGate() {
@@ -123,6 +123,8 @@ function DesktopApp() {
       title={collapseSidebar ? page.label : undefined}
       onClick={() => setIsMoreOpen(false)}
       data-help-target={page.key === 'world' ? 'nav-world' : page.key === 'start' ? 'nav-start' : undefined}
+      aria-label={page.label}
+      data-tooltip={collapseSidebar ? page.label : undefined}
     >
       <span className="nav-link__icon" aria-hidden="true">{page.icon}</span>
       <span className="nav-link__label">{page.label}</span>

@@ -54,7 +54,7 @@ describe('WorldMapView', () => {
     })
 
     expect(container.querySelector('svg')).not.toBeNull()
-    expect(container.querySelectorAll('circle[id^="svg-ring:"]').length).toBe(snapshot.rings.length)
+    expect(container.querySelectorAll('[id^="svg-ring:"]').length).toBe(snapshot.rings.length)
     expect(container.querySelectorAll('g[id^="svg-planet:"]').length).toBe(snapshot.planets.length)
     expect(container.textContent).toContain(snapshot.planets[0]?.labelRu ?? '')
   })
