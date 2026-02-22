@@ -282,55 +282,60 @@ export function WorldPage({ uiVariant = 'instrument', renderMode = 'webgl' }: { 
             />
           )
         ) : <p>Карта мира готовится…</p>}
-        {selectedPlanet ? (
-          <PlanetPanel
-            planet={selectedPlanet}
-            levers={panelLevers}
-            whyBullets={whyTopRu}
-            debtProtocol={debtProtocol}
-            onClose={() => setHashPlanetId(null)}
-            onApplyLever={(lever) => setLastActionReason(`Запланировано: ${lever.titleRu}. Проверьте результат в аудите.`)}
-          />
-        ) : null}
+        <div className="world-right-stack">
+          {selectedPlanet ? (
+            <PlanetPanel
+              planet={selectedPlanet}
+              levers={panelLevers}
+              whyBullets={whyTopRu}
+              debtProtocol={debtProtocol}
+              onClose={() => setHashPlanetId(null)}
+              onApplyLever={(lever) => setLastActionReason(`Запланировано: ${lever.titleRu}. Проверьте результат в аудите.`)}
+            />
+          ) : null}
+
+          {isNextActionCollapsed ? (
+            <button
+              type="button"
+              className="world-action-rail__collapsed-cta world-action-rail__collapsed-pill"
+              onClick={() => {
+                if (selectedPlanet) setHashPlanetId(null)
+                setIsRailCollapsed(false)
+              }}
+              aria-label="Развернуть панель следующего шага"
+            >
+              Следующий шаг
+            </button>
+          ) : (
+            <aside className={`world-action-rail world-action-rail--${uiVariant} panel ${isNextActionCollapsed ? 'world-action-rail--collapsed' : ''}`.trim()} aria-label="Панель следующего шага" aria-hidden={isNextActionCollapsed}>
+              <div className="world-action-rail__toolbar">
+                <strong>Следующий шаг</strong>
+                <button type="button" className="button-secondary world-action-rail__close" onClick={() => setIsRailCollapsed(true)} aria-label="Свернуть панель">×</button>
+              </div>
+              <span className="mono world-action-rail__hotkeys">H — скрыть · Esc — закрыть</span>
+              <div className="world-hud-grid" role="list" aria-label="Сигналы cockpit">
+                {hudSignals.map((signal) => (
+                  <span key={signal.key} role="listitem"><strong>{signal.label}</strong> {signal.value}</span>
+                ))}
+              </div>
+              <div className="world-action-rail__primary">
+                <button type="button" className="start-primary" onClick={handleNextAction}>
+                  {frames.length === 0 || !bestAction ? 'Сделать check-in' : bestAction.titleRu}
+                </button>
+                <p className="mono">Почему: {lastActionReason}</p>
+              </div>
+              <details className="world-action-rail__details">
+                <summary>Подробнее</summary>
+                <ul>
+                  {topActions.map((action) => (
+                    <li key={action.id}><strong>{action.titleRu}</strong> · риск {(action.failRate * 100).toFixed(1)}%</li>
+                  ))}
+                </ul>
+              </details>
+            </aside>
+          )}
+        </div>
       </div>
-
-      {isNextActionCollapsed ? (
-        <button
-          type="button"
-          className="world-action-rail__collapsed-cta start-primary"
-          onClick={() => setIsRailCollapsed(false)}
-          aria-label="Развернуть панель следующего шага"
-        >
-          {selectedPlanet ? 'Открыть Next Action' : 'Следующий шаг'}
-        </button>
-      ) : null}
-
-      <aside className={`world-action-rail world-action-rail--${uiVariant} panel ${isNextActionCollapsed ? 'world-action-rail--collapsed' : ''}`.trim()} aria-label="Action rail" aria-hidden={isNextActionCollapsed}>
-        <div className="world-action-rail__toolbar">
-          <span className="mono">H — скрыть · Esc — закрыть</span>
-          <button type="button" className="button-secondary" onClick={() => setIsRailCollapsed(true)}>Свернуть</button>
-        </div>
-        <div className="world-hud-grid" role="list" aria-label="Сигналы cockpit">
-          {hudSignals.map((signal) => (
-            <span key={signal.key} role="listitem"><strong>{signal.label}</strong> {signal.value}</span>
-          ))}
-        </div>
-        <div className="world-action-rail__primary">
-          <strong>Следующий шаг</strong>
-          <button type="button" className="start-primary" onClick={handleNextAction}>
-            {frames.length === 0 || !bestAction ? 'Сделать check-in' : bestAction.titleRu}
-          </button>
-          <p className="mono">Почему: {lastActionReason}</p>
-        </div>
-        <details className="world-action-rail__details">
-          <summary>Подробнее</summary>
-          <ul>
-            {topActions.map((action) => (
-              <li key={action.id}><strong>{action.titleRu}</strong> · failRate {(action.failRate * 100).toFixed(1)}%</li>
-            ))}
-          </ul>
-        </details>
-      </aside>
     </section>
   )
 }

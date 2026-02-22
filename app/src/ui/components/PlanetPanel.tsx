@@ -33,7 +33,7 @@ export function PlanetPanel({ planet, levers, whyBullets, debtProtocol, onClose,
   const p90 = stormRows.map((lever) => lever.p90 * 100)
 
   const mainThreatRu = planet.metrics.safeMode
-    ? 'Safe Mode активен: режим аварийной стабилизации.'
+    ? 'Безопасный режим активен: аварийная стабилизация.'
     : planet.metrics.sirenLevel === 'red'
       ? 'Высокий сиренный риск: возможен срыв горизонта.'
       : planet.metrics.failProbability >= 0.25
@@ -48,27 +48,27 @@ export function PlanetPanel({ planet, levers, whyBullets, debtProtocol, onClose,
       </header>
 
       <div className="planet-panel__chips">
-        <span className="chip">lvl {planet.metrics.level}</span>
-        <span className="chip">{planet.metrics.safeMode ? 'safeMode' : `siren:${planet.metrics.sirenLevel}`}</span>
-        <span className="chip">fail {pct(planet.metrics.failProbability)}</span>
+        <span className="chip">уровень {planet.metrics.level}</span>
+        <span className="chip">{planet.metrics.safeMode ? 'безопасный режим' : `сирена:${planet.metrics.sirenLevel}`}</span>
+        <span className="chip">риск срыва {pct(planet.metrics.failProbability)}</span>
       </div>
 
       <section>
-        <h4>Briefing</h4>
+        <h4>Сводка</h4>
         <p>{mainThreatRu}</p>
         <p>Главный рычаг: <strong>{topLever?.titleRu ?? 'нет данных'}</strong>.</p>
       </section>
 
       <section>
-        <h4>Top actions</h4>
+        <h4>Топ-действия</h4>
         <ul className="planet-panel__levers">
           {levers.slice(0, 3).map((lever) => (
             <li key={lever.actionId}>
-              <div>
+              <div className="planet-panel__lever-copy">
                 <strong>{lever.titleRu}</strong>
-                <div className="mono">{lever.costRu} · ES97.5 {pct(lever.es97_5)} · fail {pct(lever.failRate)}</div>
+                <div className="planet-panel__lever-metrics mono">{lever.costRu} · ES97.5 {pct(lever.es97_5)} · срыв {pct(lever.failRate)}</div>
               </div>
-              <button type="button" onClick={() => onApplyLever?.(lever)}>{lever.ctaRu}</button>
+              <button type="button" className="start-primary" onClick={() => onApplyLever?.(lever)}>{lever.ctaRu}</button>
             </li>
           ))}
         </ul>
@@ -76,7 +76,7 @@ export function PlanetPanel({ planet, levers, whyBullets, debtProtocol, onClose,
 
       {topLever ? (
         <section>
-          <button type="button" className="start-primary" onClick={() => onApplyLever?.(topLever)}>Do it: {topLever.titleRu}</button>
+          <button type="button" className="start-primary" onClick={() => onApplyLever?.(topLever)}>Сделать: {topLever.titleRu}</button>
         </section>
       ) : null}
 
@@ -89,13 +89,13 @@ export function PlanetPanel({ planet, levers, whyBullets, debtProtocol, onClose,
 
       {stormRows.length ? (
         <section>
-          <h4>Tail-risk</h4>
+          <h4>Хвостовой риск</h4>
           <FanChart labels={stormRows.map((item) => `${item.titleRu} (H3/H7)`)} p10={p10} p50={p50} p90={p90} />
         </section>
       ) : null}
 
       <section>
-        <h4>Pressure / Debts</h4>
+        <h4>Давление / долги</h4>
         {debtProtocol.length ? <ul>{debtProtocol.slice(0, 3).map((item) => <li key={item}>{item}</li>)}</ul> : <p>Активных долгов не найдено.</p>}
       </section>
     </aside>

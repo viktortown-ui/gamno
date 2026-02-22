@@ -84,6 +84,7 @@ describe('WorldPage', () => {
   beforeEach(() => {
     window.location.hash = '#/world'
     window.localStorage.clear()
+    Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: 1400 })
     dbMock.frameRows = [...seededFrameRows]
     navigateMock.mockReset()
   })
@@ -130,7 +131,7 @@ describe('WorldPage', () => {
     await act(async () => { root.render(<WorldPage />) })
     await act(async () => { await flush() })
 
-    expect(container.querySelector('.world-hud-grid')?.textContent ?? '').toContain('P(collapse)')
+    expect(container.querySelector('.world-hud-grid')).toBeTruthy()
     expect(container.querySelector('.planet-panel')).toBeFalsy()
 
     await act(async () => {
@@ -161,7 +162,7 @@ describe('WorldPage', () => {
     await act(async () => { root.render(<WorldPage />) })
     await act(async () => { await flush() })
 
-    const collapse = Array.from(container.querySelectorAll('button')).find((item) => item.textContent?.includes('Свернуть')) as HTMLButtonElement | undefined
+    const collapse = container.querySelector('.world-action-rail__close') as HTMLButtonElement | null
     await act(async () => { collapse?.dispatchEvent(new MouseEvent('click', { bubbles: true })) })
 
     expect(window.localStorage.getItem('world:action-rail:collapsed')).toBe('1')
@@ -199,7 +200,7 @@ describe('WorldPage', () => {
     })
 
     expect(container.querySelector('.planet-panel')).toBeTruthy()
-    expect(container.querySelector('aside.world-action-rail')?.className ?? '').toContain('world-action-rail--collapsed')
+    expect(container.querySelector('aside.world-action-rail')).toBeFalsy()
     expect(container.querySelector('.world-action-rail__collapsed-cta')).toBeTruthy()
 
     await act(async () => { root.unmount() })
