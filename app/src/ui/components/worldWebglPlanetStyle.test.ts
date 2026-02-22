@@ -28,12 +28,21 @@ describe('worldWebglPlanetStyle', () => {
     expect(first.emissiveColor.getHexString()).toBe(second.emissiveColor.getHexString())
   })
 
+  it('keeps generated palette away from near-black values', () => {
+    const palette = planetPaletteFromId('planet:alpha', 77)
+    const hsl = { h: 0, s: 0, l: 0 }
+    palette.baseColor.getHSL(hsl)
+
+    expect(hsl.l).toBeGreaterThanOrEqual(0.42)
+    expect(hsl.s).toBeGreaterThanOrEqual(0.45)
+  })
+
   it('keeps pbr tuning values away from black-sphere defaults', () => {
     const tuning = planetMaterialTuningFromPalette('stone', planet)
 
     expect(tuning.metalness).toBeLessThan(0.15)
     expect(tuning.roughness).toBeGreaterThanOrEqual(0.65)
-    expect(tuning.envMapIntensity).toBeGreaterThan(0.8)
+    expect(tuning.envMapIntensity).toBeGreaterThanOrEqual(1)
     expect(tuning.emissiveIntensity).toBeGreaterThan(0.05)
   })
 })
