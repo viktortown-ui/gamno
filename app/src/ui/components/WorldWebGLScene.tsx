@@ -2,6 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent } from 'react'
 import * as THREE from 'three'
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js'
+import { Line2 } from 'three/examples/jsm/lines/Line2.js'
+import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js'
+import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js'
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { FXAAShader } from 'three/examples/jsm/shaders/FXAAShader.js'
@@ -15,7 +18,8 @@ import type { WorldFxEvent } from '../../pages/worldCockpit'
 import { readWorldCameraState, writeWorldCameraState } from './worldWebglCameraState'
 import { IdleDriftController } from './worldWebglIdleDrift'
 import { applyPlanetMaterialTuning, planetMaterialTuningFromPalette, planetPaletteFromId } from './worldWebglPlanetStyle'
-import { applySceneEnvironment, createIBL } from './worldWebglLighting'
+import { applySceneEnvironment, collectLightingDiagnostics, createIBL, warnIfLightingInvalid } from './worldWebglLighting'
+import { buildPlanetOrbitSpec, relaxOrbitPhases, type OrbitSpec } from './worldWebglOrbits'
 
 interface WorldWebGLSceneProps {
   snapshot: WorldMapSnapshot
@@ -31,7 +35,6 @@ interface WorldWebGLSceneProps {
 
 const BLOOM_LAYER = 1
 const ORBIT_SEGMENTS = 192
-const ORBIT_RADIAL_SEGMENTS = 20
 const BLOOM_PARAMS = {
   threshold: 0.62,
   strength: 0.62,
@@ -42,8 +45,7 @@ const EXPOSURE_RANGE = { min: 1.1, max: 1.4 }
 
 interface PlanetOrbitState {
   mesh: THREE.Mesh
-  baseY: number
-  orbitRadius: number
+  orbit: OrbitSpec
   driftSpeed: number
   phase: number
 }
@@ -72,9 +74,21 @@ function ringPoints(radius: number, flatten: number, tilt: number, segments: num
 }
 
 const worldDebugIBL = import.meta.env.DEV && globalThis.localStorage?.getItem('worldDebugIBL') === '1'
+const worldDebugLighting = import.meta.env.DEV && globalThis.localStorage?.getItem('worldDebugLighting') === '1'
 let iblDebugLogged = false
 
 
+
+function toneMappingLabel(mode: THREE.ToneMapping): string {
+  if (mode === THREE.NoToneMapping) return 'NoToneMapping'
+  if (mode === THREE.LinearToneMapping) return 'LinearToneMapping'
+  if (mode === THREE.ReinhardToneMapping) return 'ReinhardToneMapping'
+  if (mode === THREE.CineonToneMapping) return 'CineonToneMapping'
+  if (mode === THREE.ACESFilmicToneMapping) return 'ACESFilmicToneMapping'
+  if (mode === THREE.AgXToneMapping) return 'AgXToneMapping'
+  if (mode === THREE.NeutralToneMapping) return 'NeutralToneMapping'
+  return String(mode)
+}
 function computeDebugBoundingRadius(snapshot: WorldMapSnapshot, planets: WorldMapPlanet[]): number {
   const maxPlanetRadius = planets.reduce((acc, planet) => {
     const point = toWorldPosition(snapshot, planet)
@@ -96,7 +110,7 @@ export function WorldWebGLScene({
   const pulseRef = useRef<Map<string, number>>(new Map())
   const [focusedId, setFocusedId] = useState<string>(snapshot.planets[0]?.id ?? '')
   const [reducedMotion, setReducedMotion] = useState(false)
-  const [debugState, setDebugState] = useState<{ cameraDistance: number; boundingRadius: number; exposure: number; overlayAlpha: number } | null>(null)
+  const [debugState, setDebugState] = useState<{ cameraDistance: number; boundingRadius: number; exposure: number; overlayAlpha: number; toneMapping: string; hasEnvironment: boolean; environmentType: string; environmentUuid: string; lightCount: number; lightIntensities: string; selectedMaterial: string; selectedColor: string; selectedMetalness: number; selectedRoughness: number; selectedEnvMapIntensity: number; selectedEmissiveIntensity: number } | null>(null)
   const [devExposure, setDevExposure] = useState(BLOOM_PARAMS.exposure)
   const [devBloomStrength, setDevBloomStrength] = useState(BLOOM_PARAMS.strength)
   const [devAAMode, setDevAAMode] = useState<AAMode>('msaa')
@@ -230,9 +244,7 @@ export function WorldWebGLScene({
     scene.fog = new THREE.FogExp2(uiVariant === 'cinematic' ? 0x060d1d : 0x071022, 0.032)
     const ibl = createIBL(renderer)
     applySceneEnvironment(scene, ibl.texture)
-    if (!scene.environment) {
-      console.warn('[World] scene.environment missing; PBR will look black')
-    } else if (worldDebugIBL && !iblDebugLogged) {
+    if (worldDebugIBL && scene.environment && !iblDebugLogged) {
       iblDebugLogged = true
       console.info('[World] IBL initialized', {
         exists: Boolean(scene.environment),
@@ -241,15 +253,17 @@ export function WorldWebGLScene({
       })
     }
 
-    const ambient = new THREE.AmbientLight(0xaad0ff, 0.74)
-    const key = new THREE.DirectionalLight(0xd8e8ff, 1.05)
-    key.position.set(16, 14, 10)
-    const fill = new THREE.DirectionalLight(0x6effdf, 0.34)
-    fill.position.set(-14, 3, 11)
-    const hemi = new THREE.HemisphereLight(0x8cb9ff, 0x081225, 0.42)
+    const hemi = new THREE.HemisphereLight(0x9cc1ff, 0x071022, 0.3)
+    const key = new THREE.DirectionalLight(0xd8e8ff, 1.1)
+    key.position.set(12, 10, 7)
+    const fill = new THREE.DirectionalLight(0x6effdf, 0.26)
+    fill.position.set(-10, 5, 9)
     const coreLight = new THREE.PointLight(0x66d6ff, 2.2, 40)
     coreLight.position.set(0, 0, 0)
-    scene.add(ambient, key, fill, hemi, coreLight)
+    scene.add(hemi, key, fill, coreLight)
+    if (import.meta.env.DEV) {
+      warnIfLightingInvalid(scene)
+    }
 
     const coreGroup = new THREE.Group()
     const core = new THREE.Mesh(
@@ -288,46 +302,94 @@ export function WorldWebGLScene({
     }
     scene.add(coreGroup)
 
+    const orbitLines: Array<{ core: Line2; glow: Line2; baseOpacityCore: number; baseOpacityGlow: number }> = []
     snapshot.rings.forEach((ring, index) => {
       const points = ringPoints(ring.radius * 0.045, 0.72 + seedFloat(index + snapshot.seed) * 0.1, (seedFloat(index + 7) - 0.5) * 0.4, ORBIT_SEGMENTS)
-      const curve = new THREE.CatmullRomCurve3(points, true, 'catmullrom', 0.1)
-      const geometry = new THREE.TubeGeometry(curve, ORBIT_SEGMENTS, 0.022 + ring.stormStrength * 0.008, ORBIT_RADIAL_SEGMENTS, true)
+      const positions = points.flatMap((point) => [point.x, point.y, point.z])
       const color = new THREE.Color(0x8f6bff).lerp(new THREE.Color(0x43f3d0), ring.stormStrength * 0.45)
       const indexFalloff = 1 - (index / Math.max(1, snapshot.rings.length - 1)) * 0.2
-      const material = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: (0.35 + ring.stormStrength * 0.24) * indexFalloff, blending: THREE.AdditiveBlending, depthWrite: false })
-      const orbit = new THREE.Mesh(geometry, material)
-      orbit.rotation.x = -0.35
-      orbit.layers.enable(BLOOM_LAYER)
-      orbit.userData.orbitBaseOpacity = material.opacity
-      scene.add(orbit)
+      const baseOpacityCore = (0.22 + ring.stormStrength * 0.18) * indexFalloff
+      const baseOpacityGlow = (0.1 + ring.stormStrength * 0.08) * indexFalloff
+
+      const coreGeometry = new LineGeometry()
+      coreGeometry.setPositions(positions)
+      const coreMaterial = new LineMaterial({
+        color,
+        transparent: true,
+        opacity: baseOpacityCore,
+        linewidth: 1.4,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        depthTest: true,
+      })
+      coreMaterial.resolution.set(host.clientWidth, host.clientHeight)
+      const coreLine = new Line2(coreGeometry, coreMaterial)
+      coreLine.computeLineDistances()
+      coreLine.rotation.x = -0.35
+      coreLine.renderOrder = 1
+
+      const glowGeometry = new LineGeometry()
+      glowGeometry.setPositions(positions)
+      const glowMaterial = new LineMaterial({
+        color,
+        transparent: true,
+        opacity: baseOpacityGlow,
+        linewidth: 2.8,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        depthTest: true,
+      })
+      glowMaterial.resolution.set(host.clientWidth, host.clientHeight)
+      const glowLine = new Line2(glowGeometry, glowMaterial)
+      glowLine.computeLineDistances()
+      glowLine.rotation.x = -0.35
+      glowLine.renderOrder = 0
+      glowLine.layers.enable(BLOOM_LAYER)
+
+      scene.add(glowLine, coreLine)
+      orbitLines.push({ core: coreLine, glow: glowLine, baseOpacityCore, baseOpacityGlow })
     })
 
     const planetMeshes = new Map<string, THREE.Mesh>()
+    const orbitByPlanetId = new Map<string, OrbitSpec>()
     const planetOrbitStates: PlanetOrbitState[] = []
+    const phaseInputs: Array<{ id: string; orbitRadius: number; phase: number }> = []
     planets.forEach((planet) => {
       const palette = planetPaletteFromId(planet.id, snapshot.seed)
       const tuning = planetMaterialTuningFromPalette(palette.type, planet)
+      const radius = planet.radius * 0.042
       const material = new THREE.MeshPhysicalMaterial({
         color: palette.baseColor,
-        emissive: palette.emissiveColor,
+        emissive: palette.baseColor.clone(),
         ior: 1.38,
-        envMapIntensity: tuning.envMapIntensity,
+        envMapIntensity: Math.max(1.2, tuning.envMapIntensity),
         envMap: ibl.texture,
       })
       applyPlanetMaterialTuning(material, tuning)
+      material.metalness = Math.min(material.metalness, 0.15)
       material.color.copy(palette.baseColor)
-      material.userData.baseEmissiveIntensity = tuning.emissiveIntensity
-      const mesh = new THREE.Mesh(new THREE.SphereGeometry(planet.radius * 0.042, 36, 36), material)
+      material.emissiveIntensity = THREE.MathUtils.clamp(tuning.emissiveIntensity, 0.06, 0.12)
+      material.userData.baseEmissiveIntensity = material.emissiveIntensity
+      const mesh = new THREE.Mesh(new THREE.SphereGeometry(radius, 36, 36), material)
+      mesh.renderOrder = 3
       const basePosition = toWorldPosition(snapshot, planet)
-      const orbitRadius = Math.max(0.45, Math.hypot(basePosition.x, basePosition.z))
-      const speedSeed = seedFloat(snapshot.seed + planet.order * 17 + planet.id.length * 13)
-      const driftSpeed = 0.032 + speedSeed * 0.028
-      const phase = Math.atan2(basePosition.z, basePosition.x)
-      mesh.position.copy(basePosition)
+      const orbit = buildPlanetOrbitSpec(planet, snapshot.seed, basePosition, radius)
+      orbitByPlanetId.set(planet.id, orbit)
+      phaseInputs.push({ id: planet.id, orbitRadius: orbit.radiusHint, phase: orbit.phase })
       mesh.userData.planetId = planet.id
       scene.add(mesh)
-      planetOrbitStates.push({ mesh, baseY: basePosition.y, orbitRadius, driftSpeed, phase })
+      const speedSeed = seedFloat(snapshot.seed + planet.order * 17 + planet.id.length * 13)
+      const driftSpeed = orbit.speed + speedSeed * 0.003
+      planetOrbitStates.push({ mesh, orbit, driftSpeed, phase: orbit.phase })
       planetMeshes.set(planet.id, mesh)
+    })
+
+    const relaxed = relaxOrbitPhases(phaseInputs)
+    const phaseMap = new Map(relaxed.map((entry) => [entry.id, entry.phase]))
+    planetOrbitStates.forEach((state) => {
+      const phase = phaseMap.get(state.mesh.userData.planetId as string) ?? state.phase
+      state.phase = phase
+      state.orbit.pointAt(phase, state.mesh.position)
     })
 
     const stars = new THREE.BufferGeometry()
@@ -416,7 +478,9 @@ export function WorldWebGLScene({
       pointer.x = ((event.clientX - bounds.left) / bounds.width) * 2 - 1
       pointer.y = -((event.clientY - bounds.top) / bounds.height) * 2 + 1
       raycaster.setFromCamera(pointer, camera)
-      const hit = raycaster.intersectObjects(intersectTargets, false)[0]
+      const hits = raycaster.intersectObjects(intersectTargets, false)
+      hits.sort((a, b) => a.distance - b.distance)
+      const hit = hits[0]
       return (hit?.object.userData.planetId as string | undefined) ?? null
     }
 
@@ -496,13 +560,9 @@ export function WorldWebGLScene({
     const tick = (time: number) => {
       const t = time * 0.001
       driftController.setSelectedId(selectedIdRef.current, time)
-      scene.traverse((object) => {
-        if (object instanceof THREE.Mesh && bloomLayer.test(object.layers)) {
-          const material = object.material
-          if (material instanceof THREE.MeshBasicMaterial && typeof object.userData.orbitBaseOpacity === 'number') {
-            material.opacity = orbitPulseOpacity(object.userData.orbitBaseOpacity, reducedMotion, t, object.id)
-          }
-        }
+      orbitLines.forEach((line) => {
+        line.glow.material.opacity = orbitPulseOpacity(line.baseOpacityGlow, reducedMotion, t, line.glow.id)
+        line.core.material.opacity = orbitPulseOpacity(line.baseOpacityCore, reducedMotion, t, line.core.id)
       })
       const driftEnabled = driftController.isEnabled(time)
       planetOrbitStates.forEach((orbitState) => {
@@ -512,13 +572,9 @@ export function WorldWebGLScene({
         orbitState.mesh.scale.setScalar(1 + scaleBoost)
         orbitState.mesh.rotation.y += reducedMotion ? 0 : 0.0035
         if (driftEnabled) {
-          orbitState.phase += orbitState.driftSpeed * 0.001
-          orbitState.mesh.position.set(
-            Math.cos(orbitState.phase) * orbitState.orbitRadius,
-            orbitState.baseY,
-            Math.sin(orbitState.phase) * orbitState.orbitRadius,
-          )
+          orbitState.phase = (orbitState.phase + orbitState.driftSpeed * 0.001) % 1
         }
+        orbitState.orbit.pointAt(orbitState.phase, orbitState.mesh.position)
       })
       core.rotation.y += reducedMotion ? 0 : 0.004
       const corePulse = reducedMotion ? 0 : (Math.sin(t * 1.4) + 1) * 0.22
@@ -535,11 +591,26 @@ export function WorldWebGLScene({
       controls.update()
       applyHighlight()
       if (import.meta.env.DEV) {
+        const selectedMesh = selectedIdRef.current ? planetMeshes.get(selectedIdRef.current) : null
+        const selectedMaterial = selectedMesh?.material instanceof THREE.MeshPhysicalMaterial ? selectedMesh.material : null
+        const diagnostics = collectLightingDiagnostics(scene)
         setDebugState({
           cameraDistance: camera.position.distanceTo(controls.target),
           boundingRadius: computeDebugBoundingRadius(snapshot, planets),
           exposure: renderer.toneMappingExposure,
           overlayAlpha: stormAlpha,
+          toneMapping: toneMappingLabel(renderer.toneMapping),
+          hasEnvironment: diagnostics.environment.exists,
+          environmentType: diagnostics.environment.type ?? 'n/a',
+          environmentUuid: diagnostics.environment.uuid ?? 'n/a',
+          lightCount: diagnostics.lightCount,
+          lightIntensities: diagnostics.lightIntensities.map((value) => value.toFixed(2)).join(', '),
+          selectedMaterial: selectedMaterial?.type ?? 'n/a',
+          selectedColor: selectedMaterial?.color.getHexString() ?? 'n/a',
+          selectedMetalness: selectedMaterial?.metalness ?? 0,
+          selectedRoughness: selectedMaterial?.roughness ?? 0,
+          selectedEnvMapIntensity: selectedMaterial?.envMapIntensity ?? 0,
+          selectedEmissiveIntensity: selectedMaterial?.emissiveIntensity ?? 0,
         })
       }
       scene.traverse(darkenNonBloomed)
@@ -558,17 +629,36 @@ export function WorldWebGLScene({
       composer.setPixelRatio(nextPixelRatio)
       composer.setSize(clientWidth, clientHeight)
       fxaaPass.material.uniforms.resolution.value.set(1 / (clientWidth * nextPixelRatio), 1 / (clientHeight * nextPixelRatio))
+      orbitLines.forEach((line) => {
+        line.core.material.resolution.set(clientWidth, clientHeight)
+        line.glow.material.resolution.set(clientWidth, clientHeight)
+      })
       camera.aspect = clientWidth / clientHeight
       const nextFit = computeFitToViewState(snapshot, planets, camera.aspect)
       updateControlBounds(nextFit)
       camera.updateProjectionMatrix()
       schedulePersist()
       if (import.meta.env.DEV) {
+        const selectedMesh = selectedIdRef.current ? planetMeshes.get(selectedIdRef.current) : null
+        const selectedMaterial = selectedMesh?.material instanceof THREE.MeshPhysicalMaterial ? selectedMesh.material : null
+        const diagnostics = collectLightingDiagnostics(scene)
         setDebugState({
           cameraDistance: camera.position.distanceTo(controls.target),
           boundingRadius: computeDebugBoundingRadius(snapshot, planets),
           exposure: renderer.toneMappingExposure,
           overlayAlpha: stormAlpha,
+          toneMapping: toneMappingLabel(renderer.toneMapping),
+          hasEnvironment: diagnostics.environment.exists,
+          environmentType: diagnostics.environment.type ?? 'n/a',
+          environmentUuid: diagnostics.environment.uuid ?? 'n/a',
+          lightCount: diagnostics.lightCount,
+          lightIntensities: diagnostics.lightIntensities.map((value) => value.toFixed(2)).join(', '),
+          selectedMaterial: selectedMaterial?.type ?? 'n/a',
+          selectedColor: selectedMaterial?.color.getHexString() ?? 'n/a',
+          selectedMetalness: selectedMaterial?.metalness ?? 0,
+          selectedRoughness: selectedMaterial?.roughness ?? 0,
+          selectedEnvMapIntensity: selectedMaterial?.envMapIntensity ?? 0,
+          selectedEmissiveIntensity: selectedMaterial?.emissiveIntensity ?? 0,
         })
       }
     }
@@ -590,6 +680,12 @@ export function WorldWebGLScene({
       renderer.dispose()
       composer.dispose()
       darkMaterial.dispose()
+      orbitLines.forEach((line) => {
+        line.core.geometry.dispose()
+        line.glow.geometry.dispose()
+        line.core.material.dispose()
+        line.glow.material.dispose()
+      })
       scene.traverse((obj: THREE.Object3D) => {
         if (obj instanceof THREE.Mesh) {
           obj.geometry.dispose()
@@ -685,9 +781,11 @@ export function WorldWebGLScene({
         ) : null}
       </div>
       <button type="button" className="world-webgl__reset-view button-secondary" onClick={handleResetView}>Сброс вида (R)</button>
-      {import.meta.env.DEV && debugState ? (
+      {import.meta.env.DEV && worldDebugLighting && debugState ? (
         <div className="world-webgl__debug" data-testid="world-webgl-debug">
           <span>cam {debugState.cameraDistance.toFixed(2)} · r {debugState.boundingRadius.toFixed(2)} · exp {debugState.exposure.toFixed(2)} · α {debugState.overlayAlpha.toFixed(2)}</span>
+          <span>tm {debugState.toneMapping} · env {String(debugState.hasEnvironment)} ({debugState.environmentType}) · lights {debugState.lightCount} [{debugState.lightIntensities}]</span>
+          <span>sel {debugState.selectedMaterial} · #{debugState.selectedColor} · m {debugState.selectedMetalness.toFixed(2)} · r {debugState.selectedRoughness.toFixed(2)} · env {debugState.selectedEnvMapIntensity.toFixed(2)} · em {debugState.selectedEmissiveIntensity.toFixed(2)}</span>
           <label>
             exp {devExposure.toFixed(2)}
             <input type="range" min={EXPOSURE_RANGE.min} max={EXPOSURE_RANGE.max} step={0.01} value={devExposure} onChange={(event) => setDevExposure(Number(event.target.value))} />

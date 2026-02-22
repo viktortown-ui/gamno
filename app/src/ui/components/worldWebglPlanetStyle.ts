@@ -44,7 +44,7 @@ export function planetPaletteFromId(id: string, seed: number): PlanetPalette {
   const lightness = 0.42 + hashToUnit(baseSeed ^ 0xc2b2ae35) * 0.24
 
   const baseColor = new THREE.Color().setHSL(hue, saturation, lightness)
-  const emissiveColor = baseColor.clone().offsetHSL(0.02, -0.06, -0.16)
+  const emissiveColor = baseColor.clone().multiplyScalar(0.55)
 
   return { baseColor, emissiveColor, type }
 }
@@ -56,7 +56,7 @@ export function planetMaterialTuningFromPalette(type: PlanetSurfaceType, planet:
       metalness: 0.04,
       roughness: 0.88 - riskTilt,
       envMapIntensity: 1.3,
-      emissiveIntensity: 0.1,
+      emissiveIntensity: 0.09,
       clearcoat: 0,
       clearcoatRoughness: 1,
     }
@@ -66,16 +66,16 @@ export function planetMaterialTuningFromPalette(type: PlanetSurfaceType, planet:
       metalness: 0.08,
       roughness: 0.66 - riskTilt * 0.4,
       envMapIntensity: 1.4,
-      emissiveIntensity: 0.14,
+      emissiveIntensity: 0.11,
       clearcoat: 0.22,
       clearcoatRoughness: 0.2,
     }
   }
   return {
-    metalness: 0.02,
-    roughness: 0.74,
-    envMapIntensity: 1.3,
-    emissiveIntensity: 0.2,
+    metalness: 0.06,
+    roughness: 0.62,
+    envMapIntensity: 1.25,
+    emissiveIntensity: 0.1,
     clearcoat: 0,
     clearcoatRoughness: 1,
   }

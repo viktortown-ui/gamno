@@ -8,6 +8,12 @@ export interface IBLHandle {
   dispose: () => void
 }
 
+export interface WorldLightingDiagnostics {
+  environment: { exists: boolean; uuid: string | null; type: string | null }
+  lightCount: number
+  lightIntensities: number[]
+}
+
 export function createIBL(renderer: THREE.WebGLRenderer): IBLHandle {
   const cached = iblCache.get(renderer)
   if (cached) {
@@ -47,4 +53,25 @@ export function createIBL(renderer: THREE.WebGLRenderer): IBLHandle {
 
 export function applySceneEnvironment(scene: THREE.Scene, texture: THREE.Texture): void {
   scene.environment = texture
+}
+
+export function collectLightingDiagnostics(scene: THREE.Scene): WorldLightingDiagnostics {
+  const lights = scene.children.filter((item): item is THREE.Light => item instanceof THREE.Light)
+  return {
+    environment: {
+      exists: Boolean(scene.environment),
+      uuid: scene.environment?.uuid ?? null,
+      type: String(scene.environment?.type ?? '' ) || null,
+    },
+    lightCount: lights.length,
+    lightIntensities: lights.map((light) => light.intensity),
+  }
+}
+
+export function warnIfLightingInvalid(scene: THREE.Scene): WorldLightingDiagnostics {
+  const diagnostics = collectLightingDiagnostics(scene)
+  if (!diagnostics.environment.exists || diagnostics.lightCount === 0) {
+    console.warn('[World] Lighting invalid -> planets may render black')
+  }
+  return diagnostics
 }
