@@ -3,8 +3,10 @@ import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent } from 'react'
 import * as THREE from 'three'
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js'
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js'
+import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js'
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js'
 import type { WorldMapPlanet, WorldMapSnapshot } from '../../core/worldMap/types'
+import { computeFitToViewState, orbitPulseOpacity } from './worldWebglSceneMath'
 import type { WorldFxEvent } from '../../pages/worldCockpit'
 
 interface WorldWebGLSceneProps {
@@ -15,6 +17,15 @@ interface WorldWebGLSceneProps {
   fxEvents?: WorldFxEvent[]
   uiVariant?: 'instrument' | 'cinematic'
   targetPlanetId?: string | null
+}
+
+const BLOOM_LAYER = 1
+const ORBIT_SEGMENTS = 128
+const BLOOM_PARAMS = {
+  threshold: 0.56,
+  strength: 1.2,
+  radius: 0.58,
+  exposure: 1.18,
 }
 
 function toWorldPosition(snapshot: WorldMapSnapshot, planet: WorldMapPlanet): THREE.Vector3 {
@@ -45,6 +56,33 @@ function ringPoints(radius: number, flatten: number, tilt: number, segments: num
     points.push(point)
   }
   return points
+}
+
+function buildGradientEnvironmentMap(renderer: THREE.WebGLRenderer): THREE.Texture {
+  const size = 128
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+  const ctx = canvas.getContext('2d')
+  if (!ctx) {
+    return new THREE.Texture()
+  }
+  const gradient = ctx.createLinearGradient(0, 0, 0, size)
+  gradient.addColorStop(0, '#8ab6ff')
+  gradient.addColorStop(0.4, '#1f305c')
+  gradient.addColorStop(1, '#040812')
+  ctx.fillStyle = gradient
+  ctx.fillRect(0, 0, size, size)
+
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace
+  texture.mapping = THREE.EquirectangularReflectionMapping
+  const pmrem = new THREE.PMREMGenerator(renderer)
+  pmrem.compileEquirectangularShader()
+  const envMap = pmrem.fromEquirectangular(texture).texture
+  texture.dispose()
+  pmrem.dispose()
+  return envMap
 }
 
 export function WorldWebGLScene({
@@ -102,23 +140,47 @@ export function WorldWebGLScene({
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
     renderer.setSize(host.clientWidth, host.clientHeight)
     renderer.outputColorSpace = THREE.SRGBColorSpace
+    renderer.toneMapping = THREE.ACESFilmicToneMapping
+    renderer.toneMappingExposure = BLOOM_PARAMS.exposure
     host.appendChild(renderer.domElement)
 
     const scene = new THREE.Scene()
     scene.background = new THREE.Color(uiVariant === 'cinematic' ? 0x040a18 : 0x071022)
 
     const camera = new THREE.PerspectiveCamera(46, host.clientWidth / host.clientHeight, 0.1, 200)
-    camera.position.set(0, 10.5, 21)
-    camera.lookAt(0, 0, 0)
+    const fit = computeFitToViewState(snapshot, planets, camera.aspect)
+    camera.position.copy(fit.position)
+    camera.lookAt(fit.target)
 
     const composer = new EffectComposer(renderer)
     composer.addPass(new RenderPass(scene, camera))
-    composer.addPass(new UnrealBloomPass(new THREE.Vector2(host.clientWidth, host.clientHeight), 0.68, 0.85, 0.44))
+    const bloomPass = new UnrealBloomPass(new THREE.Vector2(host.clientWidth, host.clientHeight), BLOOM_PARAMS.strength, BLOOM_PARAMS.radius, BLOOM_PARAMS.threshold)
+    composer.addPass(bloomPass)
+    const vignettePass = new ShaderPass({
+      uniforms: {
+        tDiffuse: { value: null },
+        strength: { value: 0.26 },
+      },
+      vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+      fragmentShader: `uniform sampler2D tDiffuse; uniform float strength; varying vec2 vUv; void main() { vec4 color = texture2D(tDiffuse, vUv); vec2 centered = vUv - 0.5; float vig = smoothstep(0.82, 0.22, dot(centered, centered)); color.rgb *= mix(1.0 - strength, 1.0, vig); gl_FragColor = color; }`,
+    })
+    composer.addPass(vignettePass)
+
+    const bloomLayer = new THREE.Layers()
+    bloomLayer.set(BLOOM_LAYER)
+
+    scene.fog = new THREE.FogExp2(uiVariant === 'cinematic' ? 0x060d1d : 0x071022, 0.032)
+    const environmentMap = buildGradientEnvironmentMap(renderer)
+    scene.environment = environmentMap
 
     const ambient = new THREE.AmbientLight(0x9cc2ff, 0.65)
-    const key = new THREE.PointLight(0x99c6ff, 1.25, 120)
+    const key = new THREE.PointLight(0xb2d2ff, 1.8, 120)
     key.position.set(18, 12, 14)
-    scene.add(ambient, key)
+    const fill = new THREE.PointLight(0x57ffe0, 0.7, 56)
+    fill.position.set(-9, 3, 8)
+    const coreLight = new THREE.PointLight(0x66d6ff, 2.2, 40)
+    coreLight.position.set(0, 0, 0)
+    scene.add(ambient, key, fill, coreLight)
 
     const coreGroup = new THREE.Group()
     const core = new THREE.Mesh(
@@ -130,6 +192,8 @@ export function WorldWebGLScene({
       new THREE.MeshBasicMaterial({ color: 0x65ffd1, transparent: true, opacity: 0.16, side: THREE.DoubleSide }),
     )
     coreGroup.add(core, halo)
+    core.layers.enable(BLOOM_LAYER)
+    halo.layers.enable(BLOOM_LAYER)
     if (snapshot.metrics.safeMode) {
       const shield = new THREE.Mesh(
         new THREE.SphereGeometry(2.08, 24, 24),
@@ -140,24 +204,31 @@ export function WorldWebGLScene({
     scene.add(coreGroup)
 
     snapshot.rings.forEach((ring, index) => {
-      const points = ringPoints(ring.radius * 0.045, 0.72 + seedFloat(index + snapshot.seed) * 0.1, (seedFloat(index + 7) - 0.5) * 0.4, 128)
-      const geometry = new THREE.BufferGeometry().setFromPoints(points)
+      const points = ringPoints(ring.radius * 0.045, 0.72 + seedFloat(index + snapshot.seed) * 0.1, (seedFloat(index + 7) - 0.5) * 0.4, ORBIT_SEGMENTS)
+      const curve = new THREE.CatmullRomCurve3(points, true, 'catmullrom', 0.1)
+      const geometry = new THREE.TubeGeometry(curve, ORBIT_SEGMENTS, 0.022 + ring.stormStrength * 0.008, 12, true)
       const color = new THREE.Color(0x8f6bff).lerp(new THREE.Color(0x43f3d0), ring.stormStrength * 0.45)
-      const material = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.32 + ring.stormStrength * 0.2 })
-      const line = new THREE.LineLoop(geometry, material)
-      line.rotation.x = -0.35
-      scene.add(line)
+      const material = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.35 + ring.stormStrength * 0.24, blending: THREE.AdditiveBlending, depthWrite: false })
+      const orbit = new THREE.Mesh(geometry, material)
+      orbit.rotation.x = -0.35
+      orbit.layers.enable(BLOOM_LAYER)
+      orbit.userData.orbitBaseOpacity = material.opacity
+      scene.add(orbit)
     })
 
     const planetMeshes = new Map<string, THREE.Mesh>()
     planets.forEach((planet) => {
       const pColor = colorByPlanet(planet)
-      const material = new THREE.MeshStandardMaterial({
+      const material = new THREE.MeshPhysicalMaterial({
         color: pColor,
-        emissive: pColor.clone().multiplyScalar(0.24 + planet.metrics.risk * 0.25),
-        emissiveIntensity: 0.92,
-        metalness: 0.44,
-        roughness: 0.36,
+        emissive: pColor.clone().multiplyScalar(0.07 + planet.metrics.risk * 0.08),
+        emissiveIntensity: 0.52,
+        metalness: 0.42,
+        roughness: 0.27,
+        clearcoat: 0.4,
+        clearcoatRoughness: 0.18,
+        ior: 1.4,
+        envMapIntensity: 1.15,
       })
       const mesh = new THREE.Mesh(new THREE.SphereGeometry(planet.radius * 0.042, 28, 28), material)
       mesh.position.copy(toWorldPosition(snapshot, planet))
@@ -175,12 +246,21 @@ export function WorldWebGLScene({
       positions[i * 3 + 2] = (seedFloat(snapshot.seed + i * 7) - 0.5) * spread
     }
     stars.setAttribute('position', new THREE.BufferAttribute(positions, 3))
-    const dust = new THREE.Points(stars, new THREE.PointsMaterial({ color: 0xb9daff, size: 0.06, transparent: true, opacity: 0.65 }))
+    const dust = new THREE.Points(stars, new THREE.PointsMaterial({ color: 0xb9daff, size: 0.09, transparent: true, opacity: 0.62, blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: true }))
+    dust.layers.enable(BLOOM_LAYER)
     scene.add(dust)
 
     let raf = 0
     const tick = (time: number) => {
       const t = time * 0.001
+      scene.traverse((object) => {
+        if (object instanceof THREE.Mesh && bloomLayer.test(object.layers)) {
+          const material = object.material
+          if (material instanceof THREE.MeshBasicMaterial && typeof object.userData.orbitBaseOpacity === 'number') {
+            material.opacity = orbitPulseOpacity(object.userData.orbitBaseOpacity, reducedMotion, t, object.id)
+          }
+        }
+      })
       planetMeshes.forEach((mesh, id) => {
         const pulse = pulseRef.current.get(id) ?? 0
         const scaleBoost = reducedMotion ? 0 : pulse * 0.12 * Math.sin(t * 4.5)
@@ -190,11 +270,11 @@ export function WorldWebGLScene({
       core.rotation.y += reducedMotion ? 0 : 0.004
       halo.scale.setScalar(1 + (reducedMotion ? 0 : Math.sin(t * 1.4) * 0.03))
       if (!reducedMotion) {
-        camera.position.x = Math.sin(t * 0.08) * 0.5
-        camera.position.z = 21 + Math.cos(t * 0.07) * 0.4
+        camera.position.x = fit.position.x + Math.sin(t * 0.08) * 0.42
+        camera.position.z = fit.position.z + Math.cos(t * 0.07) * 0.34
         dust.rotation.y += 0.00035
       }
-      camera.lookAt(0, 0, 0)
+      camera.lookAt(fit.target)
       composer.render()
       raf = window.requestAnimationFrame(tick)
     }
@@ -206,6 +286,9 @@ export function WorldWebGLScene({
       renderer.setSize(clientWidth, clientHeight)
       composer.setSize(clientWidth, clientHeight)
       camera.aspect = clientWidth / clientHeight
+      const nextFit = computeFitToViewState(snapshot, planets, camera.aspect)
+      camera.position.copy(nextFit.position)
+      camera.lookAt(nextFit.target)
       camera.updateProjectionMatrix()
     }
     window.addEventListener('resize', onResize)
@@ -224,6 +307,7 @@ export function WorldWebGLScene({
         }
       })
       stars.dispose()
+      environmentMap.dispose()
     }
   }, [planets, reducedMotion, snapshot, uiVariant])
 
