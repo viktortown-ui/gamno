@@ -105,18 +105,24 @@ describe('worldWebglOrbits', () => {
       lineWidth: style.baseLineWidth * style.selectedOrbit.lineWidthScale,
       colorMultiplier: style.selectedOrbit.colorMultiplier,
       glowOpacity: style.selectedOrbit.glowOpacity,
+      blending: style.selectedOrbit.blending,
+      glowVisible: style.selectedOrbit.glowVisible,
     })
     expect(resolveOrbitVisualState(1, 4)).toEqual({
       opacity: style.baseOrbit.opacity,
       lineWidth: style.baseLineWidth * style.baseOrbit.lineWidthScale,
       colorMultiplier: style.baseOrbit.colorMultiplier,
       glowOpacity: style.baseOrbit.glowOpacity,
+      blending: style.baseOrbit.blending,
+      glowVisible: style.baseOrbit.glowVisible,
     })
     expect(resolveOrbitVisualState(9, 4)).toEqual({
       opacity: style.baseOrbit.opacity,
       lineWidth: style.baseLineWidth * style.baseOrbit.lineWidthScale,
       colorMultiplier: style.baseOrbit.colorMultiplier,
       glowOpacity: style.baseOrbit.glowOpacity,
+      blending: style.baseOrbit.blending,
+      glowVisible: style.baseOrbit.glowVisible,
     })
   })
 
@@ -127,12 +133,16 @@ describe('worldWebglOrbits', () => {
       lineWidth: style.baseLineWidth * style.nearOrbit.lineWidthScale,
       colorMultiplier: style.nearOrbit.colorMultiplier,
       glowOpacity: style.nearOrbit.glowOpacity,
+      blending: style.nearOrbit.blending,
+      glowVisible: style.nearOrbit.glowVisible,
     })
     expect(resolveOrbitVisualState(5, null)).toEqual({
       opacity: style.baseOrbit.opacity,
       lineWidth: style.baseLineWidth * style.baseOrbit.lineWidthScale,
       colorMultiplier: style.baseOrbit.colorMultiplier,
       glowOpacity: style.baseOrbit.glowOpacity,
+      blending: style.baseOrbit.blending,
+      glowVisible: style.baseOrbit.glowVisible,
     })
   })
 
@@ -149,9 +159,13 @@ describe('worldWebglOrbits', () => {
     globalThis.localStorage.setItem('worldOrbitDim', '1')
     const style = getOrbitVisualStylePreset()
 
-    expect(style.baseOrbit.opacity).toBe(0.02)
-    expect(style.baseOrbit.colorMultiplier).toBe(0.1)
+    expect(style.baseOrbit.opacity).toBe(0.03)
+    expect(style.baseOrbit.colorMultiplier).toBe(0.12)
+    expect(style.baseOrbit.lineWidthScale).toBe(0.65)
+    expect(style.baseOrbit.glowVisible).toBe(false)
+    expect(style.selectedOrbit.opacity).toBe(0.85)
     expect(style.selectedOrbit.lineWidthScale).toBe(1.35)
+    expect(style.selectedOrbit.glowVisible).toBe(true)
 
     globalThis.localStorage.removeItem('worldOrbitDim')
     Object.defineProperty(globalThis, 'localStorage', { value: originalLocalStorage, configurable: true })
