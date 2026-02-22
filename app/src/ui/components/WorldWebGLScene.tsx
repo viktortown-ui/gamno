@@ -24,6 +24,14 @@ interface WorldWebGLSceneProps {
   targetPlanetId?: string | null
 }
 
+interface WorldCameraStateV1 {
+  version: 1
+  position: [number, number, number]
+  quaternion: [number, number, number, number]
+  zoom: number
+  target: [number, number, number]
+}
+
 const BLOOM_LAYER = 1
 const ORBIT_SEGMENTS = 192
 const ORBIT_RADIAL_SEGMENTS = 20
@@ -34,6 +42,33 @@ const BLOOM_PARAMS = {
   exposure: 1.25,
 }
 const EXPOSURE_RANGE = { min: 1.1, max: 1.4 }
+const WORLD_CAMERA_STATE_KEY = 'worldCameraState'
+
+function readWorldCameraState(): WorldCameraStateV1 | null {
+  if (typeof window === 'undefined') return null
+  const raw = window.localStorage.getItem(WORLD_CAMERA_STATE_KEY)
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(raw) as WorldCameraStateV1
+    if (parsed.version !== 1) return null
+    if (parsed.position.length !== 3 || parsed.quaternion.length !== 4 || parsed.target.length !== 3) return null
+    return parsed
+  } catch {
+    return null
+  }
+}
+
+function writeWorldCameraState(camera: THREE.PerspectiveCamera, controls: OrbitControls): void {
+  if (typeof window === 'undefined') return
+  const state: WorldCameraStateV1 = {
+    version: 1,
+    position: [camera.position.x, camera.position.y, camera.position.z],
+    quaternion: [camera.quaternion.x, camera.quaternion.y, camera.quaternion.z, camera.quaternion.w],
+    zoom: camera.zoom,
+    target: [controls.target.x, controls.target.y, controls.target.z],
+  }
+  window.localStorage.setItem(WORLD_CAMERA_STATE_KEY, JSON.stringify(state))
+}
 
 function toWorldPosition(snapshot: WorldMapSnapshot, planet: WorldMapPlanet): THREE.Vector3 {
   const x = (planet.x - snapshot.center.x) * 0.042
@@ -106,10 +141,8 @@ export function WorldWebGLScene({
   snapshot,
   onPlanetSelect,
   selectedPlanetId,
-  showNeighborLabels = true,
   fxEvents = [],
   uiVariant = 'instrument',
-  targetPlanetId = null,
 }: WorldWebGLSceneProps) {
   const sceneRef = useRef<HTMLDivElement | null>(null)
   const buttonRefs = useRef<Map<string, HTMLButtonElement>>(new Map())
@@ -123,6 +156,7 @@ export function WorldWebGLScene({
   const resetViewRef = useRef<() => void>(() => {})
   const selectedIdRef = useRef<string | null>(selectedPlanetId ?? null)
   const onPlanetSelectRef = useRef(onPlanetSelect)
+  const [hoveredPlanetLabel, setHoveredPlanetLabel] = useState<{ id: string; labelRu: string; x: number; y: number; radius: number } | null>(null)
 
   const planets = useMemo(() => [...snapshot.planets].sort((a, b) => (a.order - b.order) || a.id.localeCompare(b.id, 'ru')), [snapshot.planets])
 
@@ -145,19 +179,7 @@ export function WorldWebGLScene({
     onPlanetSelectRef.current = onPlanetSelect
   }, [onPlanetSelect])
 
-  const visibleLabelIds = useMemo(() => {
-    if (!selectedId) return new Set<string>()
-    const selectedIndex = planets.findIndex((planet) => planet.id === selectedId)
-    if (selectedIndex < 0) return new Set<string>()
-    const ids = new Set<string>([selectedId])
-    if (showNeighborLabels) {
-      const prev = planets[(selectedIndex - 1 + planets.length) % planets.length]
-      const next = planets[(selectedIndex + 1) % planets.length]
-      if (prev) ids.add(prev.id)
-      if (next) ids.add(next.id)
-    }
-    return ids
-  }, [planets, selectedId, showNeighborLabels])
+  const visibleLabelIds = useMemo(() => (selectedId ? new Set<string>([selectedId]) : new Set<string>()), [selectedId])
 
   const stormAlpha = Math.min(0.45, Math.max(0.08, snapshot.metrics.risk * 0.22 + (snapshot.metrics.sirenLevel === 'red' ? 0.14 : 0.05)))
   const tailAlpha = Math.min(0.32, snapshot.metrics.esCollapse10 * 0.66 + 0.06)
@@ -184,8 +206,16 @@ export function WorldWebGLScene({
 
     const camera = new THREE.PerspectiveCamera(46, host.clientWidth / host.clientHeight, 0.1, 200)
     const fit = computeFitToViewState(snapshot, planets, camera.aspect)
-    camera.position.copy(fit.position)
-    camera.lookAt(fit.target)
+    const persistedCamera = readWorldCameraState()
+    if (persistedCamera) {
+      camera.position.set(...persistedCamera.position)
+      camera.quaternion.set(...persistedCamera.quaternion)
+      camera.zoom = persistedCamera.zoom
+      camera.updateProjectionMatrix()
+    } else {
+      camera.position.copy(fit.position)
+      camera.lookAt(fit.target)
+    }
 
     const controls = new OrbitControls(camera, renderer.domElement)
     controls.enableDamping = true
@@ -205,14 +235,20 @@ export function WorldWebGLScene({
       RIGHT: 'ArrowRight',
       BOTTOM: 'ArrowDown',
     }
-    const updateControlBounds = (fitState: { position: THREE.Vector3; target: THREE.Vector3 }) => {
+    const updateControlBounds = (fitState: { position: THREE.Vector3; target: THREE.Vector3 }, nextTarget?: THREE.Vector3) => {
       const distance = fitState.position.distanceTo(fitState.target)
       controls.minDistance = Math.max(2.4, distance * 0.45)
       controls.maxDistance = Math.max(5.5, distance * 1.9)
-      controls.target.copy(fitState.target)
+      if (nextTarget) controls.target.copy(nextTarget)
       controls.update()
     }
-    updateControlBounds(fit)
+    if (persistedCamera) {
+      updateControlBounds(fit, new THREE.Vector3(...persistedCamera.target))
+    } else {
+      updateControlBounds(fit, fit.target)
+      writeWorldCameraState(camera, controls)
+    }
+    controls.saveState()
 
     const isWebGL2 = renderer.capabilities.isWebGL2
     const activeAAMode = resolveAAMode(import.meta.env.DEV ? devAAMode : null, isWebGL2)
@@ -248,14 +284,15 @@ export function WorldWebGLScene({
     const environmentMap = buildGradientEnvironmentMap(renderer)
     scene.environment = environmentMap
 
-    const ambient = new THREE.AmbientLight(0x9cc2ff, 0.65)
-    const key = new THREE.PointLight(0xb2d2ff, 1.8, 120)
-    key.position.set(18, 12, 14)
-    const fill = new THREE.PointLight(0x57ffe0, 0.7, 56)
-    fill.position.set(-9, 3, 8)
+    const ambient = new THREE.AmbientLight(0xaad0ff, 0.85)
+    const key = new THREE.DirectionalLight(0xd8e8ff, 1.15)
+    key.position.set(16, 14, 10)
+    const fill = new THREE.DirectionalLight(0x6effdf, 0.62)
+    fill.position.set(-14, 4, 11)
+    const hemi = new THREE.HemisphereLight(0x8cb9ff, 0x081225, 0.62)
     const coreLight = new THREE.PointLight(0x66d6ff, 2.2, 40)
     coreLight.position.set(0, 0, 0)
-    scene.add(ambient, key, fill, coreLight)
+    scene.add(ambient, key, fill, hemi, coreLight)
 
     const coreGroup = new THREE.Group()
     const core = new THREE.Mesh(
@@ -293,19 +330,29 @@ export function WorldWebGLScene({
     })
 
     const planetMeshes = new Map<string, THREE.Mesh>()
+    const DOMAIN_MATERIAL: Record<string, { roughness: number; metalness: number; clearcoat: number; clearcoatRoughness: number; envMapIntensity: number; emissiveIntensity: number }> = {
+      core: { roughness: 0.24, metalness: 0.46, clearcoat: 0.56, clearcoatRoughness: 0.18, envMapIntensity: 1.38, emissiveIntensity: 0.26 },
+      risk: { roughness: 0.34, metalness: 0.24, clearcoat: 0.22, clearcoatRoughness: 0.34, envMapIntensity: 1.2, emissiveIntensity: 0.22 },
+      mission: { roughness: 0.2, metalness: 0.52, clearcoat: 0.62, clearcoatRoughness: 0.16, envMapIntensity: 1.45, emissiveIntensity: 0.28 },
+      stability: { roughness: 0.41, metalness: 0.18, clearcoat: 0.18, clearcoatRoughness: 0.4, envMapIntensity: 1.1, emissiveIntensity: 0.18 },
+      forecast: { roughness: 0.29, metalness: 0.32, clearcoat: 0.48, clearcoatRoughness: 0.22, envMapIntensity: 1.3, emissiveIntensity: 0.24 },
+      social: { roughness: 0.26, metalness: 0.34, clearcoat: 0.44, clearcoatRoughness: 0.2, envMapIntensity: 1.34, emissiveIntensity: 0.25 },
+    }
     planets.forEach((planet) => {
       const pColor = colorByPlanet(planet)
+      const domainMaterial = DOMAIN_MATERIAL[planet.domainId] ?? DOMAIN_MATERIAL.core
       const material = new THREE.MeshPhysicalMaterial({
         color: pColor,
-        emissive: pColor.clone().multiplyScalar(0.07 + planet.metrics.risk * 0.08),
-        emissiveIntensity: 0.52,
-        metalness: 0.42,
-        roughness: 0.27,
-        clearcoat: 0.4,
-        clearcoatRoughness: 0.18,
+        emissive: pColor.clone().multiplyScalar(0.14 + planet.metrics.risk * 0.03),
+        emissiveIntensity: domainMaterial.emissiveIntensity,
+        metalness: domainMaterial.metalness,
+        roughness: domainMaterial.roughness,
+        clearcoat: domainMaterial.clearcoat,
+        clearcoatRoughness: domainMaterial.clearcoatRoughness,
         ior: 1.4,
-        envMapIntensity: 1.15,
+        envMapIntensity: domainMaterial.envMapIntensity,
       })
+      material.userData.baseEmissiveIntensity = domainMaterial.emissiveIntensity
       const mesh = new THREE.Mesh(new THREE.SphereGeometry(planet.radius * 0.042, 28, 28), material)
       mesh.position.copy(toWorldPosition(snapshot, planet))
       mesh.userData.planetId = planet.id
@@ -367,9 +414,9 @@ export function WorldWebGLScene({
       planetMeshes.forEach((mesh, id) => {
         const material = mesh.material
         if (!(material instanceof THREE.MeshPhysicalMaterial)) return
-        const selectedBoost = selectedIdRef.current === id ? 0.4 : 0
-        const hoverBoost = hoveredPlanetId === id ? 0.25 : 0
-        material.emissiveIntensity = 0.52 + selectedBoost + hoverBoost
+        const selectedBoost = selectedIdRef.current === id ? 0.24 : 0
+        const hoverBoost = hoveredPlanetId === id ? 0.16 : 0
+        material.emissiveIntensity = (material.userData.baseEmissiveIntensity as number ?? 0.22) + selectedBoost + hoverBoost
       })
 
       const hoveredMesh = hoveredPlanetId ? planetMeshes.get(hoveredPlanetId) : null
@@ -407,7 +454,9 @@ export function WorldWebGLScene({
       const resetFit = computeFitToViewState(snapshot, planets, camera.aspect)
       camera.position.copy(resetFit.position)
       controls.target.copy(resetFit.target)
-      updateControlBounds(resetFit)
+      updateControlBounds(resetFit, resetFit.target)
+      controls.saveState()
+      writeWorldCameraState(camera, controls)
     }
     resetViewRef.current = resetView
 
@@ -415,10 +464,19 @@ export function WorldWebGLScene({
       const nextHoveredId = pickPlanet(event)
       if (hoveredPlanetId === nextHoveredId) return
       hoveredPlanetId = nextHoveredId
+      if (!nextHoveredId) {
+        setHoveredPlanetLabel(null)
+      } else {
+        const hoveredPlanet = planets.find((planet) => planet.id === nextHoveredId)
+        if (hoveredPlanet) {
+          setHoveredPlanetLabel({ id: hoveredPlanet.id, labelRu: hoveredPlanet.labelRu, x: hoveredPlanet.x, y: hoveredPlanet.y, radius: hoveredPlanet.radius })
+        }
+      }
       applyHighlight()
     }
     const onPointerLeave = () => {
       hoveredPlanetId = null
+      setHoveredPlanetLabel(null)
       applyHighlight()
     }
     const onClick = (event: MouseEvent) => {
@@ -445,6 +503,13 @@ export function WorldWebGLScene({
       }
     }
     window.addEventListener('keydown', onWindowKeyDown)
+
+    let persistTimer = 0
+    const schedulePersist = () => {
+      window.clearTimeout(persistTimer)
+      persistTimer = window.setTimeout(() => writeWorldCameraState(camera, controls), 180)
+    }
+    controls.addEventListener('change', schedulePersist)
 
     let raf = 0
     const tick = (time: number) => {
@@ -502,9 +567,9 @@ export function WorldWebGLScene({
       fxaaPass.material.uniforms.resolution.value.set(1 / (clientWidth * nextPixelRatio), 1 / (clientHeight * nextPixelRatio))
       camera.aspect = clientWidth / clientHeight
       const nextFit = computeFitToViewState(snapshot, planets, camera.aspect)
-      camera.position.copy(nextFit.position)
       updateControlBounds(nextFit)
       camera.updateProjectionMatrix()
+      schedulePersist()
       if (import.meta.env.DEV) {
         setDebugState({
           cameraDistance: camera.position.distanceTo(controls.target),
@@ -520,6 +585,8 @@ export function WorldWebGLScene({
       window.cancelAnimationFrame(raf)
       window.removeEventListener('resize', onResize)
       window.removeEventListener('keydown', onWindowKeyDown)
+      window.clearTimeout(persistTimer)
+      controls.removeEventListener('change', schedulePersist)
       renderer.domElement.removeEventListener('pointermove', onPointerMove)
       renderer.domElement.removeEventListener('pointerleave', onPointerLeave)
       renderer.domElement.removeEventListener('click', onClick)
@@ -616,10 +683,14 @@ export function WorldWebGLScene({
         ))}
       </div>
       <div className="world-webgl__labels" aria-hidden="true">
-        {planets.filter((planet) => visibleLabelIds.has(planet.id) || targetPlanetId === planet.id).map((planet) => (
+        {planets.filter((planet) => visibleLabelIds.has(planet.id)).map((planet) => (
           <span key={`label:${planet.id}`} style={{ left: `${planet.x}px`, top: `${planet.y - planet.radius - 8}px` }}>{planet.labelRu}</span>
         ))}
+        {hoveredPlanetLabel && !visibleLabelIds.has(hoveredPlanetLabel.id) ? (
+          <span key={`hover:${hoveredPlanetLabel.id}`} style={{ left: `${hoveredPlanetLabel.x}px`, top: `${hoveredPlanetLabel.y - hoveredPlanetLabel.radius - 8}px` }}>{hoveredPlanetLabel.labelRu}</span>
+        ) : null}
       </div>
+      <button type="button" className="world-webgl__reset-view button-secondary" onClick={handleResetView}>Сброс вида (R)</button>
       {import.meta.env.DEV && debugState ? (
         <div className="world-webgl__debug" data-testid="world-webgl-debug">
           <span>cam {debugState.cameraDistance.toFixed(2)} · r {debugState.boundingRadius.toFixed(2)} · exp {debugState.exposure.toFixed(2)} · α {debugState.overlayAlpha.toFixed(2)}</span>

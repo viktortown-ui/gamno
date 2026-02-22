@@ -181,6 +181,31 @@ describe('WorldPage', () => {
     container.remove()
   })
 
+
+  it('does not overlap right rail with planet panel: next action collapses into CTA', async () => {
+    const { WorldPage } = await import('./WorldPage')
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+
+    await act(async () => { root.render(<WorldPage />) })
+    await act(async () => { await flush() })
+
+    await act(async () => {
+      const pick = Array.from(container.querySelectorAll('button')).find((item) => item.textContent?.includes('pick')) as HTMLButtonElement | undefined
+      pick?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      window.dispatchEvent(new HashChangeEvent('hashchange'))
+      await flush()
+    })
+
+    expect(container.querySelector('.planet-panel')).toBeTruthy()
+    expect(container.querySelector('aside.world-action-rail')?.className ?? '').toContain('world-action-rail--collapsed')
+    expect(container.querySelector('.world-action-rail__collapsed-cta')).toBeTruthy()
+
+    await act(async () => { root.unmount() })
+    container.remove()
+  })
+
   it('next action CTA routes to first check-in when data is missing', async () => {
     dbMock.frameRows = []
     const { WorldPage } = await import('./WorldPage')

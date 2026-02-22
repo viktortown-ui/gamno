@@ -764,6 +764,15 @@ input:focus-visible {
 }
 
 
+
+.world-webgl__reset-view {
+  position: absolute;
+  left: 10px;
+  top: 10px;
+  z-index: 4;
+  font-size: 12px;
+}
+
 .world-webgl__debug {
   position: absolute;
   left: 10px;
@@ -853,7 +862,7 @@ input:focus-visible {
 .world-action-rail__collapsed-cta {
   position: absolute;
   right: 12px;
-  top: 12px;
+  bottom: 12px;
   z-index: 9;
 }
 

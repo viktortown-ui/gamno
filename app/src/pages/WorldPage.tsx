@@ -172,6 +172,7 @@ export function WorldPage({ uiVariant = 'instrument', renderMode = 'webgl' }: { 
   }, [replayFrame])
 
   const selectedPlanet = useMemo(() => worldMapSnapshot?.planets.find((planet) => planet.id === selectedPlanetId) ?? null, [selectedPlanetId, worldMapSnapshot])
+  const isNextActionCollapsed = isRailCollapsed || Boolean(selectedPlanet)
   const currentFrame = frames[timelineIndex]?.payload ?? DEFAULT_WORLD_MAP_FRAME
   const previousFrame = timelineIndex > 0 ? frames[timelineIndex - 1]?.payload : undefined
 
@@ -293,18 +294,18 @@ export function WorldPage({ uiVariant = 'instrument', renderMode = 'webgl' }: { 
         ) : null}
       </div>
 
-      {isRailCollapsed ? (
+      {isNextActionCollapsed ? (
         <button
           type="button"
           className="world-action-rail__collapsed-cta start-primary"
           onClick={() => setIsRailCollapsed(false)}
           aria-label="Развернуть панель следующего шага"
         >
-          Следующий шаг
+          {selectedPlanet ? 'Открыть Next Action' : 'Следующий шаг'}
         </button>
       ) : null}
 
-      <aside className={`world-action-rail world-action-rail--${uiVariant} panel ${isRailCollapsed ? 'world-action-rail--collapsed' : ''}`.trim()} aria-label="Action rail" aria-hidden={isRailCollapsed}>
+      <aside className={`world-action-rail world-action-rail--${uiVariant} panel ${isNextActionCollapsed ? 'world-action-rail--collapsed' : ''}`.trim()} aria-label="Action rail" aria-hidden={isNextActionCollapsed}>
         <div className="world-action-rail__toolbar">
           <span className="mono">H — скрыть · Esc — закрыть</span>
           <button type="button" className="button-secondary" onClick={() => setIsRailCollapsed(true)}>Свернуть</button>
