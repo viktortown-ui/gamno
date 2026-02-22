@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import * as THREE from 'three'
 import type { WorldMapPlanet } from '../../core/worldMap/types'
-import { buildPlanetOrbitSpec, relaxOrbitPhases } from './worldWebglOrbits'
+import { buildPlanetOrbitSpec, orbitLocalPoint, relaxOrbitPhases } from './worldWebglOrbits'
 
 const planet: WorldMapPlanet = {
   id: 'planet:alpha',
@@ -49,5 +49,15 @@ describe('worldWebglOrbits', () => {
     const expected = orbit.pointAt(orbit.phase)
 
     expect(pos.distanceTo(expected)).toBeLessThan(1e-6)
+  })
+
+  it('returns local-space curve points for orbit phases', () => {
+    const base = new THREE.Vector3(1.3, 0.4, 1)
+    const orbit = buildPlanetOrbitSpec(planet, 33, base, planet.radius * 0.042)
+    const local = orbitLocalPoint(orbit.curve, 0.25)
+
+    expect(local.y).toBe(0)
+    expect(Number.isFinite(local.x)).toBe(true)
+    expect(Number.isFinite(local.z)).toBe(true)
   })
 })

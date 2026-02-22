@@ -56,7 +56,7 @@ export function planetMaterialTuningFromPalette(type: PlanetSurfaceType, planet:
       metalness: 0.04,
       roughness: 0.88 - riskTilt,
       envMapIntensity: 1.3,
-      emissiveIntensity: 0.09,
+      emissiveIntensity: 0.03,
       clearcoat: 0,
       clearcoatRoughness: 1,
     }
@@ -66,7 +66,7 @@ export function planetMaterialTuningFromPalette(type: PlanetSurfaceType, planet:
       metalness: 0.08,
       roughness: 0.66 - riskTilt * 0.4,
       envMapIntensity: 1.4,
-      emissiveIntensity: 0.11,
+      emissiveIntensity: 0.06,
       clearcoat: 0.22,
       clearcoatRoughness: 0.2,
     }
@@ -75,7 +75,7 @@ export function planetMaterialTuningFromPalette(type: PlanetSurfaceType, planet:
     metalness: 0.06,
     roughness: 0.62,
     envMapIntensity: 1.25,
-    emissiveIntensity: 0.1,
+    emissiveIntensity: 0.02,
     clearcoat: 0,
     clearcoatRoughness: 1,
   }
@@ -110,7 +110,7 @@ export function createPlanetMaterial(
   applyPlanetMaterialTuning(material, tuning)
   material.metalness = Math.min(material.metalness, 0.15)
   material.color.copy(palette.baseColor)
-  material.emissiveIntensity = THREE.MathUtils.clamp(tuning.emissiveIntensity, 0.08, 0.15)
+  material.emissiveIntensity = THREE.MathUtils.clamp(tuning.emissiveIntensity, 0, 0.08)
   material.userData.baseEmissiveIntensity = material.emissiveIntensity
   return material
 }

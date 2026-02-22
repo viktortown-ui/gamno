@@ -31,6 +31,11 @@ export interface OrbitSpec {
   pointAt: (phase: number, out?: THREE.Vector3) => THREE.Vector3
 }
 
+export function orbitLocalPoint(curve: THREE.EllipseCurve, phase: number, out = new THREE.Vector3()): THREE.Vector3 {
+  const p = curve.getPointAt(phase)
+  return out.set(p.x, 0, p.y)
+}
+
 export interface OrbitPhaseInput {
   id: string
   orbitRadius: number
@@ -87,11 +92,10 @@ export function buildPlanetOrbitSpec(planet: WorldMapPlanet, seed: number, baseP
   const phase = hashToUnit(hash ^ 0x165667b1)
   const speed = 0.014 + hashToUnit(hash ^ 0xd3a2646c) * 0.018
   const curve = new THREE.EllipseCurve(0, 0, semiMajor, semiMinor, 0, TWO_PI, false, 0)
-  const matrix = new THREE.Matrix4().makeRotationY(nodeRotation).multiply(new THREE.Matrix4().makeRotationX(inclination))
-
   const pointAt = (nextPhase: number, out = new THREE.Vector3()): THREE.Vector3 => {
-    const p = curve.getPointAt(nextPhase)
-    out.set(p.x, 0, p.y).applyMatrix4(matrix)
+    orbitLocalPoint(curve, nextPhase, out)
+    out.applyAxisAngle(new THREE.Vector3(1, 0, 0), inclination)
+    out.applyAxisAngle(new THREE.Vector3(0, 1, 0), nodeRotation)
     out.y += basePosition.y
     return out
   }

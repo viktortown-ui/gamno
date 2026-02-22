@@ -44,6 +44,7 @@ describe('worldWebglPlanetStyle', () => {
     expect(tuning.metalness).toBeLessThan(0.15)
     expect(tuning.roughness).toBeGreaterThanOrEqual(0.65)
     expect(tuning.envMapIntensity).toBeGreaterThanOrEqual(1)
-    expect(tuning.emissiveIntensity).toBeGreaterThan(0.05)
+    expect(tuning.emissiveIntensity).toBeGreaterThanOrEqual(0)
+    expect(tuning.emissiveIntensity).toBeLessThanOrEqual(0.08)
   })
 })
