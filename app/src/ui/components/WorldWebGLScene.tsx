@@ -23,7 +23,7 @@ import { advanceOrbitPhase, buildPlanetOrbitSpec, getOrbitVisualStylePreset, isF
 import { getWorldScaleSpec } from './worldWebglScaleSpec'
 import { getWorldSystemPresetSpec } from './worldWebglSystemPreset'
 import { createPlanetPickProxy, findMagnetPlanet, getPlanetVisualScaleForMinPixelRadius, PICK_LAYER, readWorldMinPlanetPixelRadius } from './worldWebglPicking'
-import { isWorldDebugHUDVisible } from './worldDebugHUD'
+import { resolveWorldDeveloperMode, resolveWorldShowHud } from './worldDebugHUD'
 
 interface WorldWebGLSceneProps {
   snapshot: WorldMapSnapshot
@@ -71,6 +71,14 @@ function readWorldSelectiveBloomEnabled(): boolean {
 
 function readWorldOrbitDimEnabled(): boolean {
   return isFlagOn('worldOrbitDim')
+}
+
+function readWorldDeveloperEnabled(): boolean {
+  return isFlagOn('worldDeveloper')
+}
+
+function readWorldDebugHUDEnabled(): boolean {
+  return isFlagOn('worldDebugHUD')
 }
 
 function readWorldShowAllOrbitsEnabled(): boolean {
@@ -179,6 +187,8 @@ export function WorldWebGLScene({
   const [devAAMode, setDevAAMode] = useState<AAMode>('msaa')
   const [selectiveBloomEnabled] = useState<boolean>(() => readWorldSelectiveBloomEnabled())
   const [showAllOrbitsEnabled] = useState<boolean>(() => readWorldShowAllOrbitsEnabled())
+  const [developerModeEnabled] = useState<boolean>(() => resolveWorldDeveloperMode({ isDev: import.meta.env.DEV, worldDeveloper: readWorldDeveloperEnabled() }))
+  const [showHud] = useState<boolean>(() => resolveWorldShowHud({ isDev: import.meta.env.DEV, worldDeveloper: readWorldDeveloperEnabled(), worldDebugHUD: readWorldDebugHUDEnabled() }))
   const resetViewRef = useRef<() => void>(() => {})
   const selectedIdRef = useRef<string | null>(selectedPlanetId ?? null)
   const onPlanetSelectRef = useRef(onPlanetSelect)
@@ -500,7 +510,7 @@ export function WorldWebGLScene({
     const systemWorldPos = new THREE.Vector3()
     const coreWorldPos = new THREE.Vector3()
     const orbitBounds = new THREE.Box2()
-    if (isWorldDebugHUDVisible()) {
+    if (showHud) {
       const crossMaterial = new THREE.LineBasicMaterial({ color: 0x00ffaa })
       const crossGeometry = new THREE.BufferGeometry().setFromPoints([
         new THREE.Vector3(-0.2, 0, 0),
@@ -868,7 +878,7 @@ export function WorldWebGLScene({
       } else {
         setSelectedPlanetLabel(null)
       }
-      if (isWorldDebugHUDVisible()) {
+      if (showHud) {
         const selectedMesh = selectedIdRef.current ? planetMeshes.get(selectedIdRef.current) : null
         const selectedMaterial = selectedMesh?.material
         const diagnostics = collectLightingDiagnostics(scene)
@@ -1009,6 +1019,7 @@ export function WorldWebGLScene({
     snapshot,
     selectiveBloomEnabled,
     showAllOrbitsEnabled,
+    showHud,
     stormAlpha,
     uiVariant,
   ])
@@ -1096,27 +1107,30 @@ export function WorldWebGLScene({
         ) : null}
       </div>
       <button type="button" className="world-webgl__reset-view button-secondary" onClick={handleResetView}>Сброс вида (R)</button>
-      <div className="world-webgl__orbit-chip" aria-live="polite">
-        <span>OrbitDim {readWorldOrbitDimEnabled() ? 'ON' : 'OFF'}</span>
-        <span>worldOrbitDim raw:{globalThis.localStorage?.getItem('worldOrbitDim') ?? 'null'}</span>
-        <span>selectedPlanetId {selectedId ?? 'none'}</span>
-        <span>ShowAllOrbits {showAllOrbitsEnabled ? 'ON' : 'OFF'}</span>
-        <span>SelectiveBloom {readWorldSelectiveBloomEnabled() ? 'ON' : 'OFF'}</span>
-        <span>BloomPreset {readWorldBloomPresetName()}</span>
-        <span>base o:{orbitVisualStyle.baseOrbit.opacity.toFixed(2)} lw×{orbitVisualStyle.baseOrbit.lineWidthScale.toFixed(2)} rgb×{orbitVisualStyle.baseOrbit.colorMultiplier.toFixed(2)} g:{orbitVisualStyle.baseOrbit.glowOpacity.toFixed(2)}</span>
-        <span>sel o:{orbitVisualStyle.selectedOrbit.opacity.toFixed(2)} lw×{orbitVisualStyle.selectedOrbit.lineWidthScale.toFixed(2)} rgb×{orbitVisualStyle.selectedOrbit.colorMultiplier.toFixed(2)} g:{orbitVisualStyle.selectedOrbit.glowOpacity.toFixed(2)}</span>
-        <span>
-          base uniforms.opacity {orbitMaterialDebugState?.baseUniformOpacity == null ? 'n/a' : orbitMaterialDebugState.baseUniformOpacity.toFixed(2)} ·
-          base mat.opacity {orbitMaterialDebugState?.baseOpacity.toFixed(2) ?? 'n/a'}
-        </span>
-        <span>
-          sel uniforms.opacity {orbitMaterialDebugState?.selectedUniformOpacity == null ? 'n/a' : orbitMaterialDebugState.selectedUniformOpacity.toFixed(2)} ·
-          sel mat.opacity {orbitMaterialDebugState?.selectedOpacity.toFixed(2) ?? 'n/a'} ·
-          sel glow {orbitMaterialDebugState?.selectedGlowVisible ? 'on' : 'off'} ·
-          selIdx {orbitMaterialDebugState?.selectedOrbitIndex ?? 'none'}
-        </span>
-      </div>
-      {isWorldDebugHUDVisible() && debugState ? (
+      {showHud ? (
+        <div className="world-webgl__orbit-chip" aria-live="polite">
+          <span>DevMode {developerModeEnabled ? 'ON' : 'OFF'}</span>
+          <span>OrbitDim {readWorldOrbitDimEnabled() ? 'ON' : 'OFF'}</span>
+          <span>worldOrbitDim raw:{globalThis.localStorage?.getItem('worldOrbitDim') ?? 'null'}</span>
+          <span>selectedPlanetId {selectedId ?? 'none'}</span>
+          <span>ShowAllOrbits {showAllOrbitsEnabled ? 'ON' : 'OFF'}</span>
+          <span>SelectiveBloom {readWorldSelectiveBloomEnabled() ? 'ON' : 'OFF'}</span>
+          <span>BloomPreset {readWorldBloomPresetName()}</span>
+          <span>base o:{orbitVisualStyle.baseOrbit.opacity.toFixed(2)} lw×{orbitVisualStyle.baseOrbit.lineWidthScale.toFixed(2)} rgb×{orbitVisualStyle.baseOrbit.colorMultiplier.toFixed(2)} g:{orbitVisualStyle.baseOrbit.glowOpacity.toFixed(2)}</span>
+          <span>sel o:{orbitVisualStyle.selectedOrbit.opacity.toFixed(2)} lw×{orbitVisualStyle.selectedOrbit.lineWidthScale.toFixed(2)} rgb×{orbitVisualStyle.selectedOrbit.colorMultiplier.toFixed(2)} g:{orbitVisualStyle.selectedOrbit.glowOpacity.toFixed(2)}</span>
+          <span>
+            base uniforms.opacity {orbitMaterialDebugState?.baseUniformOpacity == null ? 'n/a' : orbitMaterialDebugState.baseUniformOpacity.toFixed(2)} ·
+            base mat.opacity {orbitMaterialDebugState?.baseOpacity.toFixed(2) ?? 'n/a'}
+          </span>
+          <span>
+            sel uniforms.opacity {orbitMaterialDebugState?.selectedUniformOpacity == null ? 'n/a' : orbitMaterialDebugState.selectedUniformOpacity.toFixed(2)} ·
+            sel mat.opacity {orbitMaterialDebugState?.selectedOpacity.toFixed(2) ?? 'n/a'} ·
+            sel glow {orbitMaterialDebugState?.selectedGlowVisible ? 'on' : 'off'} ·
+            selIdx {orbitMaterialDebugState?.selectedOrbitIndex ?? 'none'}
+          </span>
+        </div>
+      ) : null}
+      {showHud && debugState ? (
         <div className="world-webgl__debug" data-testid="world-webgl-debug">
           <span>gl {debugState.webglVersion}</span>
           <span>cam {debugState.cameraDistance.toFixed(2)} · r {debugState.boundingRadius.toFixed(2)} · exp {debugState.exposure.toFixed(2)} · α {debugState.overlayAlpha.toFixed(2)}</span>

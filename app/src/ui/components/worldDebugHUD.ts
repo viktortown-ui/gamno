@@ -23,8 +23,17 @@ function isDeveloperOverrideEnabled(): boolean {
   return isFlagEnabledRaw(readFlagRaw(WORLD_DEVELOPER_KEY))
 }
 
+
+export function resolveWorldDeveloperMode(input: { isDev: boolean; worldDeveloper: boolean }): boolean {
+  return input.isDev || input.worldDeveloper
+}
+
+export function resolveWorldShowHud(input: { isDev: boolean; worldDebugHUD: boolean; worldDeveloper: boolean }): boolean {
+  return resolveWorldDeveloperMode({ isDev: input.isDev, worldDeveloper: input.worldDeveloper }) && input.worldDebugHUD
+}
+
 export function resolveWorldDebugHUDVisibility(input: { isDev: boolean; worldDebugHUD: boolean; worldDeveloper: boolean }): boolean {
-  return input.worldDebugHUD && (input.isDev || input.worldDeveloper)
+  return resolveWorldShowHud(input)
 }
 
 export function migrateWorldDebugHUDFlag(): void {
@@ -68,5 +77,5 @@ export function getWorldDebugHUDStorageKey(): string {
 }
 
 export function canAccessWorldDebugHUDSetting(): boolean {
-  return import.meta.env.DEV || isDeveloperOverrideEnabled()
+  return resolveWorldDeveloperMode({ isDev: import.meta.env.DEV, worldDeveloper: isDeveloperOverrideEnabled() })
 }

@@ -3,14 +3,18 @@ import { act } from 'react'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 import { createRoot } from 'react-dom/client'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 async function flush(): Promise<void> {
   await Promise.resolve()
   await Promise.resolve()
 }
 
+
 describe('SettingsPage debug panel', () => {
+  beforeEach(() => {
+    globalThis.localStorage.clear()
+  })
   it('writes world debug settings to localStorage on apply', async () => {
     const { SettingsPage } = await import('./SettingsPage')
     const reloadSpy = vi.fn()
@@ -83,6 +87,50 @@ describe('SettingsPage debug panel', () => {
       value: originalLocation,
       configurable: true,
     })
+  })
+
+
+  it('forces worldDebugHUD=0 on apply value when developer mode is off', async () => {
+    const { resolveWorldDebugHUDPersistValue } = await import('./settingsDebug')
+
+    expect(resolveWorldDebugHUDPersistValue({ developerMode: false, worldDebugHUD: false })).toBe('0')
+    expect(resolveWorldDebugHUDPersistValue({ developerMode: false, worldDebugHUD: true })).toBe('0')
+    expect(resolveWorldDebugHUDPersistValue({ developerMode: true, worldDebugHUD: true })).toBe('1')
+  })
+
+  it('toggles developer mode via 7 clicks on title and shows Dev mode badge', async () => {
+    const { SettingsPage } = await import('./SettingsPage')
+
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+
+    await act(async () => {
+      root.render(
+        <SettingsPage
+          onDataChanged={async () => undefined}
+          appearance={{ theme: 'dark', motion: 'normal', transparency: 'glass', worldUiVariant: 'instrument', worldRenderMode: 'webgl' }}
+          onAppearanceChange={() => undefined}
+        />,
+      )
+    })
+
+    const title = container.querySelector('h1')
+    for (let i = 0; i < 7; i += 1) {
+      await act(async () => {
+        title?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      })
+    }
+
+    expect(globalThis.localStorage.getItem('worldDeveloper')).toBe('1')
+    expect(container.textContent).toContain('Dev mode: ON')
+
+    const toggles = [...container.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')]
+    const debugHudToggle = toggles.find((item) => item.parentElement?.textContent?.includes('worldDebugHUD'))
+    expect(debugHudToggle).toBeTruthy()
+
+    await act(async () => { root.unmount() })
+    container.remove()
   })
 
   it('shows worldDebugHUD toggle for worldDeveloper override', async () => {

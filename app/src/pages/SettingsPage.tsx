@@ -1,9 +1,10 @@
-import { useMemo, useState, type ChangeEventHandler } from 'react'
+import { useMemo, useRef, useState, type ChangeEventHandler } from 'react'
 import { clearAllData, exportDataBlob, importDataBlob, seedTestData } from '../core/storage/repo'
 import type { AppearanceSettings } from '../ui/appearance'
 import { SparkButton } from '../ui/SparkButton'
 import { hardResetSiteAndReload } from '../core/cacheReset'
-import { canAccessWorldDebugHUDSetting, getWorldDebugHUDStorageKey, isWorldDebugHUDVisible, readWorldDebugHUDFlag } from '../ui/components/worldDebugHUD'
+import { getWorldDebugHUDStorageKey, readWorldDebugHUDFlag, resolveWorldDeveloperMode, resolveWorldShowHud } from '../ui/components/worldDebugHUD'
+import { resolveWorldDebugHUDPersistValue } from './settingsDebug'
 
 type BloomPreset = 'soft' | 'normal' | 'hot'
 type WorldSystemPreset = 'normal' | 'compact'
@@ -31,6 +32,8 @@ function readWorldSystemPreset(): WorldSystemPreset {
   return 'normal'
 }
 
+
+
 export function SettingsPage({ onDataChanged, appearance, onAppearanceChange }: SettingsPageProps) {
   const [worldOrbitDim, setWorldOrbitDim] = useState(() => readFlag('worldOrbitDim'))
   const [worldSelectiveBloom, setWorldSelectiveBloom] = useState(() => readFlag('worldSelectiveBloom'))
@@ -38,11 +41,14 @@ export function SettingsPage({ onDataChanged, appearance, onAppearanceChange }: 
   const [worldBloomPreset, setWorldBloomPreset] = useState<BloomPreset>(() => readBloomPreset())
   const [worldSystemPreset, setWorldSystemPreset] = useState<WorldSystemPreset>(() => readWorldSystemPreset())
   const [worldDebugHUD, setWorldDebugHUD] = useState(() => readWorldDebugHUDFlag())
-  const worldDebugHUDEnabled = isWorldDebugHUDVisible()
+  const worldDeveloperUnlockClicksRef = useRef(0)
+  const [worldDeveloperOverrideEnabled, setWorldDeveloperOverrideEnabled] = useState(() => readFlag('worldDeveloper'))
+  const developerMode = resolveWorldDeveloperMode({ isDev: import.meta.env.DEV, worldDeveloper: worldDeveloperOverrideEnabled })
+  const worldDebugHUDEnabled = resolveWorldShowHud({ isDev: import.meta.env.DEV, worldDeveloper: worldDeveloperOverrideEnabled, worldDebugHUD })
 
   const debugSummary = useMemo(
-    () => `OrbitDim ${worldOrbitDim ? 'ON' : 'OFF'} · Selective Bloom ${worldSelectiveBloom ? 'ON' : 'OFF'} · Bloom ${worldBloomPreset} · Preset ${worldSystemPreset} · Show all orbits ${worldShowAllOrbits ? 'ON' : 'OFF'} · HUD ${worldDebugHUDEnabled ? 'ON' : 'OFF'}`,
-    [worldBloomPreset, worldDebugHUDEnabled, worldOrbitDim, worldSelectiveBloom, worldShowAllOrbits, worldSystemPreset],
+    () => `OrbitDim ${worldOrbitDim ? 'ON' : 'OFF'} · Selective Bloom ${worldSelectiveBloom ? 'ON' : 'OFF'} · Bloom ${worldBloomPreset} · Preset ${worldSystemPreset} · Show all orbits ${worldShowAllOrbits ? 'ON' : 'OFF'} · Dev mode ${developerMode ? 'ON' : 'OFF'} · HUD ${worldDebugHUDEnabled ? 'ON' : 'OFF'}`,
+    [developerMode, worldBloomPreset, worldDebugHUDEnabled, worldOrbitDim, worldSelectiveBloom, worldShowAllOrbits, worldSystemPreset],
   )
 
   const handleClear = async () => {
@@ -83,20 +89,30 @@ export function SettingsPage({ onDataChanged, appearance, onAppearanceChange }: 
     await onDataChanged()
   }
 
+
+  const handleSettingsTitleClick = () => {
+    worldDeveloperUnlockClicksRef.current += 1
+    if (worldDeveloperUnlockClicksRef.current < 7) return
+    worldDeveloperUnlockClicksRef.current = 0
+    const enabled = !worldDeveloperOverrideEnabled
+    globalThis.localStorage?.setItem('worldDeveloper', enabled ? '1' : '0')
+    setWorldDeveloperOverrideEnabled(enabled)
+  }
+
   const handleApplyWorldDebugSettings = () => {
-    const canAccessHudSetting = canAccessWorldDebugHUDSetting()
     globalThis.localStorage?.setItem('worldOrbitDim', worldOrbitDim ? '1' : '0')
     globalThis.localStorage?.setItem('worldSelectiveBloom', worldSelectiveBloom ? '1' : '0')
     globalThis.localStorage?.setItem('worldShowAllOrbits', worldShowAllOrbits ? '1' : '0')
     globalThis.localStorage?.setItem('worldBloomPreset', worldBloomPreset)
     globalThis.localStorage?.setItem('worldSystemPreset', worldSystemPreset)
-    globalThis.localStorage?.setItem(getWorldDebugHUDStorageKey(), canAccessHudSetting && worldDebugHUD ? '1' : '0')
+    globalThis.localStorage?.setItem(getWorldDebugHUDStorageKey(), resolveWorldDebugHUDPersistValue({ developerMode, worldDebugHUD }))
     window.location.reload()
   }
 
   return (
     <section className="page panel">
-      <h1>Настройки</h1>
+      <h1 onClick={handleSettingsTitleClick} style={{ cursor: 'default' }}>Настройки</h1>
+      {developerMode ? <small className="mono">Dev mode: ON</small> : null}
       <p>Данные хранятся локально в IndexedDB.</p>
 
       <article className="panel settings-panel">
@@ -179,7 +195,7 @@ export function SettingsPage({ onDataChanged, appearance, onAppearanceChange }: 
               <option value="compact">compact</option>
             </select>
           </label>
-          {canAccessWorldDebugHUDSetting() ? (
+          {developerMode ? (
             <label className="settings-toggle">
               <input type="checkbox" checked={worldDebugHUD} onChange={(event) => setWorldDebugHUD(event.target.checked)} />
               Показывать HUD (worldDebugHUD)

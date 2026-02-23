@@ -42,9 +42,10 @@ describe('worldDebugHUD helpers', () => {
   })
 
   it('keeps HUD invisible when worldDebugHUD is off even if OrbitDim is on', async () => {
-    const { resolveWorldDebugHUDVisibility } = await import('./worldDebugHUD')
+    window.localStorage.setItem('worldOrbitDim', '1')
+    const { resolveWorldShowHud } = await import('./worldDebugHUD')
 
-    expect(resolveWorldDebugHUDVisibility({ isDev: true, worldDebugHUD: false, worldDeveloper: false })).toBe(false)
+    expect(resolveWorldShowHud({ isDev: true, worldDebugHUD: false, worldDeveloper: true })).toBe(false)
   })
 
   it('keeps HUD hidden in production without worldDeveloper override', async () => {
