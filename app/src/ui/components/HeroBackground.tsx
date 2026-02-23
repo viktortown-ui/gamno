@@ -32,6 +32,7 @@ function resolveVariant(uiPreset: UiPreset, worldLookPreset: string): HeroVarian
 
 export function HeroBackground({ uiPreset, worldLookPreset }: HeroBackgroundProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const layerRef = useRef<HTMLDivElement | null>(null)
   const variant = useMemo(() => resolveVariant(uiPreset, worldLookPreset), [uiPreset, worldLookPreset])
 
   useEffect(() => {
@@ -82,22 +83,45 @@ export function HeroBackground({ uiPreset, worldLookPreset }: HeroBackgroundProp
     const resizeObserver = new ResizeObserver(resize)
     resizeObserver.observe(parent)
 
+    const layer = layerRef.current
+    let pointerTicking = false
+    let targetX = 0
+    let targetY = 0
+    let currentX = 0
+    let currentY = 0
+    const amplitude = 8
+    const lerp = 0.12
+
+    const applyTransform = () => {
+      if (!layer || reducedMotion) return
+      currentX += (targetX - currentX) * lerp
+      currentY += (targetY - currentY) * lerp
+      layer.style.transform = `translate3d(${currentX.toFixed(2)}px, ${currentY.toFixed(2)}px, 0)`
+    }
+
     const onPointerMove = (event: PointerEvent) => {
       if (reducedMotion) return
-      const bounds = parent.getBoundingClientRect()
-      const offsetX = ((event.clientX - bounds.left) / bounds.width - 0.5) * 8
-      const offsetY = ((event.clientY - bounds.top) / bounds.height - 0.5) * 8
-      parent.style.setProperty('--parallax-x', `${offsetX.toFixed(2)}px`)
-      parent.style.setProperty('--parallax-y', `${offsetY.toFixed(2)}px`)
+      if (pointerTicking) return
+      pointerTicking = true
+      window.requestAnimationFrame(() => {
+        pointerTicking = false
+        const bounds = parent.getBoundingClientRect()
+        const nextX = ((event.clientX - bounds.left) / bounds.width - 0.5) * amplitude * 2
+        const nextY = ((event.clientY - bounds.top) / bounds.height - 0.5) * amplitude * 2
+        targetX = Math.max(-amplitude, Math.min(amplitude, nextX))
+        targetY = Math.max(-amplitude, Math.min(amplitude, nextY))
+      })
     }
 
     const onPointerLeave = () => {
-      parent.style.setProperty('--parallax-x', '0px')
-      parent.style.setProperty('--parallax-y', '0px')
+      targetX = 0
+      targetY = 0
     }
 
-    parent.addEventListener('pointermove', onPointerMove)
-    parent.addEventListener('pointerleave', onPointerLeave)
+    if (!reducedMotion) {
+      parent.addEventListener('pointermove', onPointerMove)
+      parent.addEventListener('pointerleave', onPointerLeave)
+    }
 
     const palette = VARIANT_STYLES[variant]
     let raf = 0
@@ -108,6 +132,8 @@ export function HeroBackground({ uiPreset, worldLookPreset }: HeroBackgroundProp
       raf = window.requestAnimationFrame(draw)
       if (!reducedMotion && time - lastTick < frameInterval) return
       lastTick = time
+
+      applyTransform()
 
       const width = node.width
       const height = node.height
@@ -189,9 +215,11 @@ export function HeroBackground({ uiPreset, worldLookPreset }: HeroBackgroundProp
 
   return (
     <div className={`hero-background hero-background--${variant}`} aria-hidden="true">
-      <div className="hero-background__gradient" />
-      <canvas ref={canvasRef} className="hero-background__canvas" />
-      <div className="hero-background__grain" />
+      <div className="hero-background__parallax-layer" ref={layerRef}>
+        <div className="hero-background__gradient" />
+        <canvas ref={canvasRef} className="hero-background__canvas" />
+        <div className="hero-background__grain" />
+      </div>
     </div>
   )
 }

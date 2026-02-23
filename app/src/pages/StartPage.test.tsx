@@ -51,4 +51,39 @@ describe('StartPage', () => {
     await act(async () => { root.unmount() })
     container.remove()
   })
+
+  it('opens and closes start steps side sheet', async () => {
+    const { StartPage } = await import('./StartPage')
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+
+    await act(async () => {
+      root.render(
+        <HashRouter>
+          <StartPage onDone={async () => undefined} hintsEnabled={false} onHintsChange={() => undefined} uiPreset="clean" worldLookPreset="clean" />
+        </HashRouter>,
+      )
+    })
+    await act(async () => { await flush() })
+
+    const openButton = [...container.querySelectorAll('button')].find((item) => item.textContent?.includes('Как начать (4 шага)'))
+    expect(openButton).toBeTruthy()
+    await act(async () => {
+      openButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      await flush()
+    })
+
+    expect(container.querySelector('.start-steps-sheet')).toBeTruthy()
+
+    await act(async () => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+      await flush()
+    })
+
+    expect(container.querySelector('.start-steps-sheet')).toBeNull()
+
+    await act(async () => { root.unmount() })
+    container.remove()
+  })
 })
