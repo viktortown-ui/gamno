@@ -183,6 +183,8 @@ export function buildPlanetOrbitSpec(
   orbitIndex: number,
   meshRadius: number,
   orbitRadiusScale = 1,
+  orbitRadiusCap = Number.POSITIVE_INFINITY,
+  inclinationCapsDeg: { inner: number; outer: number } = { inner: 8, outer: 14 },
   innerOrbitLayout?: InnerOrbitLayoutInput,
 ): OrbitSpec {
   const hash = hashString(`${planet.id}:${seed}:orbit`)
@@ -195,9 +197,9 @@ export function buildPlanetOrbitSpec(
     ? innerOrbitLayout.coreRadius * 1.35 + innerOrbitLayout.maxPlanetRadius * 0.5 + clearance
     : 0
   const constrainedInnerRadius = index <= 1 ? minInnerRadius : 0
-  const semiMajor = Math.max(semiMajorRaw, constrainedInnerRadius)
+  const semiMajor = THREE.MathUtils.clamp(Math.max(semiMajorRaw, constrainedInnerRadius), constrainedInnerRadius, orbitRadiusCap)
   const semiMinor = Math.max(semiMajor * (1 - eccentricity), constrainedInnerRadius)
-  const inclinationCap = index <= 2 ? 8 : 14
+  const inclinationCap = index <= 2 ? inclinationCapsDeg.inner : inclinationCapsDeg.outer
   const inclinationDeg = hashToUnit(hash ^ 0xc2b2ae35) * inclinationCap
   const inclination = THREE.MathUtils.degToRad(inclinationDeg)
   const nodeRotation = hashToUnit(hash ^ 0x27d4eb2f) * TWO_PI

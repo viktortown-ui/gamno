@@ -21,6 +21,8 @@ import { createPlanetMaterial, planetMaterialTuningFromPalette, planetPaletteFro
 import { applySceneEnvironment, collectLightingDiagnostics, createIBL, warnIfLightingInvalid } from './worldWebglLighting'
 import { advanceOrbitPhase, buildPlanetOrbitSpec, getOrbitVisualStylePreset, isFlagOn, orbitLocalPoint, relaxOrbitPhases, resolveOrbitVisualState, type OrbitSpec } from './worldWebglOrbits'
 import { getWorldScaleSpec } from './worldWebglScaleSpec'
+import { getWorldSystemPresetSpec } from './worldWebglSystemPreset'
+import { findMagnetPlanet, getPlanetVisualScaleForMinPixelRadius, readWorldMinPlanetPixelRadius } from './worldWebglPicking'
 
 interface WorldWebGLSceneProps {
   snapshot: WorldMapSnapshot
@@ -55,6 +57,9 @@ const BLOOM_PARAMS = BLOOM_PRESETS[readBloomPreset()]
 const EXPOSURE_RANGE = { min: 0.9, max: 1.1 }
 const EXPOSURE_DISTANCE_RANGE = { min: 1, max: 1.15 }
 const WORLD_SCALE_SPEC = getWorldScaleSpec()
+const WORLD_SYSTEM_PRESET = getWorldSystemPresetSpec()
+const PICK_LAYER = 2
+const PICK_SCALE = 2.2
 type ExposureMode = 'static' | 'distance'
 
 function readExposureMode(): ExposureMode {
@@ -154,7 +159,7 @@ function computeDebugBoundingRadius(snapshot: WorldMapSnapshot, planets: WorldMa
     const point = toWorldPosition(snapshot, planet)
     return Math.max(acc, point.length())
   }, 0)
-  const maxRingRadius = snapshot.rings.reduce((acc, ring) => Math.max(acc, ring.radius * 0.045 * WORLD_SCALE_SPEC.orbitRadiusScale), 0)
+  const maxRingRadius = snapshot.rings.reduce((acc, ring) => Math.max(acc, ring.radius * 0.045 * WORLD_SCALE_SPEC.orbitRadiusScale * WORLD_SYSTEM_PRESET.orbitRadiusScale), 0)
   return Math.max(maxPlanetRadius, maxRingRadius)
 }
 
@@ -185,6 +190,7 @@ export function WorldWebGLScene({
   const [hoveredPlanetLabel, setHoveredPlanetLabel] = useState<{ id: string; labelRu: string; x: number; y: number; radius: number } | null>(null)
   const [selectedPlanetLabel, setSelectedPlanetLabel] = useState<{ id: string; labelRu: string; x: number; y: number } | null>(null)
   const [orbitMaterialDebugState, setOrbitMaterialDebugState] = useState<OrbitMaterialDebugState | null>(null)
+  const [minPlanetPixelRadius] = useState<number>(() => readWorldMinPlanetPixelRadius())
 
   const planets = useMemo(() => [...snapshot.planets].sort((a, b) => (a.order - b.order) || a.id.localeCompare(b.id, 'ru')), [snapshot.planets])
 
@@ -401,6 +407,7 @@ export function WorldWebGLScene({
     systemGroup.add(coreGroup)
 
     const planetMeshes = new Map<string, THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial | THREE.MeshPhysicalMaterial>>()
+    const pickProxies = new Map<string, THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial>>()
     const orbitByPlanetId = new Map<string, OrbitSpec>()
     const planetOrbitStates: PlanetOrbitState[] = []
     const planetOrbitLines: Array<{ line: Line2; glowLine: Line2; orbitIndex: number; orbitId: string }> = []
@@ -421,7 +428,9 @@ export function WorldWebGLScene({
         snapshot.seed,
         planet.order,
         radius,
-        WORLD_SCALE_SPEC.orbitRadiusScale,
+        WORLD_SCALE_SPEC.orbitRadiusScale * WORLD_SYSTEM_PRESET.orbitRadiusScale,
+        (1.9 + planets.length + 2) * WORLD_SCALE_SPEC.orbitRadiusScale * WORLD_SYSTEM_PRESET.orbitRadiusScale,
+        { inner: WORLD_SYSTEM_PRESET.innerInclinationMaxDeg, outer: WORLD_SYSTEM_PRESET.outerInclinationMaxDeg },
         {
           coreRadius: 1.95 * WORLD_SCALE_SPEC.coreRadiusScale,
           maxPlanetRadius,
@@ -430,6 +439,12 @@ export function WorldWebGLScene({
       orbitByPlanetId.set(planet.id, orbit)
       phaseInputs.push({ id: planet.id, orbitRadius: orbit.radiusHint, planetRadius: radius, phase: orbit.phase })
       mesh.userData.planetId = planet.id
+      const pickProxy = new THREE.Mesh(
+        new THREE.SphereGeometry(radius * PICK_SCALE, 18, 18),
+        new THREE.MeshBasicMaterial({ color: 0xffffff, visible: false }),
+      )
+      pickProxy.layers.set(PICK_LAYER)
+      pickProxy.userData.planetId = planet.id
 
       const orbitGroup = new THREE.Group()
       orbitGroup.rotation.x = orbit.inclination
@@ -468,7 +483,7 @@ export function WorldWebGLScene({
       glowLine.computeLineDistances()
       glowLine.renderOrder = 2
 
-      orbitGroup.add(orbitLine, glowLine, mesh)
+      orbitGroup.add(orbitLine, glowLine, mesh, pickProxy)
       systemGroup.add(orbitGroup)
       planetOrbitLines.push({ line: orbitLine, glowLine, orbitIndex: orbit.orbitIndex, orbitId: orbit.id })
 
@@ -476,6 +491,7 @@ export function WorldWebGLScene({
       const driftSpeed = orbit.speed + speedSeed * 0.003
       planetOrbitStates.push({ mesh, orbit, orbitGroup, orbitCurve: orbit.curve, driftSpeed, phase: orbit.phase })
       planetMeshes.set(planet.id, mesh)
+      pickProxies.set(planet.id, pickProxy)
     })
 
     const relaxed = relaxOrbitPhases(phaseInputs, 0.3, 8, WORLD_SCALE_SPEC.minSeparationScale)
@@ -588,8 +604,9 @@ export function WorldWebGLScene({
     scene.add(selectionRing)
 
     const raycaster = new THREE.Raycaster()
+    raycaster.layers.set(PICK_LAYER)
     const pointer = new THREE.Vector2()
-    const intersectTargets = [...planetMeshes.values()]
+    const intersectTargets = [...pickProxies.values()]
     const driftController = new IdleDriftController(
       { reduceMotion: reducedMotion, idleTimeoutMs: import.meta.env.MODE === 'test' ? 0 : undefined },
       performance.now(),
@@ -641,7 +658,18 @@ export function WorldWebGLScene({
       const hits = raycaster.intersectObjects(intersectTargets, true)
       hits.sort((a, b) => a.distance - b.distance)
       const hit = hits[0]
-      return (hit?.object.userData.planetId as string | undefined) ?? null
+      const directHit = (hit?.object.userData.planetId as string | undefined) ?? null
+      if (directHit) return directHit
+      const isTouchPointer = 'pointerType' in event && event.pointerType === 'touch'
+      const magnetThresholdPx = isTouchPointer ? 36 : 24
+      return findMagnetPlanet({
+        camera,
+        planetMeshes,
+        clickX: event.clientX,
+        clickY: event.clientY,
+        bounds,
+        thresholdPx: magnetThresholdPx,
+      })
     }
 
     const resetView = () => {
@@ -728,6 +756,15 @@ export function WorldWebGLScene({
         orbitState.mesh.rotation.y += reducedMotion ? 0 : 0.0035
         orbitState.phase = advanceOrbitPhase(orbitState.phase, orbitState.driftSpeed, deltaMs, driftEnabled)
         orbitLocalPoint(orbitState.orbitCurve, orbitState.phase, orbitState.mesh.position)
+        if (minPlanetPixelRadius > 0) {
+          const visualScale = getPlanetVisualScaleForMinPixelRadius(
+            camera,
+            orbitState.mesh.position.distanceTo(camera.position),
+            (orbitState.mesh.geometry as THREE.SphereGeometry).parameters.radius,
+            minPlanetPixelRadius,
+          )
+          orbitState.mesh.scale.setScalar(Math.max(orbitState.mesh.scale.x, visualScale))
+        }
         assertPlanetOnOrbit(orbitState)
       })
       assertSystemCentered()
@@ -975,6 +1012,7 @@ export function WorldWebGLScene({
     orbitVisualStyle.selectedOrbit.lineWidthScale,
     planets,
     reducedMotion,
+    minPlanetPixelRadius,
     snapshot,
     selectiveBloomEnabled,
     showAllOrbitsEnabled,

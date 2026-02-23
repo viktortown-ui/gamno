@@ -79,9 +79,9 @@ describe('worldWebglOrbits', () => {
 
 
   it('expands only first two orbits using core clearance rule', () => {
-    const inner0 = buildPlanetOrbitSpec(planet, 10, 0, planet.radius * 0.042, 1, { coreRadius: 3.9, maxPlanetRadius: 0.8 })
-    const inner1 = buildPlanetOrbitSpec(planet, 10, 1, planet.radius * 0.042, 1, { coreRadius: 3.9, maxPlanetRadius: 0.8 })
-    const outer2 = buildPlanetOrbitSpec(planet, 10, 2, planet.radius * 0.042, 1, { coreRadius: 3.9, maxPlanetRadius: 0.8 })
+    const inner0 = buildPlanetOrbitSpec(planet, 10, 0, planet.radius * 0.042, 1, Number.POSITIVE_INFINITY, undefined, { coreRadius: 3.9, maxPlanetRadius: 0.8 })
+    const inner1 = buildPlanetOrbitSpec(planet, 10, 1, planet.radius * 0.042, 1, Number.POSITIVE_INFINITY, undefined, { coreRadius: 3.9, maxPlanetRadius: 0.8 })
+    const outer2 = buildPlanetOrbitSpec(planet, 10, 2, planet.radius * 0.042, 1, Number.POSITIVE_INFINITY, undefined, { coreRadius: 3.9, maxPlanetRadius: 0.8 })
     const minInnerRadius = 3.9 * 1.35 + 0.8 * 0.5 + 3.9 * 0.25
 
     expect(inner0.radiusHint).toBeGreaterThanOrEqual(minInnerRadius)
@@ -96,6 +96,14 @@ describe('worldWebglOrbits', () => {
     expect((innerOrbit.curve.xRadius - innerOrbit.curve.yRadius) / innerOrbit.curve.xRadius).toBeLessThanOrEqual(0.2)
     expect(THREE.MathUtils.radToDeg(innerOrbit.inclination)).toBeLessThanOrEqual(8)
     expect(THREE.MathUtils.radToDeg(outerOrbit.inclination)).toBeLessThanOrEqual(14)
+  })
+
+
+  it('applies orbit radius scale and hard cap for compact systems', () => {
+    const compactOrbit = buildPlanetOrbitSpec(planet, 55, 8, planet.radius * 0.042, 0.75, 4.2)
+
+    expect(compactOrbit.curve.xRadius).toBeLessThanOrEqual(4.2)
+    expect(compactOrbit.radiusHint).toBeLessThanOrEqual(4.2)
   })
 
   it('resolves orbit visual hierarchy for selected and dimmed non-selected orbits', () => {

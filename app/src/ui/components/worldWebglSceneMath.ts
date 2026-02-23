@@ -1,9 +1,11 @@
 import * as THREE from 'three'
 import type { WorldMapPlanet, WorldMapSnapshot } from '../../core/worldMap/types'
 import { getWorldScaleSpec } from './worldWebglScaleSpec'
+import { getWorldSystemPresetSpec } from './worldWebglSystemPreset'
 
 const WORLD_VIEW_FILL = 0.64
 const WORLD_SCALE_SPEC = getWorldScaleSpec()
+const WORLD_SYSTEM_PRESET = getWorldSystemPresetSpec()
 
 function toWorldPosition(snapshot: WorldMapSnapshot, planet: WorldMapPlanet): THREE.Vector3 {
   const x = (planet.x - snapshot.center.x) * 0.042
@@ -17,7 +19,7 @@ export function computeFitToViewState(snapshot: WorldMapSnapshot, planets: World
   const box = new THREE.Box3().setFromPoints(points.length ? points : [new THREE.Vector3()])
   const target = box.getCenter(new THREE.Vector3())
   const sphere = box.getBoundingSphere(new THREE.Sphere())
-  const maxRingRadius = snapshot.rings.reduce((acc, ring) => Math.max(acc, ring.radius * 0.045 * WORLD_SCALE_SPEC.orbitRadiusScale), 0)
+  const maxRingRadius = snapshot.rings.reduce((acc, ring) => Math.max(acc, ring.radius * 0.045 * WORLD_SCALE_SPEC.orbitRadiusScale * WORLD_SYSTEM_PRESET.orbitRadiusScale), 0)
   const coreRadius = 1.95 * WORLD_SCALE_SPEC.coreRadiusScale
   const maxRadius = Math.max(sphere.radius + WORLD_SCALE_SPEC.planetRadiusScale * 0.25, maxRingRadius, coreRadius)
   const fov = THREE.MathUtils.degToRad(46)
