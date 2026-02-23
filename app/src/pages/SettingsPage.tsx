@@ -84,12 +84,13 @@ export function SettingsPage({ onDataChanged, appearance, onAppearanceChange }: 
   }
 
   const handleApplyWorldDebugSettings = () => {
+    const canAccessHudSetting = canAccessWorldDebugHUDSetting()
     globalThis.localStorage?.setItem('worldOrbitDim', worldOrbitDim ? '1' : '0')
     globalThis.localStorage?.setItem('worldSelectiveBloom', worldSelectiveBloom ? '1' : '0')
     globalThis.localStorage?.setItem('worldShowAllOrbits', worldShowAllOrbits ? '1' : '0')
     globalThis.localStorage?.setItem('worldBloomPreset', worldBloomPreset)
     globalThis.localStorage?.setItem('worldSystemPreset', worldSystemPreset)
-    globalThis.localStorage?.setItem(getWorldDebugHUDStorageKey(), worldDebugHUD ? '1' : '0')
+    globalThis.localStorage?.setItem(getWorldDebugHUDStorageKey(), canAccessHudSetting && worldDebugHUD ? '1' : '0')
     window.location.reload()
   }
 
