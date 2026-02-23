@@ -63,8 +63,8 @@ describe('navigation rail', () => {
   it('shows labels in expanded mode', async () => {
     const { container, root } = await renderApp()
 
+    expect(container.textContent).toContain('Приветствие / Старт')
     expect(container.textContent).toContain('Мир')
-    expect(container.textContent).toContain('Дашборд')
 
     await act(async () => { root.unmount() })
     container.remove()
@@ -80,6 +80,52 @@ describe('navigation rail', () => {
 
     const worldLink = container.querySelector('a[href="#/world"]') as HTMLAnchorElement
     expect(worldLink.getAttribute('title')).toBe('Мир')
+
+    await act(async () => { root.unmount() })
+    container.remove()
+  })
+
+
+  it('opens More popover with grouped items and search', async () => {
+    const { container, root } = await renderApp()
+
+    const moreButton = container.querySelector('.nav-more .nav-link--button') as HTMLButtonElement
+    await act(async () => {
+      moreButton.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+
+    expect(container.textContent).toContain('Модули')
+    expect(container.textContent).toContain('Сервис')
+
+    const searchInput = container.querySelector('.nav-more__search') as HTMLInputElement
+    await act(async () => {
+      const descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')
+      descriptor?.set?.call(searchInput, 'сист')
+      searchInput.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+
+    const filteredLinks = Array.from(container.querySelectorAll('.nav-more__popover .nav-link__label')).map((node) => node.textContent)
+    expect(filteredLinks).toContain('Система')
+    expect(filteredLinks).not.toContain('Автопилот')
+
+    await act(async () => { root.unmount() })
+    container.remove()
+  })
+
+  it('toggles sidebar with keyboard shortcut', async () => {
+    const { container, root } = await renderApp()
+
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: '[', bubbles: true }))
+    })
+
+    expect(container.querySelector('.layout')?.className).toContain('layout--sidebar-collapsed')
+
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: '[', bubbles: true }))
+    })
+
+    expect(container.querySelector('.layout')?.className).not.toContain('layout--sidebar-collapsed')
 
     await act(async () => { root.unmount() })
     container.remove()

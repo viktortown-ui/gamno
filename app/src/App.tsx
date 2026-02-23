@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import type { CheckinRecord, CheckinValues } from './core/models/checkin'
 import type { QuestRecord } from './core/models/quest'
@@ -28,9 +28,14 @@ type PageKey = 'start' | 'world' | 'core' | 'dashboard' | 'oracle' | 'autopilot'
 
 type NavItem = { key: PageKey; label: string; icon: string }
 
+type SecondaryNavGroup = {
+  title: string
+  items: NavItem[]
+}
+
 const primaryNavItems: NavItem[] = [
+  { key: 'start', label: 'Приветствие / Старт', icon: '◈' },
   { key: 'world', label: 'Мир', icon: '◎' },
-  { key: 'start', label: 'Старт', icon: '◈' },
   { key: 'core', label: 'Ядро', icon: '◉' },
   { key: 'dashboard', label: 'Дашборд', icon: '▦' },
   { key: 'oracle', label: 'Оракул', icon: '✶' },
@@ -38,16 +43,26 @@ const primaryNavItems: NavItem[] = [
   { key: 'history', label: 'Лента', icon: '◷' },
 ]
 
-const secondaryNavItems: NavItem[] = [
-  { key: 'autopilot', label: 'Автопилот', icon: '⌁' },
-  { key: 'antifragility', label: 'Антихрупкость', icon: '⛨' },
-  { key: 'multiverse', label: 'Мульти', icon: '◍' },
-  { key: 'time-debt', label: 'Долг', icon: '◔' },
-  { key: 'social-radar', label: 'Соцрадар', icon: '⌖' },
-  { key: 'black-swans', label: 'Лебеди', icon: '✷' },
-  { key: 'graph', label: 'Граф', icon: '⋰' },
-  { key: 'settings', label: 'Настройки', icon: '⚙' },
-  { key: 'system', label: 'Система', icon: '⌬' },
+const secondaryNavGroups: SecondaryNavGroup[] = [
+  {
+    title: 'Модули',
+    items: [
+      { key: 'autopilot', label: 'Автопилот', icon: '⌁' },
+      { key: 'antifragility', label: 'Антихрупкость', icon: '⛨' },
+      { key: 'multiverse', label: 'Мульти', icon: '◍' },
+      { key: 'time-debt', label: 'Долг', icon: '◔' },
+      { key: 'social-radar', label: 'Соцрадар', icon: '⌖' },
+      { key: 'black-swans', label: 'Лебеди', icon: '✷' },
+      { key: 'graph', label: 'Граф', icon: '⋰' },
+    ],
+  },
+  {
+    title: 'Сервис',
+    items: [
+      { key: 'settings', label: 'Настройки', icon: '⚙' },
+      { key: 'system', label: 'Система', icon: '⌬' },
+    ],
+  },
 ]
 
 function DesktopOnlyGate() {
@@ -72,6 +87,8 @@ function DesktopApp() {
   const [hintsEnabled, setHintsEnabled] = useState(false)
   const [isRailCollapsed, setIsRailCollapsed] = useState(false)
   const [isMoreOpen, setIsMoreOpen] = useState(false)
+  const [moreSearch, setMoreSearch] = useState('')
+  const morePanelRef = useRef<HTMLDivElement | null>(null)
 
   const loadData = async () => {
     const [all, latest, currentQuest] = await Promise.all([listCheckins(), getLatestCheckin(), getActiveQuest()])
@@ -102,9 +119,33 @@ function DesktopApp() {
         setIsMoreOpen(false)
       }
     }
+    const onPointerDown = (event: MouseEvent) => {
+      if (!morePanelRef.current?.contains(event.target as Node)) {
+        setIsMoreOpen(false)
+      }
+    }
     window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
+    window.addEventListener('mousedown', onPointerDown)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('mousedown', onPointerDown)
+    }
   }, [isMoreOpen])
+
+  useEffect(() => {
+    const onToggleRailShortcut = (event: KeyboardEvent) => {
+      const isBracketShortcut = event.key === '[' && !event.shiftKey
+      const isCtrlBShortcut = (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'b'
+      if (!isBracketShortcut && !isCtrlBShortcut) return
+      const targetTag = event.target instanceof HTMLElement ? event.target.tagName : ''
+      if (targetTag === 'INPUT' || targetTag === 'TEXTAREA') return
+      event.preventDefault()
+      setIsRailCollapsed((prev) => !prev)
+      setIsMoreOpen(false)
+    }
+    window.addEventListener('keydown', onToggleRailShortcut)
+    return () => window.removeEventListener('keydown', onToggleRailShortcut)
+  }, [])
 
   useEffect(() => {
     document.documentElement.dataset.theme = appearance.theme
@@ -114,16 +155,26 @@ function DesktopApp() {
     window.localStorage.setItem('worldQuality', appearance.worldQuality)
     saveAppearanceSettings(appearance)
   }, [appearance])
-
   const collapseSidebar = isRailCollapsed
 
-  const renderNavLink = (page: NavItem) => (
+  const filteredSecondaryGroups = useMemo(() => {
+    const query = moreSearch.trim().toLowerCase()
+    if (!query) return secondaryNavGroups
+    return secondaryNavGroups
+      .map((group) => ({ ...group, items: group.items.filter((item) => item.label.toLowerCase().includes(query)) }))
+      .filter((group) => group.items.length > 0)
+  }, [moreSearch])
+
+  const renderNavLink = (page: NavItem, compact = false) => (
     <NavLink
       key={page.key}
-      className={({ isActive }) => `nav-link ${isActive ? 'nav-link--active' : ''}`}
+      className={({ isActive }) => `nav-link ${compact ? 'nav-link--compact' : ''} ${isActive ? 'nav-link--active' : ''}`.trim()}
       to={`/${page.key}`}
       title={collapseSidebar ? page.label : undefined}
-      onClick={() => setIsMoreOpen(false)}
+      onClick={() => {
+        setIsMoreOpen(false)
+        setMoreSearch('')
+      }}
       data-help-target={page.key === 'world' ? 'nav-world' : page.key === 'start' ? 'nav-start' : undefined}
       aria-label={page.label}
       data-tooltip={collapseSidebar ? page.label : undefined}
@@ -140,27 +191,61 @@ function DesktopApp() {
       <aside className="sidebar panel" data-testid="navigation-rail">
         <div className="sidebar__head">
           <h2>Gamno</h2>
-          <button type="button" className="sidebar__toggle" onClick={() => setIsRailCollapsed((prev) => !prev)} aria-label={collapseSidebar ? 'Развернуть навигацию' : 'Свернуть навигацию'}>
+          <button
+            type="button"
+            className="sidebar__toggle"
+            onClick={() => {
+              setIsRailCollapsed((prev) => !prev)
+              setIsMoreOpen(false)
+              setMoreSearch('')
+            }}
+            aria-label={collapseSidebar ? 'Развернуть навигацию' : 'Свернуть навигацию'}
+            title="Свернуть / развернуть (Ctrl+B или [)"
+          >
             {collapseSidebar ? '☰' : '←'}
           </button>
         </div>
         <nav role="navigation" aria-label="Навигация" tabIndex={0}>
-          {primaryNavItems.map(renderNavLink)}
-          <div className="nav-more">
+          {primaryNavItems.map((item) => renderNavLink(item))}
+          <div className="nav-more" ref={morePanelRef}>
             <button
               type="button"
               className={`nav-link nav-link--button ${isMoreOpen ? 'nav-link--active' : ''}`}
-              onClick={() => setIsMoreOpen((prev) => !prev)}
+              onClick={() => {
+                setIsMoreOpen((prev) => !prev)
+                if (isMoreOpen) setMoreSearch('')
+              }}
               aria-expanded={isMoreOpen}
               aria-controls="rail-more-list"
               title={collapseSidebar ? 'Ещё' : undefined}
+              data-tooltip={collapseSidebar ? 'Ещё' : undefined}
             >
               <span className="nav-link__icon" aria-hidden="true">⋯</span>
               <span className="nav-link__label">Ещё</span>
             </button>
             {isMoreOpen ? (
-              <div id="rail-more-list" className="nav-more__list" role="menu" aria-label="Дополнительные разделы">
-                {secondaryNavItems.map(renderNavLink)}
+              <div id="rail-more-list" className="nav-more__popover" role="dialog" aria-label="Дополнительные разделы">
+                <div className="nav-more__search-wrap">
+                  <input
+                    type="search"
+                    className="nav-more__search"
+                    placeholder="Поиск модуля"
+                    value={moreSearch}
+                    onChange={(event) => setMoreSearch(event.target.value)}
+                    aria-label="Поиск по дополнительным разделам"
+                  />
+                </div>
+                {filteredSecondaryGroups.map((group) => (
+                  <section key={group.title} className="nav-more__group" aria-label={group.title}>
+                    <h3>{group.title}</h3>
+                    <div className="nav-more__list" role="menu" aria-label={group.title}>
+                      {group.items.map((item) => renderNavLink(item, true))}
+                    </div>
+                  </section>
+                ))}
+                {filteredSecondaryGroups.length === 0 ? (
+                  <p className="nav-more__empty">Ничего не найдено</p>
+                ) : null}
               </div>
             ) : null}
           </div>
