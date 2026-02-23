@@ -5,6 +5,7 @@ import { SparkButton } from '../ui/SparkButton'
 import { hardResetSiteAndReload } from '../core/cacheReset'
 
 type BloomPreset = 'soft' | 'normal' | 'hot'
+type WorldSystemPreset = 'normal' | 'compact'
 
 interface SettingsPageProps {
   onDataChanged: () => Promise<void>
@@ -23,15 +24,23 @@ function readBloomPreset(): BloomPreset {
   return 'normal'
 }
 
+function readWorldSystemPreset(): WorldSystemPreset {
+  const raw = globalThis.localStorage?.getItem('worldSystemPreset')
+  if (raw === 'compact') return 'compact'
+  return 'normal'
+}
+
 export function SettingsPage({ onDataChanged, appearance, onAppearanceChange }: SettingsPageProps) {
   const [worldOrbitDim, setWorldOrbitDim] = useState(() => readFlag('worldOrbitDim'))
   const [worldSelectiveBloom, setWorldSelectiveBloom] = useState(() => readFlag('worldSelectiveBloom'))
   const [worldShowAllOrbits, setWorldShowAllOrbits] = useState(() => readFlag('worldShowAllOrbits'))
   const [worldBloomPreset, setWorldBloomPreset] = useState<BloomPreset>(() => readBloomPreset())
+  const [worldSystemPreset, setWorldSystemPreset] = useState<WorldSystemPreset>(() => readWorldSystemPreset())
+  const [worldDebugHUD, setWorldDebugHUD] = useState(() => readFlag('worldDebugHUD'))
 
   const debugSummary = useMemo(
-    () => `OrbitDim ${worldOrbitDim ? 'ON' : 'OFF'} · Selective Bloom ${worldSelectiveBloom ? 'ON' : 'OFF'} · Bloom ${worldBloomPreset} · Show all orbits ${worldShowAllOrbits ? 'ON' : 'OFF'}`,
-    [worldBloomPreset, worldOrbitDim, worldSelectiveBloom, worldShowAllOrbits],
+    () => `OrbitDim ${worldOrbitDim ? 'ON' : 'OFF'} · Selective Bloom ${worldSelectiveBloom ? 'ON' : 'OFF'} · Bloom ${worldBloomPreset} · Preset ${worldSystemPreset} · Show all orbits ${worldShowAllOrbits ? 'ON' : 'OFF'} · HUD ${worldDebugHUD ? 'ON' : 'OFF'}`,
+    [worldBloomPreset, worldDebugHUD, worldOrbitDim, worldSelectiveBloom, worldShowAllOrbits, worldSystemPreset],
   )
 
   const handleClear = async () => {
@@ -77,6 +86,8 @@ export function SettingsPage({ onDataChanged, appearance, onAppearanceChange }: 
     globalThis.localStorage?.setItem('worldSelectiveBloom', worldSelectiveBloom ? '1' : '0')
     globalThis.localStorage?.setItem('worldShowAllOrbits', worldShowAllOrbits ? '1' : '0')
     globalThis.localStorage?.setItem('worldBloomPreset', worldBloomPreset)
+    globalThis.localStorage?.setItem('worldSystemPreset', worldSystemPreset)
+    globalThis.localStorage?.setItem('worldDebugHUD', worldDebugHUD ? '1' : '0')
     window.location.reload()
   }
 
@@ -157,6 +168,17 @@ export function SettingsPage({ onDataChanged, appearance, onAppearanceChange }: 
               <option value="normal">normal</option>
               <option value="hot">hot</option>
             </select>
+          </label>
+          <label>
+            System preset (worldSystemPreset)
+            <select value={worldSystemPreset} onChange={(event) => setWorldSystemPreset(event.target.value === 'compact' ? 'compact' : 'normal')}>
+              <option value="normal">normal</option>
+              <option value="compact">compact</option>
+            </select>
+          </label>
+          <label className="settings-toggle">
+            <input type="checkbox" checked={worldDebugHUD} onChange={(event) => setWorldDebugHUD(event.target.checked)} />
+            Показывать HUD (worldDebugHUD)
           </label>
           <label className="settings-toggle">
             <input type="checkbox" checked={worldShowAllOrbits} onChange={(event) => setWorldShowAllOrbits(event.target.checked)} />

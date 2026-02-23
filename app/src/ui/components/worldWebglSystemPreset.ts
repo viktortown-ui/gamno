@@ -2,6 +2,7 @@ export type WorldSystemPreset = 'normal' | 'compact'
 
 export interface WorldSystemPresetSpec {
   orbitRadiusScale: number
+  maxOrbitRadius: number
   innerInclinationMaxDeg: number
   outerInclinationMaxDeg: number
 }
@@ -9,11 +10,13 @@ export interface WorldSystemPresetSpec {
 const SYSTEM_PRESET_SPECS: Record<WorldSystemPreset, WorldSystemPresetSpec> = {
   normal: {
     orbitRadiusScale: 1,
+    maxOrbitRadius: Number.POSITIVE_INFINITY,
     innerInclinationMaxDeg: 8,
     outerInclinationMaxDeg: 14,
   },
   compact: {
     orbitRadiusScale: 0.75,
+    maxOrbitRadius: 7.4,
     innerInclinationMaxDeg: 6,
     outerInclinationMaxDeg: 10,
   },

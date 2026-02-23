@@ -1,7 +1,7 @@
 /* @vitest-environment jsdom */
 import { describe, expect, it } from 'vitest'
 import * as THREE from 'three'
-import { findMagnetPlanet, getPlanetVisualScaleForMinPixelRadius, readWorldMinPlanetPixelRadius } from './worldWebglPicking'
+import { createPlanetPickProxy, findMagnetPlanet, getPlanetVisualScaleForMinPixelRadius, PICK_LAYER, PICK_PROXY_SCALE, readWorldMinPlanetPixelRadius } from './worldWebglPicking'
 
 describe('worldWebglPicking', () => {
   it('reads minimum planet pixel radius from localStorage values', () => {
@@ -19,18 +19,14 @@ describe('worldWebglPicking', () => {
     camera.lookAt(0, 0, 0)
     camera.updateMatrixWorld()
 
-    const proxy = new THREE.Mesh(
-      new THREE.SphereGeometry(1, 12, 12),
-      new THREE.MeshBasicMaterial({ visible: false }),
-    )
-    proxy.userData.planetId = 'planet:pick'
-    proxy.layers.set(2)
+    const proxy = createPlanetPickProxy('planet:pick', 0.5)
 
     const raycaster = new THREE.Raycaster()
-    raycaster.layers.set(2)
+    raycaster.layers.set(PICK_LAYER)
     raycaster.setFromCamera(new THREE.Vector2(0, 0), camera)
     const hit = raycaster.intersectObjects([proxy], true)[0]
 
+    expect(proxy.geometry.parameters.radius).toBeCloseTo(0.5 * PICK_PROXY_SCALE)
     expect(hit?.object.userData.planetId).toBe('planet:pick')
   })
 

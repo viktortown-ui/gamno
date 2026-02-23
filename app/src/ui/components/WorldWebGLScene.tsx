@@ -22,7 +22,7 @@ import { applySceneEnvironment, collectLightingDiagnostics, createIBL, warnIfLig
 import { advanceOrbitPhase, buildPlanetOrbitSpec, getOrbitVisualStylePreset, isFlagOn, orbitLocalPoint, relaxOrbitPhases, resolveOrbitVisualState, type OrbitSpec } from './worldWebglOrbits'
 import { getWorldScaleSpec } from './worldWebglScaleSpec'
 import { getWorldSystemPresetSpec } from './worldWebglSystemPreset'
-import { findMagnetPlanet, getPlanetVisualScaleForMinPixelRadius, readWorldMinPlanetPixelRadius } from './worldWebglPicking'
+import { createPlanetPickProxy, findMagnetPlanet, getPlanetVisualScaleForMinPixelRadius, PICK_LAYER, readWorldMinPlanetPixelRadius } from './worldWebglPicking'
 
 interface WorldWebGLSceneProps {
   snapshot: WorldMapSnapshot
@@ -58,8 +58,6 @@ const EXPOSURE_RANGE = { min: 0.9, max: 1.1 }
 const EXPOSURE_DISTANCE_RANGE = { min: 1, max: 1.15 }
 const WORLD_SCALE_SPEC = getWorldScaleSpec()
 const WORLD_SYSTEM_PRESET = getWorldSystemPresetSpec()
-const PICK_LAYER = 2
-const PICK_SCALE = 2.2
 type ExposureMode = 'static' | 'distance'
 
 function readExposureMode(): ExposureMode {
@@ -137,7 +135,7 @@ const worldDebugIBL = import.meta.env.DEV && globalThis.localStorage?.getItem('w
 const worldDebugLighting = import.meta.env.DEV && globalThis.localStorage?.getItem('worldDebugLighting') === '1'
 const worldForceUnlitPlanets = globalThis.localStorage?.getItem('worldForceUnlitPlanets') === '1'
 const worldNoPost = globalThis.localStorage?.getItem('worldNoPost') === '1'
-const worldDebugHUD = globalThis.localStorage?.getItem('worldDebugHUD') === '1'
+const worldDebugHUD = isFlagOn('worldDebugHUD')
 const worldDebugOrbits = import.meta.env.DEV && globalThis.localStorage?.getItem('worldDebugOrbits') === '1'
 const worldOrbitFadeDebug = import.meta.env.DEV && globalThis.localStorage?.getItem('worldOrbitFadeDebug') === '1'
 let iblDebugLogged = false
@@ -159,7 +157,7 @@ function computeDebugBoundingRadius(snapshot: WorldMapSnapshot, planets: WorldMa
     const point = toWorldPosition(snapshot, planet)
     return Math.max(acc, point.length())
   }, 0)
-  const maxRingRadius = snapshot.rings.reduce((acc, ring) => Math.max(acc, ring.radius * 0.045 * WORLD_SCALE_SPEC.orbitRadiusScale * WORLD_SYSTEM_PRESET.orbitRadiusScale), 0)
+  const maxRingRadius = snapshot.rings.reduce((acc, ring) => Math.max(acc, Math.min(ring.radius * 0.045 * WORLD_SCALE_SPEC.orbitRadiusScale * WORLD_SYSTEM_PRESET.orbitRadiusScale, WORLD_SYSTEM_PRESET.maxOrbitRadius)), 0)
   return Math.max(maxPlanetRadius, maxRingRadius)
 }
 
@@ -429,7 +427,10 @@ export function WorldWebGLScene({
         planet.order,
         radius,
         WORLD_SCALE_SPEC.orbitRadiusScale * WORLD_SYSTEM_PRESET.orbitRadiusScale,
-        (1.9 + planets.length + 2) * WORLD_SCALE_SPEC.orbitRadiusScale * WORLD_SYSTEM_PRESET.orbitRadiusScale,
+        Math.min(
+          (1.9 + planets.length + 2) * WORLD_SCALE_SPEC.orbitRadiusScale * WORLD_SYSTEM_PRESET.orbitRadiusScale,
+          WORLD_SYSTEM_PRESET.maxOrbitRadius,
+        ),
         { inner: WORLD_SYSTEM_PRESET.innerInclinationMaxDeg, outer: WORLD_SYSTEM_PRESET.outerInclinationMaxDeg },
         {
           coreRadius: 1.95 * WORLD_SCALE_SPEC.coreRadiusScale,
@@ -439,12 +440,7 @@ export function WorldWebGLScene({
       orbitByPlanetId.set(planet.id, orbit)
       phaseInputs.push({ id: planet.id, orbitRadius: orbit.radiusHint, planetRadius: radius, phase: orbit.phase })
       mesh.userData.planetId = planet.id
-      const pickProxy = new THREE.Mesh(
-        new THREE.SphereGeometry(radius * PICK_SCALE, 18, 18),
-        new THREE.MeshBasicMaterial({ color: 0xffffff, visible: false }),
-      )
-      pickProxy.layers.set(PICK_LAYER)
-      pickProxy.userData.planetId = planet.id
+      const pickProxy = createPlanetPickProxy(planet.id, radius)
 
       const orbitGroup = new THREE.Group()
       orbitGroup.rotation.x = orbit.inclination

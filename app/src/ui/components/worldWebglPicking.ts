@@ -1,5 +1,19 @@
 import * as THREE from 'three'
 
+export const PICK_PROXY_SCALE = 2.2
+export const PICK_LAYER = 2
+
+export function createPlanetPickProxy(planetId: string, visibleRadius: number): THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial> {
+  const proxy = new THREE.Mesh(
+    new THREE.SphereGeometry(visibleRadius * PICK_PROXY_SCALE, 18, 18),
+    new THREE.MeshBasicMaterial({ color: 0xffffff, visible: false }),
+  )
+  proxy.layers.set(PICK_LAYER)
+  proxy.userData.planetId = planetId
+  return proxy
+}
+
+
 export function readWorldMinPlanetPixelRadius(): number {
   const value = globalThis.localStorage?.getItem('worldMinPlanetPx')
   if (value === '12') return 12
