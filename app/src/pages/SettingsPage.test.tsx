@@ -35,7 +35,7 @@ describe('SettingsPage debug panel', () => {
       root.render(
         <SettingsPage
           onDataChanged={async () => undefined}
-          appearance={{ theme: 'dark', motion: 'normal', transparency: 'glass', worldUiVariant: 'instrument', worldRenderMode: 'webgl' }}
+          appearance={{ theme: 'dark', motion: 'normal', transparency: 'glass', worldUiVariant: 'instrument', worldRenderMode: 'webgl', worldLookPreset: 'clean', worldQuality: 'standard' }}
           onAppearanceChange={() => undefined}
         />,
       )
@@ -109,7 +109,7 @@ describe('SettingsPage debug panel', () => {
       root.render(
         <SettingsPage
           onDataChanged={async () => undefined}
-          appearance={{ theme: 'dark', motion: 'normal', transparency: 'glass', worldUiVariant: 'instrument', worldRenderMode: 'webgl' }}
+          appearance={{ theme: 'dark', motion: 'normal', transparency: 'glass', worldUiVariant: 'instrument', worldRenderMode: 'webgl', worldLookPreset: 'clean', worldQuality: 'standard' }}
           onAppearanceChange={() => undefined}
         />,
       )
@@ -145,7 +145,7 @@ describe('SettingsPage debug panel', () => {
       root.render(
         <SettingsPage
           onDataChanged={async () => undefined}
-          appearance={{ theme: 'dark', motion: 'normal', transparency: 'glass', worldUiVariant: 'instrument', worldRenderMode: 'webgl' }}
+          appearance={{ theme: 'dark', motion: 'normal', transparency: 'glass', worldUiVariant: 'instrument', worldRenderMode: 'webgl', worldLookPreset: 'clean', worldQuality: 'standard' }}
           onAppearanceChange={() => undefined}
         />,
       )

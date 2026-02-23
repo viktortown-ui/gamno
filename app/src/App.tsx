@@ -110,6 +110,8 @@ function DesktopApp() {
     document.documentElement.dataset.theme = appearance.theme
     document.documentElement.dataset.motion = appearance.motion
     document.documentElement.dataset.transparency = appearance.transparency
+    window.localStorage.setItem('worldLookPreset', appearance.worldLookPreset)
+    window.localStorage.setItem('worldQuality', appearance.worldQuality)
     saveAppearanceSettings(appearance)
   }, [appearance])
 
@@ -170,7 +172,7 @@ function DesktopApp() {
           <Route path="/" element={<Navigate to="/world" replace />} />
           <Route path="/start" element={<StartPage onDone={loadData} hintsEnabled={hintsEnabled} onHintsChange={setHintsEnabled} />} />
           <Route path="/launch" element={<Navigate to="/start" replace />} />
-          <Route path="/world" element={<WorldPage uiVariant={appearance.worldUiVariant} renderMode={appearance.worldRenderMode} />} />
+          <Route path="/world" element={<WorldPage uiVariant={appearance.worldUiVariant} renderMode={appearance.worldRenderMode} lookPreset={appearance.worldLookPreset} />} />
           <Route path="/map" element={<Navigate to="/world" replace />} />
           <Route path="/core" element={<CorePage onSaved={loadData} latest={latestCheckin} previous={checkins[1]} templateValues={templateValues} activeQuest={activeQuest} onQuestChange={loadData} checkins={checkins} activeGoalSummary={frame ? { title: frame.payload.goal.active?.title ?? 'Цель', score: frame.payload.goal.goalScore, gap: frame.payload.goal.gap, trend: null } : null} />} />
           <Route path="/dashboard" element={<DashboardPage checkins={checkins} activeQuest={activeQuest} onQuestChange={loadData} />} />

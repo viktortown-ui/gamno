@@ -63,7 +63,7 @@ function setHashPlanetId(planetId: string | null): void {
   window.location.hash = query ? `${WORLD_ROUTE}?${query}` : WORLD_ROUTE
 }
 
-export function WorldPage({ uiVariant = 'instrument', renderMode = 'webgl' }: { uiVariant?: 'instrument' | 'cinematic'; renderMode?: 'svg' | 'webgl' }) {
+export function WorldPage({ uiVariant = 'instrument', renderMode = 'webgl', lookPreset = 'clean' }: { uiVariant?: 'instrument' | 'cinematic'; renderMode?: 'svg' | 'webgl'; lookPreset?: 'clean' | 'cinematic' }) {
   const navigate = useNavigate()
   const [worldMapSnapshot, setWorldMapSnapshot] = useState<WorldMapSnapshot | null>(null)
   const [frames, setFrames] = useState<Array<{ ts: number; payload: FrameSnapshot }>>([])
@@ -271,6 +271,7 @@ export function WorldPage({ uiVariant = 'instrument', renderMode = 'webgl' }: { 
             <WorldWebGLScene
               snapshot={worldMapSnapshot}
               uiVariant={uiVariant}
+              lookPreset={lookPreset}
               selectedPlanetId={selectedPlanetId}
               showNeighborLabels
               fxEvents={fxEvents}

@@ -529,6 +529,22 @@ input:focus-visible {
   background: radial-gradient(circle at 25% 18%, rgba(126, 161, 255, 0.22), transparent 50%), #050c1e;
 }
 
+.world-webgl--clean {
+  background:
+    radial-gradient(circle at 28% 18%, rgba(126, 161, 255, 0.18), transparent 52%),
+    radial-gradient(circle at 82% 78%, rgba(58, 96, 178, 0.14), transparent 58%),
+    #050c1e;
+}
+
+.world-webgl--cinematic {
+  background:
+    radial-gradient(circle at 50% 42%, rgba(118, 170, 255, 0.2), transparent 46%),
+    radial-gradient(circle at 18% 16%, rgba(109, 210, 224, 0.17), transparent 42%),
+    radial-gradient(circle at 84% 12%, rgba(151, 115, 255, 0.16), transparent 45%),
+    radial-gradient(ellipse at center, rgba(4, 10, 24, 0) 42%, rgba(2, 6, 16, 0.66) 100%),
+    #040a18;
+}
+
 .world-webgl::before,
 .world-webgl::after {
   content: '';

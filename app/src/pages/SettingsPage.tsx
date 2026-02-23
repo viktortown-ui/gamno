@@ -8,6 +8,8 @@ import { resolveWorldDebugHUDPersistValue } from './settingsDebug'
 
 type BloomPreset = 'soft' | 'normal' | 'hot'
 type WorldSystemPreset = 'normal' | 'compact'
+type WorldLookPreset = 'clean' | 'cinematic'
+type WorldQuality = 'standard' | 'high'
 
 interface SettingsPageProps {
   onDataChanged: () => Promise<void>
@@ -32,6 +34,20 @@ function readWorldSystemPreset(): WorldSystemPreset {
   return 'normal'
 }
 
+function readWorldLookPreset(): WorldLookPreset {
+  return globalThis.localStorage?.getItem('worldLookPreset') === 'cinematic' ? 'cinematic' : 'clean'
+}
+
+function readWorldQuality(): WorldQuality {
+  return globalThis.localStorage?.getItem('worldQuality') === 'high' ? 'high' : 'standard'
+}
+
+function readWorldLutIntensity(): number {
+  const raw = Number(globalThis.localStorage?.getItem('worldLutIntensity'))
+  if (!Number.isFinite(raw)) return 0.44
+  return Math.min(1, Math.max(0, raw))
+}
+
 
 
 export function SettingsPage({ onDataChanged, appearance, onAppearanceChange }: SettingsPageProps) {
@@ -40,6 +56,10 @@ export function SettingsPage({ onDataChanged, appearance, onAppearanceChange }: 
   const [worldShowAllOrbits, setWorldShowAllOrbits] = useState(() => readFlag('worldShowAllOrbits'))
   const [worldBloomPreset, setWorldBloomPreset] = useState<BloomPreset>(() => readBloomPreset())
   const [worldSystemPreset, setWorldSystemPreset] = useState<WorldSystemPreset>(() => readWorldSystemPreset())
+  const [worldLookPreset, setWorldLookPreset] = useState<WorldLookPreset>(() => readWorldLookPreset())
+  const [worldQuality, setWorldQuality] = useState<WorldQuality>(() => readWorldQuality())
+  const [worldAO, setWorldAO] = useState(() => readFlag('worldAO'))
+  const [worldLutIntensity, setWorldLutIntensity] = useState(() => readWorldLutIntensity())
   const [worldDebugHUD, setWorldDebugHUD] = useState(() => readWorldDebugHUDFlag())
   const worldDeveloperUnlockClicksRef = useRef(0)
   const [worldDeveloperOverrideEnabled, setWorldDeveloperOverrideEnabled] = useState(() => readFlag('worldDeveloper'))
@@ -47,8 +67,8 @@ export function SettingsPage({ onDataChanged, appearance, onAppearanceChange }: 
   const worldDebugHUDEnabled = resolveWorldShowHud({ isDev: import.meta.env.DEV, worldDeveloper: worldDeveloperOverrideEnabled, worldDebugHUD })
 
   const debugSummary = useMemo(
-    () => `OrbitDim ${worldOrbitDim ? 'ON' : 'OFF'} · Selective Bloom ${worldSelectiveBloom ? 'ON' : 'OFF'} · Bloom ${worldBloomPreset} · Preset ${worldSystemPreset} · Show all orbits ${worldShowAllOrbits ? 'ON' : 'OFF'} · Dev mode ${developerMode ? 'ON' : 'OFF'} · HUD ${worldDebugHUDEnabled ? 'ON' : 'OFF'}`,
-    [developerMode, worldBloomPreset, worldDebugHUDEnabled, worldOrbitDim, worldSelectiveBloom, worldShowAllOrbits, worldSystemPreset],
+    () => `Look ${worldLookPreset} · Quality ${worldQuality} · AO ${worldAO ? 'ON' : 'OFF'} · LUT ${worldLutIntensity.toFixed(2)} · OrbitDim ${worldOrbitDim ? 'ON' : 'OFF'} · Selective Bloom ${worldSelectiveBloom ? 'ON' : 'OFF'} · Bloom ${worldBloomPreset} · Preset ${worldSystemPreset} · Show all orbits ${worldShowAllOrbits ? 'ON' : 'OFF'} · Dev mode ${developerMode ? 'ON' : 'OFF'} · HUD ${worldDebugHUDEnabled ? 'ON' : 'OFF'}`,
+    [developerMode, worldAO, worldBloomPreset, worldDebugHUDEnabled, worldLookPreset, worldLutIntensity, worldOrbitDim, worldQuality, worldSelectiveBloom, worldShowAllOrbits, worldSystemPreset],
   )
 
   const handleClear = async () => {
@@ -105,6 +125,10 @@ export function SettingsPage({ onDataChanged, appearance, onAppearanceChange }: 
     globalThis.localStorage?.setItem('worldShowAllOrbits', worldShowAllOrbits ? '1' : '0')
     globalThis.localStorage?.setItem('worldBloomPreset', worldBloomPreset)
     globalThis.localStorage?.setItem('worldSystemPreset', worldSystemPreset)
+    globalThis.localStorage?.setItem('worldLookPreset', worldLookPreset)
+    globalThis.localStorage?.setItem('worldQuality', worldQuality)
+    globalThis.localStorage?.setItem('worldAO', worldAO ? '1' : '0')
+    globalThis.localStorage?.setItem('worldLutIntensity', worldLutIntensity.toFixed(2))
     globalThis.localStorage?.setItem(getWorldDebugHUDStorageKey(), resolveWorldDebugHUDPersistValue({ developerMode, worldDebugHUD }))
     window.location.reload()
   }
@@ -165,6 +189,26 @@ export function SettingsPage({ onDataChanged, appearance, onAppearanceChange }: 
             </select>
           </label>
 
+          <label>Look preset
+            <select
+              value={appearance.worldLookPreset}
+              onChange={(event) => onAppearanceChange({ ...appearance, worldLookPreset: event.target.value === 'cinematic' ? 'cinematic' : 'clean' })}
+            >
+              <option value="clean">Clean</option>
+              <option value="cinematic">Cinematic</option>
+            </select>
+          </label>
+
+          <label>World quality
+            <select
+              value={appearance.worldQuality}
+              onChange={(event) => onAppearanceChange({ ...appearance, worldQuality: event.target.value === 'high' ? 'high' : 'standard' })}
+            >
+              <option value="standard">Standard</option>
+              <option value="high">High</option>
+            </select>
+          </label>
+
         </div>
       </article>
 
@@ -195,6 +239,24 @@ export function SettingsPage({ onDataChanged, appearance, onAppearanceChange }: 
               <option value="compact">compact</option>
             </select>
           </label>
+          <label>
+            Look preset (worldLookPreset)
+            <select value={worldLookPreset} onChange={(event) => setWorldLookPreset(event.target.value === 'cinematic' ? 'cinematic' : 'clean')}>
+              <option value="clean">clean</option>
+              <option value="cinematic">cinematic</option>
+            </select>
+          </label>
+          <label>
+            Quality gate (worldQuality)
+            <select value={worldQuality} onChange={(event) => setWorldQuality(event.target.value === 'high' ? 'high' : 'standard')}>
+              <option value="standard">standard</option>
+              <option value="high">high</option>
+            </select>
+          </label>
+          <label>
+            LUT intensity (worldLutIntensity)
+            <input type="range" min={0} max={1} step={0.01} value={worldLutIntensity} onChange={(event) => setWorldLutIntensity(Number(event.target.value))} />
+          </label>
           {developerMode ? (
             <label className="settings-toggle">
               <input type="checkbox" checked={worldDebugHUD} onChange={(event) => setWorldDebugHUD(event.target.checked)} />
@@ -205,6 +267,12 @@ export function SettingsPage({ onDataChanged, appearance, onAppearanceChange }: 
             <input type="checkbox" checked={worldShowAllOrbits} onChange={(event) => setWorldShowAllOrbits(event.target.checked)} />
             Show all orbits (worldShowAllOrbits)
           </label>
+          {developerMode ? (
+            <label className="settings-toggle">
+              <input type="checkbox" checked={worldAO} onChange={(event) => setWorldAO(event.target.checked)} />
+              AO (worldAO, desktop + high only)
+            </label>
+          ) : null}
         </div>
         <div className="settings-actions">
           <SparkButton type="button" onClick={handleApplyWorldDebugSettings}>Применить и перезагрузить</SparkButton>

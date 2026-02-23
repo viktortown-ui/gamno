@@ -10,6 +10,8 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { FXAAShader } from 'three/examples/jsm/shaders/FXAAShader.js'
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js'
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js'
+import { LUTPass } from 'three/examples/jsm/postprocessing/LUTPass.js'
+import { SSAOPass } from 'three/examples/jsm/postprocessing/SSAOPass.js'
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js'
 import { resolveAAMode, type AAMode } from './worldWebglAAMode'
 import type { WorldMapPlanet, WorldMapSnapshot } from '../../core/worldMap/types'
@@ -32,6 +34,7 @@ interface WorldWebGLSceneProps {
   showNeighborLabels?: boolean
   fxEvents?: WorldFxEvent[]
   uiVariant?: 'instrument' | 'cinematic'
+  lookPreset?: 'clean' | 'cinematic'
   targetPlanetId?: string | null
 }
 
@@ -47,11 +50,75 @@ const BLOOM_PRESETS = {
 } as const
 
 type BloomPresetName = keyof typeof BLOOM_PRESETS
+type WorldLookPreset = 'clean' | 'cinematic'
+type WorldQuality = 'standard' | 'high'
 
 function readBloomPreset(): BloomPresetName {
   const preset = globalThis.localStorage?.getItem('worldBloomPreset')
   if (preset === 'soft' || preset === 'hot') return preset
   return 'normal'
+}
+
+function readWorldLookPreset(): WorldLookPreset {
+  return globalThis.localStorage?.getItem('worldLookPreset') === 'cinematic' ? 'cinematic' : 'clean'
+}
+
+function readWorldQuality(): WorldQuality {
+  return globalThis.localStorage?.getItem('worldQuality') === 'high' ? 'high' : 'standard'
+}
+
+function readWorldAoEnabled(): boolean {
+  return isFlagOn('worldAO')
+}
+
+function readWorldLutIntensity(lookPreset: WorldLookPreset): number {
+  const raw = Number(globalThis.localStorage?.getItem('worldLutIntensity'))
+  if (!Number.isFinite(raw)) return lookPreset === 'cinematic' ? 0.44 : 0
+  return THREE.MathUtils.clamp(raw, 0, 1)
+}
+
+function canUseDesktopAO(): boolean {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false
+  const coarsePointer = window.matchMedia('(pointer: coarse)').matches
+  return !coarsePointer && window.innerWidth >= 1024
+}
+
+function createCinematicLutTexture(size = 16): THREE.Data3DTexture {
+  const data = new Uint8Array(size * size * size * 4)
+  let ptr = 0
+  for (let b = 0; b < size; b += 1) {
+    for (let g = 0; g < size; g += 1) {
+      for (let r = 0; r < size; r += 1) {
+        const rf = r / (size - 1)
+        const gf = g / (size - 1)
+        const bf = b / (size - 1)
+        const luma = 0.2126 * rf + 0.7152 * gf + 0.0722 * bf
+        const contrast = THREE.MathUtils.clamp((luma - 0.5) * 1.08 + 0.5, 0, 1)
+        const shadowWeight = THREE.MathUtils.clamp((0.55 - contrast) / 0.55, 0, 1)
+        const highlightWeight = THREE.MathUtils.clamp((contrast - 0.55) / 0.45, 0, 1)
+        const satLift = 1.07
+        const sR = THREE.MathUtils.clamp((rf - luma) * satLift + luma, 0, 1)
+        const sG = THREE.MathUtils.clamp((gf - luma) * satLift + luma, 0, 1)
+        const sB = THREE.MathUtils.clamp((bf - luma) * satLift + luma, 0, 1)
+        const outR = THREE.MathUtils.clamp(sR + shadowWeight * -0.01 + highlightWeight * 0.04, 0, 1)
+        const outG = THREE.MathUtils.clamp(sG + shadowWeight * 0.02 + highlightWeight * -0.01, 0, 1)
+        const outB = THREE.MathUtils.clamp(sB + shadowWeight * 0.03 + highlightWeight * 0.05, 0, 1)
+        data[ptr] = Math.round(outR * 255)
+        data[ptr + 1] = Math.round(outG * 255)
+        data[ptr + 2] = Math.round(outB * 255)
+        data[ptr + 3] = 255
+        ptr += 4
+      }
+    }
+  }
+  const lut = new THREE.Data3DTexture(data, size, size, size)
+  lut.format = THREE.RGBAFormat
+  lut.type = THREE.UnsignedByteType
+  lut.minFilter = THREE.LinearFilter
+  lut.magFilter = THREE.LinearFilter
+  lut.generateMipmaps = false
+  lut.needsUpdate = true
+  return lut
 }
 
 const BLOOM_PARAMS = BLOOM_PRESETS[readBloomPreset()]
@@ -172,7 +239,9 @@ export function WorldWebGLScene({
   selectedPlanetId,
   fxEvents = [],
   uiVariant = 'instrument',
+  lookPreset,
 }: WorldWebGLSceneProps) {
+  const resolvedLookPreset = lookPreset ?? readWorldLookPreset()
   const sceneRef = useRef<HTMLDivElement | null>(null)
   const buttonRefs = useRef<Map<string, HTMLButtonElement>>(new Map())
   const pulseRef = useRef<Map<string, number>>(new Map())
@@ -189,6 +258,9 @@ export function WorldWebGLScene({
   const [showAllOrbitsEnabled] = useState<boolean>(() => readWorldShowAllOrbitsEnabled())
   const [developerModeEnabled] = useState<boolean>(() => resolveWorldDeveloperMode({ isDev: import.meta.env.DEV, worldDeveloper: readWorldDeveloperEnabled() }))
   const [showHud] = useState<boolean>(() => resolveWorldShowHud({ isDev: import.meta.env.DEV, worldDeveloper: readWorldDeveloperEnabled(), worldDebugHUD: readWorldDebugHUDEnabled() }))
+  const [worldQuality] = useState<WorldQuality>(() => readWorldQuality())
+  const [aoEnabled] = useState<boolean>(() => readWorldAoEnabled())
+  const [lutIntensity] = useState<number>(() => readWorldLutIntensity(resolvedLookPreset))
   const resetViewRef = useRef<() => void>(() => {})
   const selectedIdRef = useRef<string | null>(selectedPlanetId ?? null)
   const onPlanetSelectRef = useRef(onPlanetSelect)
@@ -237,12 +309,12 @@ export function WorldWebGLScene({
     renderer.outputColorSpace = THREE.SRGBColorSpace
     renderer.toneMapping = THREE.ACESFilmicToneMapping
     renderer.toneMappingExposure = THREE.MathUtils.clamp(devExposure, EXPOSURE_RANGE.min, EXPOSURE_RANGE.max)
+    renderer.setClearColor(0x000000, 0)
     host.appendChild(renderer.domElement)
     const gl = renderer.getContext()
     const webglVersion = gl.getParameter(gl.VERSION) as string
 
     const scene = new THREE.Scene()
-    scene.background = new THREE.Color(uiVariant === 'cinematic' ? 0x040a18 : 0x071022)
 
     const camera = new THREE.PerspectiveCamera(46, host.clientWidth / host.clientHeight, 0.1, 200)
     const fit = computeFitToViewState(snapshot, planets, camera.aspect)
@@ -291,6 +363,9 @@ export function WorldWebGLScene({
     controls.saveState()
 
     const isWebGL2 = renderer.capabilities.isWebGL2
+    const cinematicEnabled = resolvedLookPreset === 'cinematic'
+    const desktopAOAllowed = canUseDesktopAO() && worldQuality === 'high'
+    const shouldEnableAO = cinematicEnabled && aoEnabled && desktopAOAllowed
     const activeAAMode = resolveAAMode(import.meta.env.DEV ? devAAMode : null, isWebGL2)
     const renderTarget = new THREE.WebGLRenderTarget(host.clientWidth * pixelRatio, host.clientHeight * pixelRatio, {
       format: THREE.RGBAFormat,
@@ -301,6 +376,13 @@ export function WorldWebGLScene({
     const composer = new EffectComposer(renderer, renderTarget)
     composer.setPixelRatio(pixelRatio)
     composer.addPass(new RenderPass(scene, camera))
+    const ssaoPass = new SSAOPass(scene, camera, host.clientWidth * pixelRatio, host.clientHeight * pixelRatio)
+    ssaoPass.enabled = shouldEnableAO
+    ssaoPass.kernelRadius = 3
+    ssaoPass.minDistance = 0.001
+    ssaoPass.maxDistance = 0.055
+    ssaoPass.output = SSAOPass.OUTPUT.Default
+    composer.addPass(ssaoPass)
 
     const bloomRenderTarget = new THREE.WebGLRenderTarget(host.clientWidth * pixelRatio, host.clientHeight * pixelRatio, {
       format: THREE.RGBAFormat,
@@ -327,15 +409,33 @@ export function WorldWebGLScene({
     const bloomCompositePass = new ShaderPass(bloomCompositeMaterial)
     composer.addPass(bloomCompositePass)
 
+    const lutTexture = createCinematicLutTexture()
+    const lutPass = new LUTPass()
+    lutPass.enabled = cinematicEnabled
+    lutPass.lut = lutTexture
+    lutPass.intensity = cinematicEnabled ? lutIntensity : 0
+    composer.addPass(lutPass)
+
     const vignettePass = new ShaderPass({
       uniforms: {
         tDiffuse: { value: null },
-        strength: { value: 0.26 },
+        strength: { value: cinematicEnabled ? 0.31 : 0.26 },
       },
       vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
       fragmentShader: `uniform sampler2D tDiffuse; uniform float strength; varying vec2 vUv; void main() { vec4 color = texture2D(tDiffuse, vUv); vec2 centered = vUv - 0.5; float vig = smoothstep(0.82, 0.22, dot(centered, centered)); color.rgb *= mix(1.0 - strength, 1.0, vig); gl_FragColor = color; }`,
     })
     composer.addPass(vignettePass)
+    const grainPass = new ShaderPass({
+      uniforms: {
+        tDiffuse: { value: null },
+        time: { value: 0 },
+        amount: { value: cinematicEnabled ? 0.018 : 0 },
+      },
+      vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+      fragmentShader: `uniform sampler2D tDiffuse; uniform float time; uniform float amount; varying vec2 vUv; float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123); } void main() { vec4 color = texture2D(tDiffuse, vUv); float noise = hash(vUv * vec2(1432.0, 931.0) + vec2(time * 0.0017, time * 0.0013)) - 0.5; color.rgb += noise * amount; gl_FragColor = color; }`,
+    })
+    grainPass.enabled = cinematicEnabled
+    composer.addPass(grainPass)
     const fxaaPass = new ShaderPass(FXAAShader)
     fxaaPass.enabled = activeAAMode === 'fxaa'
     fxaaPass.material.uniforms.resolution.value.set(1 / (host.clientWidth * pixelRatio), 1 / (host.clientHeight * pixelRatio))
@@ -921,6 +1021,9 @@ export function WorldWebGLScene({
       bloomPass.threshold = BLOOM_PARAMS.threshold
       bloomPass.radius = BLOOM_PARAMS.radius
       bloomPass.strength = devBloomStrength
+      lutPass.intensity = cinematicEnabled ? lutIntensity : 0
+      vignettePass.material.uniforms.strength.value = cinematicEnabled ? 0.31 : 0.26
+      grainPass.material.uniforms.time.value = time
       if (worldNoPost) {
         renderer.render(scene, camera)
       } else if (selectiveBloomEnabled) {
@@ -948,6 +1051,7 @@ export function WorldWebGLScene({
       bloomComposer.setPixelRatio(nextPixelRatio)
       bloomComposer.setSize(clientWidth, clientHeight)
       bloomPass.setSize(clientWidth, clientHeight)
+      ssaoPass.setSize(clientWidth * nextPixelRatio, clientHeight * nextPixelRatio)
       fxaaPass.material.uniforms.resolution.value.set(1 / (clientWidth * nextPixelRatio), 1 / (clientHeight * nextPixelRatio))
       planetOrbitLines.forEach(({ line, glowLine }) => {
         const material = line.material as LineMaterial
@@ -998,6 +1102,7 @@ export function WorldWebGLScene({
       })
       stars.dispose()
       dustTexture.dispose()
+      lutTexture.dispose()
       ibl.dispose()
     }
   }, [
@@ -1022,6 +1127,10 @@ export function WorldWebGLScene({
     showHud,
     stormAlpha,
     uiVariant,
+    resolvedLookPreset,
+    aoEnabled,
+    worldQuality,
+    lutIntensity,
   ])
 
   useEffect(() => {
@@ -1067,7 +1176,7 @@ export function WorldWebGLScene({
 
   return (
     <div
-      className={`world-webgl ${reducedMotion ? 'world-webgl--reduced-motion' : ''}`.trim()}
+      className={`world-webgl world-webgl--${resolvedLookPreset} ${reducedMotion ? 'world-webgl--reduced-motion' : ''}`.trim()}
       style={overlayStyle}
       data-motion={reducedMotion ? 'reduced' : 'normal'}
       role="region"
