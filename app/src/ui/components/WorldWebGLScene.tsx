@@ -305,7 +305,7 @@ export function WorldWebGLScene({
     const bloomPass = new UnrealBloomPass(new THREE.Vector2(host.clientWidth, host.clientHeight), devBloomStrength, BLOOM_PARAMS.radius, BLOOM_PARAMS.threshold)
     bloomComposer.addPass(bloomPass)
 
-    const bloomCompositePass = new ShaderPass({
+    const bloomCompositeMaterial = new THREE.ShaderMaterial({
       uniforms: {
         tDiffuse: { value: null },
         bloomTexture: { value: bloomRenderTarget.texture },
@@ -313,6 +313,7 @@ export function WorldWebGLScene({
       vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
       fragmentShader: `uniform sampler2D tDiffuse; uniform sampler2D bloomTexture; varying vec2 vUv; void main() { vec4 baseColor = texture2D(tDiffuse, vUv); vec4 bloomColor = texture2D(bloomTexture, vUv); gl_FragColor = baseColor + bloomColor; }`,
     })
+    const bloomCompositePass = new ShaderPass(bloomCompositeMaterial)
     composer.addPass(bloomCompositePass)
 
     const vignettePass = new ShaderPass({
