@@ -23,6 +23,7 @@ import { advanceOrbitPhase, buildPlanetOrbitSpec, getOrbitVisualStylePreset, isF
 import { getWorldScaleSpec } from './worldWebglScaleSpec'
 import { getWorldSystemPresetSpec } from './worldWebglSystemPreset'
 import { createPlanetPickProxy, findMagnetPlanet, getPlanetVisualScaleForMinPixelRadius, PICK_LAYER, readWorldMinPlanetPixelRadius } from './worldWebglPicking'
+import { isWorldDebugHUDEnabledInDev } from './worldDebugHUD'
 
 interface WorldWebGLSceneProps {
   snapshot: WorldMapSnapshot
@@ -132,12 +133,8 @@ function seedFloat(seed: number): number {
 }
 
 const worldDebugIBL = import.meta.env.DEV && globalThis.localStorage?.getItem('worldDebugIBL') === '1'
-const worldDebugLighting = import.meta.env.DEV && globalThis.localStorage?.getItem('worldDebugLighting') === '1'
 const worldForceUnlitPlanets = globalThis.localStorage?.getItem('worldForceUnlitPlanets') === '1'
 const worldNoPost = globalThis.localStorage?.getItem('worldNoPost') === '1'
-const worldDebugHUD = isFlagOn('worldDebugHUD')
-const worldDebugOrbits = import.meta.env.DEV && globalThis.localStorage?.getItem('worldDebugOrbits') === '1'
-const worldOrbitFadeDebug = import.meta.env.DEV && globalThis.localStorage?.getItem('worldOrbitFadeDebug') === '1'
 let iblDebugLogged = false
 
 
@@ -503,7 +500,7 @@ export function WorldWebGLScene({
     const systemWorldPos = new THREE.Vector3()
     const coreWorldPos = new THREE.Vector3()
     const orbitBounds = new THREE.Box2()
-    if (worldDebugOrbits) {
+    if (import.meta.env.DEV && isWorldDebugHUDEnabledInDev()) {
       const crossMaterial = new THREE.LineBasicMaterial({ color: 0x00ffaa })
       const crossGeometry = new THREE.BufferGeometry().setFromPoints([
         new THREE.Vector3(-0.2, 0, 0),
@@ -871,7 +868,7 @@ export function WorldWebGLScene({
       } else {
         setSelectedPlanetLabel(null)
       }
-      if (worldDebugHUD || (import.meta.env.DEV && worldDebugLighting) || worldOrbitFadeDebug) {
+      if (import.meta.env.DEV && isWorldDebugHUDEnabledInDev()) {
         const selectedMesh = selectedIdRef.current ? planetMeshes.get(selectedIdRef.current) : null
         const selectedMaterial = selectedMesh?.material
         const diagnostics = collectLightingDiagnostics(scene)
@@ -1119,7 +1116,7 @@ export function WorldWebGLScene({
           selIdx {orbitMaterialDebugState?.selectedOrbitIndex ?? 'none'}
         </span>
       </div>
-      {(worldDebugHUD || (import.meta.env.DEV && worldDebugLighting) || worldOrbitFadeDebug) && debugState ? (
+      {import.meta.env.DEV && isWorldDebugHUDEnabledInDev() && debugState ? (
         <div className="world-webgl__debug" data-testid="world-webgl-debug">
           <span>gl {debugState.webglVersion}</span>
           <span>cam {debugState.cameraDistance.toFixed(2)} · r {debugState.boundingRadius.toFixed(2)} · exp {debugState.exposure.toFixed(2)} · α {debugState.overlayAlpha.toFixed(2)}</span>
@@ -1130,13 +1127,6 @@ export function WorldWebGLScene({
           <span>sel {debugState.selectedMesh} · {debugState.selectedMaterial} · #{debugState.selectedColor} · em #{debugState.selectedEmissive}</span>
           <span>m {debugState.selectedMetalness.toFixed(2)} · r {debugState.selectedRoughness.toFixed(2)} · env {debugState.selectedEnvMapIntensity.toFixed(2)} · ei {debugState.selectedEmissiveIntensity.toFixed(2)}</span>
           <span>flags t:{String(debugState.selectedTransparent)} dw:{String(debugState.selectedDepthWrite)} dt:{String(debugState.selectedDepthTest)} tm:{String(debugState.selectedToneMapped)}</span>
-          {worldOrbitFadeDebug ? (
-            <span>
-              orbitFade base o:{orbitVisualStyle.baseOrbit.opacity.toFixed(2)} lw×{orbitVisualStyle.baseOrbit.lineWidthScale.toFixed(2)} rgb×{orbitVisualStyle.baseOrbit.colorMultiplier.toFixed(2)} ·
-              near o:{orbitVisualStyle.nearOrbit.opacity.toFixed(2)} lw×{orbitVisualStyle.nearOrbit.lineWidthScale.toFixed(2)} rgb×{orbitVisualStyle.nearOrbit.colorMultiplier.toFixed(2)} ·
-              sel o:{orbitVisualStyle.selectedOrbit.opacity.toFixed(2)} lw×{orbitVisualStyle.selectedOrbit.lineWidthScale.toFixed(2)} rgb×{orbitVisualStyle.selectedOrbit.colorMultiplier.toFixed(2)} · inner idx:0/1
-            </span>
-          ) : null}
           {import.meta.env.DEV ? (
             <>
               <label>

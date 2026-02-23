@@ -3,6 +3,7 @@ import { clearAllData, exportDataBlob, importDataBlob, seedTestData } from '../c
 import type { AppearanceSettings } from '../ui/appearance'
 import { SparkButton } from '../ui/SparkButton'
 import { hardResetSiteAndReload } from '../core/cacheReset'
+import { getWorldDebugHUDStorageKey, readWorldDebugHUDFlag } from '../ui/components/worldDebugHUD'
 
 type BloomPreset = 'soft' | 'normal' | 'hot'
 type WorldSystemPreset = 'normal' | 'compact'
@@ -36,11 +37,12 @@ export function SettingsPage({ onDataChanged, appearance, onAppearanceChange }: 
   const [worldShowAllOrbits, setWorldShowAllOrbits] = useState(() => readFlag('worldShowAllOrbits'))
   const [worldBloomPreset, setWorldBloomPreset] = useState<BloomPreset>(() => readBloomPreset())
   const [worldSystemPreset, setWorldSystemPreset] = useState<WorldSystemPreset>(() => readWorldSystemPreset())
-  const [worldDebugHUD, setWorldDebugHUD] = useState(() => readFlag('worldDebugHUD'))
+  const [worldDebugHUD, setWorldDebugHUD] = useState(() => readWorldDebugHUDFlag())
+  const worldDebugHUDEnabled = import.meta.env.DEV && worldDebugHUD
 
   const debugSummary = useMemo(
-    () => `OrbitDim ${worldOrbitDim ? 'ON' : 'OFF'} · Selective Bloom ${worldSelectiveBloom ? 'ON' : 'OFF'} · Bloom ${worldBloomPreset} · Preset ${worldSystemPreset} · Show all orbits ${worldShowAllOrbits ? 'ON' : 'OFF'} · HUD ${worldDebugHUD ? 'ON' : 'OFF'}`,
-    [worldBloomPreset, worldDebugHUD, worldOrbitDim, worldSelectiveBloom, worldShowAllOrbits, worldSystemPreset],
+    () => `OrbitDim ${worldOrbitDim ? 'ON' : 'OFF'} · Selective Bloom ${worldSelectiveBloom ? 'ON' : 'OFF'} · Bloom ${worldBloomPreset} · Preset ${worldSystemPreset} · Show all orbits ${worldShowAllOrbits ? 'ON' : 'OFF'} · HUD ${worldDebugHUDEnabled ? 'ON' : 'OFF'}`,
+    [worldBloomPreset, worldDebugHUDEnabled, worldOrbitDim, worldSelectiveBloom, worldShowAllOrbits, worldSystemPreset],
   )
 
   const handleClear = async () => {
@@ -87,7 +89,7 @@ export function SettingsPage({ onDataChanged, appearance, onAppearanceChange }: 
     globalThis.localStorage?.setItem('worldShowAllOrbits', worldShowAllOrbits ? '1' : '0')
     globalThis.localStorage?.setItem('worldBloomPreset', worldBloomPreset)
     globalThis.localStorage?.setItem('worldSystemPreset', worldSystemPreset)
-    globalThis.localStorage?.setItem('worldDebugHUD', worldDebugHUD ? '1' : '0')
+    globalThis.localStorage?.setItem(getWorldDebugHUDStorageKey(), worldDebugHUD ? '1' : '0')
     window.location.reload()
   }
 
@@ -176,10 +178,12 @@ export function SettingsPage({ onDataChanged, appearance, onAppearanceChange }: 
               <option value="compact">compact</option>
             </select>
           </label>
-          <label className="settings-toggle">
-            <input type="checkbox" checked={worldDebugHUD} onChange={(event) => setWorldDebugHUD(event.target.checked)} />
-            Показывать HUD (worldDebugHUD)
-          </label>
+          {import.meta.env.DEV ? (
+            <label className="settings-toggle">
+              <input type="checkbox" checked={worldDebugHUD} onChange={(event) => setWorldDebugHUD(event.target.checked)} />
+              Показывать HUD (worldDebugHUD)
+            </label>
+          ) : null}
           <label className="settings-toggle">
             <input type="checkbox" checked={worldShowAllOrbits} onChange={(event) => setWorldShowAllOrbits(event.target.checked)} />
             Show all orbits (worldShowAllOrbits)
