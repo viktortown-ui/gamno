@@ -13,6 +13,13 @@ vi.mock('react-router-dom', async () => {
   return { ...actual, useNavigate: () => navigateMock }
 })
 
+vi.mock('../core/storage/repo', () => ({
+  listCheckins: vi.fn(async () => []),
+  seedTestData: vi.fn(async () => undefined),
+}))
+
+HTMLCanvasElement.prototype.getContext = vi.fn(() => null) as typeof HTMLCanvasElement.prototype.getContext
+
 async function flush(): Promise<void> {
   await Promise.resolve()
   await Promise.resolve()
@@ -28,7 +35,7 @@ describe('StartPage', () => {
     await act(async () => {
       root.render(
         <HashRouter>
-          <StartPage onDone={async () => undefined} hintsEnabled={false} onHintsChange={() => undefined} />
+          <StartPage onDone={async () => undefined} hintsEnabled={false} onHintsChange={() => undefined} uiPreset="clean" worldLookPreset="clean" />
         </HashRouter>,
       )
     })

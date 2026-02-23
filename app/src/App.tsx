@@ -285,7 +285,7 @@ function DesktopApp() {
       <main className="content">
         <Routes>
           <Route path="/" element={<Navigate to="/world" replace />} />
-          <Route path="/start" element={<StartPage onDone={loadData} hintsEnabled={hintsEnabled} onHintsChange={setHintsEnabled} />} />
+          <Route path="/start" element={<StartPage onDone={loadData} hintsEnabled={hintsEnabled} onHintsChange={setHintsEnabled} uiPreset={appearance.uiPreset} worldLookPreset={appearance.worldLookPreset} />} />
           <Route path="/launch" element={<Navigate to="/start" replace />} />
           <Route path="/world" element={<WorldPage uiVariant={appearance.worldUiVariant} renderMode={appearance.worldRenderMode} lookPreset={appearance.worldLookPreset} />} />
           <Route path="/map" element={<Navigate to="/world" replace />} />
