@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import * as THREE from 'three'
 import type { WorldMapPlanet } from '../../core/worldMap/types'
-import { advanceOrbitPhase, buildPlanetOrbitSpec, getOrbitVisualStylePreset, orbitLocalPoint, relaxOrbitPhases, resolveOrbitVisualState } from './worldWebglOrbits'
+import { advanceOrbitPhase, buildPlanetOrbitSpec, getOrbitVisualStylePreset, isFlagOn, orbitLocalPoint, relaxOrbitPhases, resolveOrbitVisualState } from './worldWebglOrbits'
 
 const planet: WorldMapPlanet = {
   id: 'planet:alpha',
@@ -144,6 +144,28 @@ describe('worldWebglOrbits', () => {
       blending: style.baseOrbit.blending,
       glowVisible: style.baseOrbit.glowVisible,
     })
+  })
+
+
+  it('treats 1 and true as enabled values for feature flags', () => {
+    const originalLocalStorage = globalThis.localStorage
+    const storage = new Map<string, string>()
+    const fakeStorage = {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => { storage.set(key, value) },
+      removeItem: (key: string) => { storage.delete(key) },
+      clear: () => { storage.clear() },
+    }
+    Object.defineProperty(globalThis, 'localStorage', { value: fakeStorage, configurable: true })
+
+    globalThis.localStorage.setItem('worldOrbitDim', '1')
+    expect(isFlagOn('worldOrbitDim')).toBe(true)
+    globalThis.localStorage.setItem('worldOrbitDim', 'true')
+    expect(isFlagOn('worldOrbitDim')).toBe(true)
+    globalThis.localStorage.setItem('worldOrbitDim', '0')
+    expect(isFlagOn('worldOrbitDim')).toBe(false)
+
+    Object.defineProperty(globalThis, 'localStorage', { value: originalLocalStorage, configurable: true })
   })
 
   it('applies stronger dim preset when worldOrbitDim=1', () => {

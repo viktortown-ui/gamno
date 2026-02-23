@@ -74,6 +74,11 @@ export interface OrbitVisualStylePreset {
   selectedOrbit: OrbitStyleSpec
 }
 
+export function isFlagOn(key: string): boolean {
+  const raw = globalThis.localStorage?.getItem(key)?.trim().toLowerCase()
+  return raw === '1' || raw === 'true'
+}
+
 const ORBIT_VISUAL_STYLE_DEFAULT: OrbitVisualStylePreset = {
   baseLineWidth: 0.77,
   baseOrbit: { opacity: 0.08, lineWidthScale: 1, colorMultiplier: 1, glowOpacity: 0, blending: THREE.NormalBlending, glowVisible: false },
@@ -89,7 +94,7 @@ const ORBIT_VISUAL_STYLE_HARD_DIM: OrbitVisualStylePreset = {
 }
 
 function isHardOrbitDimEnabled(): boolean {
-  return globalThis.localStorage?.getItem('worldOrbitDim') === '1'
+  return isFlagOn('worldOrbitDim')
 }
 
 export function getOrbitVisualStylePreset(): OrbitVisualStylePreset {
