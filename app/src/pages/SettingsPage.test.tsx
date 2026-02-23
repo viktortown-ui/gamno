@@ -21,6 +21,8 @@ describe('SettingsPage debug panel', () => {
       configurable: true,
     })
 
+    globalThis.localStorage.setItem('worldDeveloper', '1')
+
     const container = document.createElement('div')
     document.body.appendChild(container)
     const root = createRoot(container)
@@ -81,5 +83,31 @@ describe('SettingsPage debug panel', () => {
       value: originalLocation,
       configurable: true,
     })
+  })
+
+  it('shows worldDebugHUD toggle for worldDeveloper override', async () => {
+    const { SettingsPage } = await import('./SettingsPage')
+    globalThis.localStorage.setItem('worldDeveloper', '1')
+
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+
+    await act(async () => {
+      root.render(
+        <SettingsPage
+          onDataChanged={async () => undefined}
+          appearance={{ theme: 'dark', motion: 'normal', transparency: 'glass', worldUiVariant: 'instrument', worldRenderMode: 'webgl' }}
+          onAppearanceChange={() => undefined}
+        />,
+      )
+    })
+
+    const toggles = [...container.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')]
+    const debugHudToggle = toggles.find((item) => item.parentElement?.textContent?.includes('worldDebugHUD'))
+    expect(debugHudToggle).toBeTruthy()
+
+    await act(async () => { root.unmount() })
+    container.remove()
   })
 })

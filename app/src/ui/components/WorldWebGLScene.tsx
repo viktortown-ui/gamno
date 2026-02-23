@@ -23,7 +23,7 @@ import { advanceOrbitPhase, buildPlanetOrbitSpec, getOrbitVisualStylePreset, isF
 import { getWorldScaleSpec } from './worldWebglScaleSpec'
 import { getWorldSystemPresetSpec } from './worldWebglSystemPreset'
 import { createPlanetPickProxy, findMagnetPlanet, getPlanetVisualScaleForMinPixelRadius, PICK_LAYER, readWorldMinPlanetPixelRadius } from './worldWebglPicking'
-import { isWorldDebugHUDEnabledInDev } from './worldDebugHUD'
+import { isWorldDebugHUDVisible } from './worldDebugHUD'
 
 interface WorldWebGLSceneProps {
   snapshot: WorldMapSnapshot
@@ -500,7 +500,7 @@ export function WorldWebGLScene({
     const systemWorldPos = new THREE.Vector3()
     const coreWorldPos = new THREE.Vector3()
     const orbitBounds = new THREE.Box2()
-    if (import.meta.env.DEV && isWorldDebugHUDEnabledInDev()) {
+    if (isWorldDebugHUDVisible()) {
       const crossMaterial = new THREE.LineBasicMaterial({ color: 0x00ffaa })
       const crossGeometry = new THREE.BufferGeometry().setFromPoints([
         new THREE.Vector3(-0.2, 0, 0),
@@ -868,7 +868,7 @@ export function WorldWebGLScene({
       } else {
         setSelectedPlanetLabel(null)
       }
-      if (import.meta.env.DEV && isWorldDebugHUDEnabledInDev()) {
+      if (isWorldDebugHUDVisible()) {
         const selectedMesh = selectedIdRef.current ? planetMeshes.get(selectedIdRef.current) : null
         const selectedMaterial = selectedMesh?.material
         const diagnostics = collectLightingDiagnostics(scene)
@@ -1116,7 +1116,7 @@ export function WorldWebGLScene({
           selIdx {orbitMaterialDebugState?.selectedOrbitIndex ?? 'none'}
         </span>
       </div>
-      {import.meta.env.DEV && isWorldDebugHUDEnabledInDev() && debugState ? (
+      {isWorldDebugHUDVisible() && debugState ? (
         <div className="world-webgl__debug" data-testid="world-webgl-debug">
           <span>gl {debugState.webglVersion}</span>
           <span>cam {debugState.cameraDistance.toFixed(2)} · r {debugState.boundingRadius.toFixed(2)} · exp {debugState.exposure.toFixed(2)} · α {debugState.overlayAlpha.toFixed(2)}</span>
