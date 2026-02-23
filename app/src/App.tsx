@@ -212,7 +212,10 @@ function DesktopApp() {
       <CommandPalette />
       <aside className="sidebar panel" data-testid="navigation-rail">
         <div className="sidebar__head">
-          <h2>Gamno</h2>
+          <div className="sidebar__brand">
+            <h2>ConcoreR</h2>
+            <p className="sidebar__subtitle">Контур Ядра</p>
+          </div>
           <button
             type="button"
             className="sidebar__toggle"

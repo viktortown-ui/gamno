@@ -115,6 +115,16 @@ code,
   margin-bottom: var(--space-2);
   padding: 0 var(--space-2);
 }
+.sidebar__brand {
+  display: grid;
+  gap: 2px;
+}
+.sidebar__subtitle {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-dim);
+  letter-spacing: 0.04em;
+}
 .sidebar h2 {
   margin: 0;
   text-transform: uppercase;
@@ -186,7 +196,9 @@ code,
   font-size: 12px;
 }
 .layout--sidebar-collapsed .nav-link__label,
-.layout--sidebar-collapsed .sidebar h2 { display: none; }
+.layout--sidebar-collapsed .sidebar__brand {
+  display: none;
+}
 .nav-link:hover,
 .nav-link--button:hover {
   border-color: color-mix(in srgb, var(--accent) 50%, var(--panel-border) 50%);

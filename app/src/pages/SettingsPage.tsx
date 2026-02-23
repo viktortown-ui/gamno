@@ -118,7 +118,7 @@ export function SettingsPage({ onDataChanged, appearance, onAppearanceChange }: 
     const link = document.createElement('a')
     const date = new Date().toLocaleDateString('ru-RU').replace(/\./g, '-')
     link.href = url
-    link.download = `gamno-backup-${date}.json`
+    link.download = `concorer-backup-${date}.json`
     link.click()
     URL.revokeObjectURL(url)
   }
