@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
-import { hardCacheResetAndReload } from './cacheReset'
+import { hardResetSiteAndReload } from './cacheReset'
 
-describe('hardCacheResetAndReload', () => {
+describe('hardResetSiteAndReload', () => {
   it('unregisters service workers, clears caches and reloads when APIs exist', async () => {
     const unregisterA = vi.fn(async () => true)
     const unregisterB = vi.fn(async () => true)
@@ -19,7 +19,7 @@ describe('hardCacheResetAndReload', () => {
     })
 
     const reload = vi.fn()
-    await hardCacheResetAndReload(reload)
+    await hardResetSiteAndReload(reload)
 
     expect(getRegistrations).toHaveBeenCalledTimes(1)
     expect(unregisterA).toHaveBeenCalledTimes(1)

@@ -1,8 +1,10 @@
-import type { ChangeEventHandler } from 'react'
+import { useMemo, useState, type ChangeEventHandler } from 'react'
 import { clearAllData, exportDataBlob, importDataBlob, seedTestData } from '../core/storage/repo'
 import type { AppearanceSettings } from '../ui/appearance'
 import { SparkButton } from '../ui/SparkButton'
-import { hardCacheResetAndReload } from '../core/cacheReset'
+import { hardResetSiteAndReload } from '../core/cacheReset'
+
+type BloomPreset = 'soft' | 'normal' | 'hot'
 
 interface SettingsPageProps {
   onDataChanged: () => Promise<void>
@@ -10,7 +12,28 @@ interface SettingsPageProps {
   onAppearanceChange: (next: AppearanceSettings) => void
 }
 
+function readFlag(key: string): boolean {
+  const raw = globalThis.localStorage?.getItem(key)?.trim().toLowerCase()
+  return raw === '1' || raw === 'true'
+}
+
+function readBloomPreset(): BloomPreset {
+  const raw = globalThis.localStorage?.getItem('worldBloomPreset')
+  if (raw === 'soft' || raw === 'normal' || raw === 'hot') return raw
+  return 'normal'
+}
+
 export function SettingsPage({ onDataChanged, appearance, onAppearanceChange }: SettingsPageProps) {
+  const [worldOrbitDim, setWorldOrbitDim] = useState(() => readFlag('worldOrbitDim'))
+  const [worldSelectiveBloom, setWorldSelectiveBloom] = useState(() => readFlag('worldSelectiveBloom'))
+  const [worldShowAllOrbits, setWorldShowAllOrbits] = useState(() => readFlag('worldShowAllOrbits'))
+  const [worldBloomPreset, setWorldBloomPreset] = useState<BloomPreset>(() => readBloomPreset())
+
+  const debugSummary = useMemo(
+    () => `OrbitDim ${worldOrbitDim ? 'ON' : 'OFF'} · Selective Bloom ${worldSelectiveBloom ? 'ON' : 'OFF'} · Bloom ${worldBloomPreset} · Show all orbits ${worldShowAllOrbits ? 'ON' : 'OFF'}`,
+    [worldBloomPreset, worldOrbitDim, worldSelectiveBloom, worldShowAllOrbits],
+  )
+
   const handleClear = async () => {
     if (!window.confirm('Это удалит все данные локально в браузере')) return
     await clearAllData()
@@ -37,10 +60,9 @@ export function SettingsPage({ onDataChanged, appearance, onAppearanceChange }: 
     event.target.value = ''
   }
 
-
   const handleHardCacheReset = async () => {
-    if (!window.confirm('Сбросить service worker, CacheStorage и перезагрузить страницу?')) return
-    await hardCacheResetAndReload()
+    if (!window.confirm('Сбросить service worker, CacheStorage и перезагрузить страницу? Это удалит оффлайн-кэш.')) return
+    await hardResetSiteAndReload()
   }
 
   const handleSeed = async () => {
@@ -48,6 +70,14 @@ export function SettingsPage({ onDataChanged, appearance, onAppearanceChange }: 
     const seed = raw ? Number(raw) : 42
     await seedTestData(30, Number.isFinite(seed) ? seed : 42)
     await onDataChanged()
+  }
+
+  const handleApplyWorldDebugSettings = () => {
+    globalThis.localStorage?.setItem('worldOrbitDim', worldOrbitDim ? '1' : '0')
+    globalThis.localStorage?.setItem('worldSelectiveBloom', worldSelectiveBloom ? '1' : '0')
+    globalThis.localStorage?.setItem('worldShowAllOrbits', worldShowAllOrbits ? '1' : '0')
+    globalThis.localStorage?.setItem('worldBloomPreset', worldBloomPreset)
+    window.location.reload()
   }
 
   return (
@@ -108,12 +138,42 @@ export function SettingsPage({ onDataChanged, appearance, onAppearanceChange }: 
         </div>
       </article>
 
+      <article className="panel settings-panel settings-debug-panel">
+        <h2>Debug / Advanced</h2>
+        <p className="settings-debug-status">{debugSummary}</p>
+        <div className="settings-debug-grid">
+          <label className="settings-toggle">
+            <input type="checkbox" checked={worldOrbitDim} onChange={(event) => setWorldOrbitDim(event.target.checked)} />
+            OrbitDim (worldOrbitDim)
+          </label>
+          <label className="settings-toggle">
+            <input type="checkbox" checked={worldSelectiveBloom} onChange={(event) => setWorldSelectiveBloom(event.target.checked)} />
+            Selective Bloom (worldSelectiveBloom)
+          </label>
+          <label>
+            Bloom preset (worldBloomPreset)
+            <select value={worldBloomPreset} onChange={(event) => setWorldBloomPreset(event.target.value as BloomPreset)}>
+              <option value="soft">soft</option>
+              <option value="normal">normal</option>
+              <option value="hot">hot</option>
+            </select>
+          </label>
+          <label className="settings-toggle">
+            <input type="checkbox" checked={worldShowAllOrbits} onChange={(event) => setWorldShowAllOrbits(event.target.checked)} />
+            Show all orbits (worldShowAllOrbits)
+          </label>
+        </div>
+        <div className="settings-actions">
+          <SparkButton type="button" onClick={handleApplyWorldDebugSettings}>Применить и перезагрузить</SparkButton>
+          <SparkButton type="button" onClick={handleHardCacheReset}>Сброс кэша и перезагрузка</SparkButton>
+        </div>
+      </article>
+
       <div className="settings-actions">
         <SparkButton type="button" onClick={handleExport}>Экспорт данных</SparkButton>
         <label className="import-label">Импорт данных<input type="file" onChange={handleImport} /></label>
         <SparkButton type="button" onClick={handleClear}>Очистить данные</SparkButton>
         <SparkButton type="button" onClick={handleSeed}>Сгенерировать тестовые данные (30 дней)</SparkButton>
-        <SparkButton type="button" onClick={handleHardCacheReset}>Сброс кэша и перезагрузка</SparkButton>
       </div>
     </section>
   )

@@ -279,6 +279,10 @@ textarea:focus-visible,
 .settings-panel { padding: var(--space-3); }
 .settings-appearance { display: flex; gap: var(--space-3); flex-wrap: wrap; }
 .settings-appearance label { display: grid; gap: 4px; color: var(--text); }
+.settings-debug-panel { display: grid; gap: var(--space-2); }
+.settings-debug-grid { display: grid; gap: var(--space-2); grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.settings-debug-status { margin: 0; color: var(--muted); font-size: 12px; }
+.settings-toggle { display: flex; align-items: center; gap: 8px; color: var(--text); }
 
 @keyframes star-drift {
   from { transform: translate3d(0, 0, 0); }
