@@ -3,7 +3,7 @@ import { clearAllData, exportDataBlob, importDataBlob, seedTestData } from '../c
 import type { AppearanceSettings } from '../ui/appearance'
 import { SparkButton } from '../ui/SparkButton'
 import { hardResetSiteAndReload } from '../core/cacheReset'
-import { getWorldDebugHUDStorageKey, readWorldDebugHUDFlag } from '../ui/components/worldDebugHUD'
+import { canAccessWorldDebugHUDSetting, getWorldDebugHUDStorageKey, isWorldDebugHUDVisible, readWorldDebugHUDFlag } from '../ui/components/worldDebugHUD'
 
 type BloomPreset = 'soft' | 'normal' | 'hot'
 type WorldSystemPreset = 'normal' | 'compact'
@@ -38,7 +38,7 @@ export function SettingsPage({ onDataChanged, appearance, onAppearanceChange }: 
   const [worldBloomPreset, setWorldBloomPreset] = useState<BloomPreset>(() => readBloomPreset())
   const [worldSystemPreset, setWorldSystemPreset] = useState<WorldSystemPreset>(() => readWorldSystemPreset())
   const [worldDebugHUD, setWorldDebugHUD] = useState(() => readWorldDebugHUDFlag())
-  const worldDebugHUDEnabled = import.meta.env.DEV && worldDebugHUD
+  const worldDebugHUDEnabled = isWorldDebugHUDVisible()
 
   const debugSummary = useMemo(
     () => `OrbitDim ${worldOrbitDim ? 'ON' : 'OFF'} · Selective Bloom ${worldSelectiveBloom ? 'ON' : 'OFF'} · Bloom ${worldBloomPreset} · Preset ${worldSystemPreset} · Show all orbits ${worldShowAllOrbits ? 'ON' : 'OFF'} · HUD ${worldDebugHUDEnabled ? 'ON' : 'OFF'}`,
@@ -178,7 +178,7 @@ export function SettingsPage({ onDataChanged, appearance, onAppearanceChange }: 
               <option value="compact">compact</option>
             </select>
           </label>
-          {import.meta.env.DEV ? (
+          {canAccessWorldDebugHUDSetting() ? (
             <label className="settings-toggle">
               <input type="checkbox" checked={worldDebugHUD} onChange={(event) => setWorldDebugHUD(event.target.checked)} />
               Показывать HUD (worldDebugHUD)

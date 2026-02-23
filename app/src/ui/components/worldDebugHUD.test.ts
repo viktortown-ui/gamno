@@ -19,6 +19,16 @@ describe('worldDebugHUD helpers', () => {
     expect(window.localStorage.getItem('worldDebugLighting')).toBeNull()
   })
 
+  it('migrates regex-matched legacy HUD keys into worldDebugHUD and removes them', async () => {
+    window.localStorage.setItem('worldLegacyHudDebug', 'true')
+
+    const { readWorldDebugHUDFlag } = await import('./worldDebugHUD')
+
+    expect(readWorldDebugHUDFlag()).toBe(true)
+    expect(window.localStorage.getItem('worldDebugHUD')).toBe('1')
+    expect(window.localStorage.getItem('worldLegacyHudDebug')).toBeNull()
+  })
+
   it('does not enable worldDebugHUD when legacy keys are disabled', async () => {
     window.localStorage.setItem('worldDebugOrbits', '0')
     window.localStorage.setItem('worldDebugLighting', 'false')
@@ -29,5 +39,18 @@ describe('worldDebugHUD helpers', () => {
     expect(window.localStorage.getItem('worldDebugHUD')).toBeNull()
     expect(window.localStorage.getItem('worldDebugOrbits')).toBeNull()
     expect(window.localStorage.getItem('worldDebugLighting')).toBeNull()
+  })
+
+  it('keeps HUD invisible when worldDebugHUD is off even if OrbitDim is on', async () => {
+    const { resolveWorldDebugHUDVisibility } = await import('./worldDebugHUD')
+
+    expect(resolveWorldDebugHUDVisibility({ isDev: true, worldDebugHUD: false, worldDeveloper: false })).toBe(false)
+  })
+
+  it('keeps HUD hidden in production without worldDeveloper override', async () => {
+    const { resolveWorldDebugHUDVisibility } = await import('./worldDebugHUD')
+
+    expect(resolveWorldDebugHUDVisibility({ isDev: false, worldDebugHUD: true, worldDeveloper: false })).toBe(false)
+    expect(resolveWorldDebugHUDVisibility({ isDev: false, worldDebugHUD: true, worldDeveloper: true })).toBe(true)
   })
 })
