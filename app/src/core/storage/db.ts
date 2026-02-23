@@ -28,7 +28,7 @@ export interface OracleScenarioRecord extends OracleScenario {
 
 export const schemaVersion = 17
 
-class GamnoDb extends Dexie {
+class ConcoreDb extends Dexie {
   checkins!: EntityTable<CheckinRecord, 'id'>
   events!: EntityTable<SocialEventRecord, 'id'>
   people!: EntityTable<PersonRecord, 'id'>
@@ -137,4 +137,4 @@ class GamnoDb extends Dexie {
   }
 }
 
-export const db = new GamnoDb()
+export const db = new ConcoreDb()
