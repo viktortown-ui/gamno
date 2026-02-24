@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { forceCenter, forceLink, forceManyBody, forceSimulation, forceX, forceY } from 'd3-force'
 import { METRICS, type MetricId } from '../core/metrics'
 import { applyImpulse, defaultInfluenceMatrix, type InfluenceEdge } from '../core/engines/influence/influence'
 import { getTopEdges } from '../core/engines/influence/graphView'
@@ -22,9 +21,10 @@ import { LeversDecisionView } from './LeversDecisionView'
 import type { CheckinRecord } from '../core/models/checkin'
 import { encodeContextToQuery, sourceToWeightsMode } from '../core/decisionContext'
 import { sendCommand } from '../core/commandBus'
+import { loadAppearanceSettings } from '../ui/appearance'
+import { GraphMap3D, type GraphMapSelection } from '../ui/components/GraphMap3D'
 
 type ViewMode = 'levers' | 'map' | 'matrix'
-interface GraphNode { id: MetricId; x?: number; y?: number }
 type QuickPreset = 'none' | 'strong' | 'positive' | 'negative' | 'confidence'
 
 function edgeMeaning(edge: InfluenceEdge): string {
@@ -54,6 +54,11 @@ export function GraphPage() {
   const [lags, setLags] = useState<1 | 2 | 3>(2)
   const [learnedMeta, setLearnedMeta] = useState<{ trainedOnDays: number; lags: number; alpha: number; computedAt: number; noteRu: string } | null>(null)
   const [selectedEdge, setSelectedEdge] = useState<{ from: MetricId; to: MetricId } | null>(null)
+  const [selectedNodeId, setSelectedNodeId] = useState<MetricId | null>(null)
+  const [hoveredNodeId, setHoveredNodeId] = useState<MetricId | null>(null)
+  const [hoveredEdge, setHoveredEdge] = useState<{ from: MetricId; to: MetricId } | null>(null)
+  const [hoverPoint, setHoverPoint] = useState<{ x: number; y: number } | null>(null)
+  const [focusRequest, setFocusRequest] = useState<GraphMapSelection | null>(null)
   const [source, setSource] = useState<MetricId | 'all'>('all')
   const [target, setTarget] = useState<MetricId | 'all'>('all')
   const [sign, setSign] = useState<'all' | 'positive' | 'negative'>('all')
@@ -102,26 +107,24 @@ export function GraphPage() {
     [activeMatrix],
   )
 
-  const nodes = useMemo(() => {
-    const width = 820
-    const height = 420
-    const simNodes: GraphNode[] = metricIds.map((id) => ({ id }))
-    const links = mapEdges.map((edge) => ({ source: edge.from, target: edge.to, weight: edge.weight }))
-    const simulation = forceSimulation(simNodes)
-      .force('charge', forceManyBody().strength(-220))
-      .force('center', forceCenter(width / 2, height / 2))
-      .force('x', forceX(width / 2).strength(0.03))
-      .force('y', forceY(height / 2).strength(0.03))
-      .force('link', forceLink(links).id((d) => (d as GraphNode).id).distance(120).strength(0.5))
-      .stop()
-    for (let i = 0; i < 90; i += 1) simulation.tick()
-    return simNodes
-  }, [mapEdges, metricIds])
-
   const selectedWeight = selectedEdge ? activeMatrix[selectedEdge.from]?.[selectedEdge.to] ?? 0 : 0
   const selectedManualWeight = selectedEdge ? manualMatrix[selectedEdge.from]?.[selectedEdge.to] ?? 0 : 0
   const selectedLearnedWeight = selectedEdge ? learnedMatrix[selectedEdge.from]?.[selectedEdge.to] ?? 0 : 0
   const selectedStability = selectedEdge ? stabilityMatrix[selectedEdge.from]?.[selectedEdge.to] ?? 0 : 0
+  const selectedNodeLabel = selectedNodeId ? METRICS.find((item) => item.id === selectedNodeId)?.labelRu ?? selectedNodeId : null
+
+  const isReducedMotion = useMemo(() => {
+    const settings = loadAppearanceSettings()
+    return settings.motion !== 'normal' || !settings.fxEnabled || window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  }, [])
+
+  const topInfluenceForNode = (nodeId: MetricId, direction: 'in' | 'out', limit: number) => {
+    const items = mapEdges
+      .filter((edge) => (direction === 'in' ? edge.to === nodeId : edge.from === nodeId))
+      .sort((a, b) => b.absWeight - a.absWeight)
+      .slice(0, limit)
+    return items
+  }
 
   const runImpulseTest = (metric: MetricId, value: number) => {
     setImpulseMetric(metric)
@@ -314,35 +317,94 @@ export function GraphPage() {
         testResult={testResult}
         lastCheckSummary={lastCheckSummary}
         mapAvailable
-        openMap={() => setMode('map')}
+        openMap={() => {
+          const targetNode = primaryLever?.metric ?? selectedEdge?.from ?? null
+          setMode('map')
+          if (targetNode) {
+            setSelectedNodeId(targetNode)
+            setFocusRequest({ nodeId: targetNode })
+          }
+        }}
         checkins={checkins}
       />
     </div>}
 
     {mode !== 'levers' && <div className="graph-layout"><div>
-      {mode === 'map' && <svg viewBox="0 0 820 420" className="graph-canvas" role="img" aria-label="Карта влияния">{mapEdges.map((edge) => {
-        const from = nodes.find((n) => n.id === edge.from)
-        const to = nodes.find((n) => n.id === edge.to)
-        if (!from?.x || !from?.y || !to?.x || !to?.y) return null
-        return <line key={`${edge.from}-${edge.to}`} x1={from.x} y1={from.y} x2={to.x} y2={to.y} stroke={edge.weight >= 0 ? '#43f3d0' : '#c084fc'} strokeWidth={Math.max(1, edge.absWeight * 6)} opacity={0.9} onClick={() => setSelectedEdge({ from: edge.from, to: edge.to })} />
-      })}{nodes.map((node) => <g key={node.id} transform={`translate(${node.x ?? 0}, ${node.y ?? 0})`}><circle r={15} fill="#1c2440" /><text y={4} fill="#fff" textAnchor="middle" fontSize={10}>{METRICS.find((m) => m.id === node.id)?.labelRu ?? node.id}</text></g>)}</svg>}
+      {mode === 'map' && <div className="graph-map-shell">
+        <GraphMap3D
+          edges={mapEdges}
+          selectedNodeId={selectedNodeId}
+          selectedEdge={selectedEdge}
+          autoOrbitEnabled={!isReducedMotion}
+          focusRequest={focusRequest}
+          onNodeHover={(nodeId, point) => {
+            setHoveredNodeId(nodeId)
+            setHoverPoint(point)
+            if (nodeId) {
+              setSelectedNodeId(nodeId)
+              setSelectedEdge(null)
+            }
+          }}
+          onNodeClick={(nodeId) => {
+            setSelectedNodeId(nodeId)
+            setSelectedEdge(null)
+            setFocusRequest({ nodeId })
+          }}
+          onLinkHover={(edge) => setHoveredEdge(edge)}
+          onLinkClick={(edge) => {
+            setSelectedEdge(edge)
+            setSelectedNodeId(null)
+            setFocusRequest({ edge })
+          }}
+        />
+        {hoveredNodeId && hoverPoint && <div className="graph-hover-tip" style={{ left: hoverPoint.x + 14, top: hoverPoint.y - 10 }}>
+          {(() => {
+            const incoming = topInfluenceForNode(hoveredNodeId, 'in', 2)
+            const outcoming = topInfluenceForNode(hoveredNodeId, 'out', 2)
+            return <span>Узел: {METRICS.find((m) => m.id === hoveredNodeId)?.labelRu} • Влияет: {outcoming.map((e) => METRICS.find((m) => m.id === e.to)?.labelRu).join(', ') || 'нет'} • Получает: {incoming.map((e) => METRICS.find((m) => m.id === e.from)?.labelRu).join(', ') || 'нет'}</span>
+          })()}
+        </div>}
+      </div>}
 
       {mode === 'matrix' && <table className="table table--dense"><thead><tr><th>От \ К</th>{metricIds.map((id) => <th key={id}>{METRICS.find((m) => m.id === id)?.labelRu}</th>)}</tr></thead>
         <tbody>{metricIds.map((fromId) => <tr key={fromId}><td>{METRICS.find((m) => m.id === fromId)?.labelRu}</td>{metricIds.map((toId) => {
           const weight = activeMatrix[fromId]?.[toId] ?? 0
-          return <td key={toId}><button type="button" className="heat-cell" style={{ background: `rgba(${weight > 0 ? '67,243,208' : '192,132,252'}, ${Math.abs(weight)})` }} onClick={() => setSelectedEdge({ from: fromId, to: toId })}>{weight.toFixed(1)}</button></td>
+          return <td key={toId}><button type="button" className="heat-cell" style={{ background: `rgba(${weight > 0 ? '67,243,208' : '192,132,252'}, ${Math.abs(weight)})` }} onClick={() => {
+            setSelectedEdge({ from: fromId, to: toId })
+            if (weight !== 0) {
+              setMode('map')
+              setFocusRequest({ edge: { from: fromId, to: toId } })
+            }
+          }}>{weight.toFixed(1)}</button></td>
         })}</tr>)}</tbody></table>}
     </div>
 
     <aside className="inspector panel">
-      <h2>Инспектор связи</h2>
-      {!selectedEdge ? <p>Выберите связь на карте или в матрице.</p> : <>
+      <h2>{selectedNodeId ? 'Инспектор узла' : 'Инспектор связи'}</h2>
+      {selectedNodeId && <>
+        <p><strong>{selectedNodeLabel}</strong></p>
+        <p>Центральность (вход/выход/сумма): {topInfluenceForNode(selectedNodeId, 'in', 99).reduce((sum, edge) => sum + Math.abs(edge.weight), 0).toFixed(2)} / {topInfluenceForNode(selectedNodeId, 'out', 99).reduce((sum, edge) => sum + Math.abs(edge.weight), 0).toFixed(2)} / {(topInfluenceForNode(selectedNodeId, 'in', 99).reduce((sum, edge) => sum + Math.abs(edge.weight), 0) + topInfluenceForNode(selectedNodeId, 'out', 99).reduce((sum, edge) => sum + Math.abs(edge.weight), 0)).toFixed(2)}</p>
+        <p><strong>Входящее влияние (топ-3):</strong> {topInfluenceForNode(selectedNodeId, 'in', 3).map((edge) => `${METRICS.find((m) => m.id === edge.from)?.labelRu} (${edge.weight > 0 ? '+' : ''}${edge.weight.toFixed(2)})`).join('; ') || 'нет'}</p>
+        <p><strong>Исходящее влияние (топ-3):</strong> {topInfluenceForNode(selectedNodeId, 'out', 3).map((edge) => `${METRICS.find((m) => m.id === edge.to)?.labelRu} (${edge.weight > 0 ? '+' : ''}${edge.weight.toFixed(2)})`).join('; ') || 'нет'}</p>
+        <div className="graph-summary__actions">
+          <button type="button" className="chip" onClick={() => triggerImpulseCheck(selectedNodeId, 1)}>Проверить импульсом</button>
+          <button type="button" className="chip" onClick={() => {
+            const edge = topInfluenceForNode(selectedNodeId, 'out', 1)[0]
+            if (edge) applyEdgeAsScenario(edge.from, edge.to, edge.weight)
+          }}>Применить как сценарий</button>
+        </div>
+      </>}
+      {!selectedNodeId && !selectedEdge ? <p>Выберите связь на карте или в матрице.</p> : null}
+      {!selectedNodeId && selectedEdge ? <>
         <p><strong>{METRICS.find((m) => m.id === selectedEdge.from)?.labelRu}</strong> → <strong>{METRICS.find((m) => m.id === selectedEdge.to)?.labelRu}</strong></p>
+        <p>Знак: {selectedWeight >= 0 ? 'положительный' : 'отрицательный'}</p>
+        <p>Вес: {selectedWeight >= 0 ? '+' : ''}{selectedWeight.toFixed(2)}</p>
         <p>Ручной: {selectedManualWeight >= 0 ? '+' : ''}{selectedManualWeight.toFixed(2)}</p>
         <p>Из данных: {selectedLearnedWeight >= 0 ? '+' : ''}{selectedLearnedWeight.toFixed(2)}</p>
-        <p>Смешанный: {selectedWeight >= 0 ? '+' : ''}{selectedWeight.toFixed(2)}</p>
         <p>Уверенность: {selectedStability.toFixed(2)} — {stabilityLabel(selectedStability)}</p>
-      </>}
+        <p>Смысл: {edgeMeaning({ from: selectedEdge.from, to: selectedEdge.to, weight: selectedWeight, absWeight: Math.abs(selectedWeight) })}</p>
+      </> : null}
+      {!selectedNodeId && !selectedEdge && hoveredEdge ? <p>Наведено: {METRICS.find((m) => m.id === hoveredEdge.from)?.labelRu} → {METRICS.find((m) => m.id === hoveredEdge.to)?.labelRu}</p> : null}
     </aside></div>}
   </section>
 }
