@@ -2245,6 +2245,11 @@ button.danger { background: color-mix(in srgb, #e45959 30%, var(--panel) 70%); b
 .graph-top3__card h3 { margin-bottom: var(--space-1); }
 .graph-table-wrap { max-height: 52vh; overflow: auto; border-radius: 10px; }
 .graph-meta-hint { color: var(--muted); font-size: 11px; margin-top: 2px; }
+.levers-decision { display: grid; gap: var(--space-2); }
+.graph-accordion { padding: var(--space-3); }
+.graph-accordion > summary { cursor: pointer; font-weight: 600; margin-bottom: var(--space-2); }
+.graph-accordion[open] > summary { margin-bottom: var(--space-3); }
+.inspector-in-panel { margin-bottom: var(--space-3); }
 
 @media (max-width: 1024px) {
   .graph-top3 { grid-template-columns: 1fr; }

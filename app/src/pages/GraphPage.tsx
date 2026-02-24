@@ -16,8 +16,8 @@ import {
   resetInfluenceMatrix,
   saveInfluenceMatrix,
 } from '../core/storage/repo'
-import { SparkButton } from '../ui/SparkButton'
 import { formatDateTime } from '../ui/format'
+import { LeversDecisionView } from './LeversDecisionView'
 
 type ViewMode = 'levers' | 'map' | 'matrix'
 interface GraphNode { id: MetricId; x?: number; y?: number }
@@ -32,9 +32,9 @@ function edgeMeaning(edge: InfluenceEdge): string {
 
 function stabilityLabel(score: number): string {
   const level = matrixStabilityScore(score)
-  if (level === 'high') return 'высокий'
-  if (level === 'medium') return 'средний'
-  return 'низкий'
+  if (level === 'high') return 'высокая'
+  if (level === 'medium') return 'средняя'
+  return 'низкая'
 }
 
 export function GraphPage() {
@@ -188,7 +188,7 @@ export function GraphPage() {
 
   return <section className="page panel graph-page">
     <h1>Граф влияний</h1>
-    <div className="settings-actions"><button type="button" onClick={() => { window.localStorage.setItem('gamno.multiverseDraft', JSON.stringify({ impulses: { [impulseMetric]: delta }, focusMetrics: [impulseMetric], sourceLabelRu: 'Контур из Графа', weightsSource, mix })); navigate('/multiverse') }}>Открыть в Мультивселенной</button></div>
+    <div className="settings-actions"><button type="button" onClick={() => { window.localStorage.setItem('gamno.multiverseDraft', JSON.stringify({ impulses: { [impulseMetric]: delta }, focusMetrics: [impulseMetric], sourceLabelRu: 'Контур из графа', weightsSource, mix })); navigate('/multiverse') }}>Открыть в Мультивселенной</button></div>
     <div className="mode-tabs">
       <button type="button" className={mode === 'levers' ? 'filter-button filter-button--active' : 'filter-button'} onClick={() => setMode('levers')}>Рычаги</button>
       <button type="button" className={mode === 'map' ? 'filter-button filter-button--active' : 'filter-button'} onClick={() => setMode('map')}>Карта</button>
@@ -197,98 +197,84 @@ export function GraphPage() {
 
     <div className="filters graph-filters">
       <span>Источник весов:</span>
-      <button type="button" className={weightsSource === 'manual' ? 'filter-button filter-button--active' : 'filter-button'} onClick={() => setWeightsSource('manual')}>Manual</button>
-      <button type="button" className={weightsSource === 'learned' ? 'filter-button filter-button--active' : 'filter-button'} onClick={() => setWeightsSource('learned')}>Learned</button>
-      <button type="button" className={weightsSource === 'mixed' ? 'filter-button filter-button--active' : 'filter-button'} onClick={() => setWeightsSource('mixed')}>Mixed</button>
-      {weightsSource === 'mixed' && <label>Mix {mix.toFixed(2)}<input type="range" min={0} max={1} step={0.05} value={mix} onChange={(e) => setMix(Number(e.target.value))} /></label>}
-      {learnedMeta && <span>Обновлено: {formatDateTime(learnedMeta.computedAt)} · окно: {learnedMeta.trainedOnDays} дней · lags: {learnedMeta.lags} · α: {learnedMeta.alpha}</span>}
+      <button type="button" className={weightsSource === 'manual' ? 'filter-button filter-button--active' : 'filter-button'} onClick={() => setWeightsSource('manual')}>Ручной</button>
+      <button type="button" className={weightsSource === 'learned' ? 'filter-button filter-button--active' : 'filter-button'} onClick={() => setWeightsSource('learned')}>Из данных</button>
+      <button type="button" className={weightsSource === 'mixed' ? 'filter-button filter-button--active' : 'filter-button'} onClick={() => setWeightsSource('mixed')}>Смешанный</button>
+      {weightsSource === 'mixed' && <label>Доля смешивания {mix.toFixed(2)}<input type="range" min={0} max={1} step={0.05} value={mix} onChange={(e) => setMix(Number(e.target.value))} /></label>}
+      {learnedMeta && <span>Обновлено: {formatDateTime(learnedMeta.computedAt)} · окно: {learnedMeta.trainedOnDays} дней · лаги: {learnedMeta.lags} · α: {learnedMeta.alpha}</span>}
     </div>
 
     {!learnedMeta && weightsSource !== 'manual' && (
       <div className="panel empty-state">
-        <h2>Learned карта ещё не построена</h2>
+        <h2>Карта из данных ещё не построена</h2>
         <p>Обучение использует ежедневную историю чек-инов и заполняет пропущенные дни последним известным значением.</p>
         <div className="filters graph-filters">
           <label>Окно
             <select value={trainedOnDays} onChange={(e) => setTrainedOnDays(e.target.value === 'all' ? 'all' : Number(e.target.value) as 30 | 60)}>
               <option value={30}>30</option>
               <option value={60}>60</option>
-              <option value="all">All</option>
+              <option value="all">Все дни</option>
             </select>
           </label>
-          <label>Lags
+          <label>Лаги
             <select value={lags} onChange={(e) => setLags(Number(e.target.value) as 1 | 2 | 3)}>
               <option value={1}>1</option><option value={2}>2</option><option value={3}>3</option>
             </select>
           </label>
-          <SparkButton type="button" onClick={() => void recompute()}>Обучить по данным</SparkButton>
+          <button type="button" onClick={() => void recompute()}>Обучить по данным</button>
         </div>
       </div>
     )}
 
-    <div className="graph-layout"><div>
-      {mode === 'levers' && <>
-        <section className="graph-summary panel">
-          <h2>Главный рычаг сейчас</h2>
-          {!primaryLever ? <p>По текущим фильтрам рычаги не найдены. Ослабьте порог или знак.</p> : <>
-            <p className="graph-summary__lead"><strong>{METRICS.find((m) => m.id === primaryLever.metric)?.labelRu ?? primaryLever.metric}</strong> — если +1, сильнее всего меняются: {forecastForMetric(primaryLever.metric).slice(0, 2).map((item) => `${item.label} (${item.delta >= 0 ? '+' : ''}${item.delta.toFixed(1)})`).join(', ')}.</p>
-            <ul className="graph-summary__effects">
-              {forecastForMetric(primaryLever.metric).map((effect) => <li key={effect.id}>{effect.label}: {effect.delta >= 0 ? '+' : ''}{effect.delta.toFixed(1)}</li>)}
-            </ul>
-            <div className="graph-summary__actions">
-              <button type="button" className="chip" onClick={() => triggerImpulseCheck(primaryLever.metric, 1)}>Проверить импульсом</button>
-              <button type="button" className="chip" onClick={() => applyEdgeAsScenario(primaryLever.metric, primaryLever.edges[0].to, primaryLever.edges[0].weight)}>Применить как сценарий</button>
-            </div>
-            <details>
-              <summary>Почему так?</summary>
-              <ul>
-                {primaryLever.edges.slice(0, 3).map((edge) => <li key={`${edge.from}-${edge.to}`}>{METRICS.find((m) => m.id === edge.from)?.labelRu} → {METRICS.find((m) => m.id === edge.to)?.labelRu}: {edge.weight >= 0 ? '+' : ''}{edge.weight.toFixed(2)}</li>)}
-              </ul>
-            </details>
-          </>}
-        </section>
+    {mode === 'levers' && <div ref={impulseBlockRef} tabIndex={-1}>
+      <LeversDecisionView
+        primaryLever={primaryLever}
+        alternatives={topLeversByMetric.slice(1, 4)}
+        forecastForMetric={forecastForMetric}
+        triggerImpulseCheck={triggerImpulseCheck}
+        applyEdgeAsScenario={applyEdgeAsScenario}
+        search={search}
+        setSearch={setSearch}
+        source={source}
+        setSource={setSource}
+        target={target}
+        setTarget={setTarget}
+        sign={sign}
+        setSign={setSign}
+        threshold={threshold}
+        setThreshold={setThreshold}
+        topN={topN}
+        setTopN={setTopN}
+        quickPreset={quickPreset}
+        applyQuickPreset={applyQuickPreset}
+        visibleEdges={visibleEdges}
+        selectedEdge={selectedEdge}
+        setSelectedEdge={setSelectedEdge}
+        stabilityLabel={stabilityLabel}
+        stabilityMatrix={stabilityMatrix}
+        edgeMeaning={edgeMeaning}
+        steps={steps}
+        runRecompute={() => void recompute()}
+        clearLearned={() => void clearLearnedMatrices()}
+        selectedManualWeight={selectedManualWeight}
+        selectedLearnedWeight={selectedLearnedWeight}
+        selectedWeight={selectedWeight}
+        selectedStability={selectedStability}
+        manualMatrix={manualMatrix}
+        setManualMatrix={setManualMatrix}
+        saveManual={() => void saveInfluenceMatrix(manualMatrix)}
+        resetManual={() => void (async () => { await resetInfluenceMatrix(); setManualMatrix(await loadInfluenceMatrix()) })()}
+        impulseMetric={impulseMetric}
+        setImpulseMetric={setImpulseMetric}
+        delta={delta}
+        setDelta={setDelta}
+        setSteps={setSteps}
+        runImpulseTest={runImpulseTest}
+        testResult={testResult}
+      />
+    </div>}
 
-        <section className="graph-top3">
-          {topLeversByMetric.slice(0, 3).map((lever) => {
-            const strongest = lever.edges[0]
-            const forecast = forecastForMetric(lever.metric)[0]
-            return <article key={lever.metric} className="graph-top3__card panel">
-              <h3>{METRICS.find((m) => m.id === lever.metric)?.labelRu ?? lever.metric}</h3>
-              <p>Краткий эффект: {forecast ? `${forecast.label} ${forecast.delta >= 0 ? '+' : ''}${forecast.delta.toFixed(1)}` : 'недостаточно данных'}</p>
-              <div className="graph-summary__actions">
-                <button type="button" className="chip" onClick={() => triggerImpulseCheck(lever.metric, 1)}>Проверить импульсом</button>
-                <button type="button" className="chip" onClick={() => applyEdgeAsScenario(lever.metric, strongest.to, strongest.weight)}>Применить как сценарий</button>
-              </div>
-            </article>
-          })}
-        </section>
-
-        <div className="filters graph-filters">
-          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Поиск по метрике" />
-          <select value={source} onChange={(e) => setSource(e.target.value as MetricId | 'all')}><option value="all">Источник: все</option>{METRICS.map((m) => <option key={m.id} value={m.id}>{m.labelRu}</option>)}</select>
-          <select value={target} onChange={(e) => setTarget(e.target.value as MetricId | 'all')}><option value="all">Цель: все</option>{METRICS.map((m) => <option key={m.id} value={m.id}>{m.labelRu}</option>)}</select>
-          <select value={sign} onChange={(e) => setSign(e.target.value as 'all' | 'positive' | 'negative')}><option value="all">Любой знак</option><option value="positive">Только усиливает</option><option value="negative">Только ослабляет</option></select>
-          <label>|w| ≥ <input type="number" step={0.05} value={threshold} onChange={(e) => setThreshold(Number(e.target.value))} /></label>
-          <label>Топ N <input type="number" min={1} max={40} value={topN} onChange={(e) => setTopN(Number(e.target.value))} /></label>
-          <SparkButton type="button" onClick={() => void recompute()}>Переобучить</SparkButton>
-          <button type="button" onClick={() => void clearLearnedMatrices()}>Очистить learned</button>
-        </div>
-        <div className="preset-row">
-          <button type="button" className={quickPreset === 'strong' ? 'filter-button filter-button--active' : 'filter-button'} onClick={() => applyQuickPreset('strong')}>Сильные</button>
-          <button type="button" className={quickPreset === 'positive' ? 'filter-button filter-button--active' : 'filter-button'} onClick={() => applyQuickPreset('positive')}>Только +</button>
-          <button type="button" className={quickPreset === 'negative' ? 'filter-button filter-button--active' : 'filter-button'} onClick={() => applyQuickPreset('negative')}>Только −</button>
-          <button type="button" className={quickPreset === 'confidence' ? 'filter-button filter-button--active' : 'filter-button'} onClick={() => applyQuickPreset('confidence')}>Высокая уверенность</button>
-          <button type="button" className={quickPreset === 'none' ? 'filter-button filter-button--active' : 'filter-button'} onClick={() => setQuickPreset('none')}>Сброс</button>
-        </div>
-        <div className="graph-table-wrap">
-          <table className="table table--dense"><thead><tr><th>От</th><th>К</th><th title="Вес: сила влияния (− ослабляет, + усиливает)">Вес</th><th title="Уверенность learned-модели в связи">Уверенность</th><th title="Шаг: волна распространения влияний (не день)">Шаг</th><th>Смысл</th><th>Действие</th></tr></thead>
-            <tbody>{visibleEdges.map((edge) => {
-              const stability = stabilityMatrix[edge.from]?.[edge.to] ?? 0
-              return <tr key={`${edge.from}-${edge.to}`} onClick={() => setSelectedEdge({ from: edge.from, to: edge.to })} className={selectedEdge?.from === edge.from && selectedEdge?.to === edge.to ? 'row-active' : ''}><td>{METRICS.find((m) => m.id === edge.from)?.labelRu}</td><td>{METRICS.find((m) => m.id === edge.to)?.labelRu}</td><td>{edge.weight > 0 ? '+' : ''}{edge.weight.toFixed(2)}<div className="graph-meta-hint">Вес: сила влияния (− ослабляет, + усиливает)</div></td><td>{stabilityLabel(stability)} ({stability.toFixed(2)})</td><td>{steps}</td><td>{edgeMeaning(edge)}</td><td><button type="button" className="chip" onClick={(event) => { event.stopPropagation(); triggerImpulseCheck(edge.from, edge.weight >= 0 ? 1 : -1) }}>Проверить импульсом</button> <button type="button" className="chip" onClick={(event) => { event.stopPropagation(); applyEdgeAsScenario(edge.from, edge.to, edge.weight) }}>Применить как сценарий</button></td></tr>
-            })}</tbody></table>
-        </div>
-      </>}
-
+    {mode !== 'levers' && <div className="graph-layout"><div>
       {mode === 'map' && <svg viewBox="0 0 820 420" className="graph-canvas" role="img" aria-label="Карта влияния">{mapEdges.map((edge) => {
         const from = nodes.find((n) => n.id === edge.from)
         const to = nodes.find((n) => n.id === edge.to)
@@ -305,29 +291,13 @@ export function GraphPage() {
 
     <aside className="inspector panel">
       <h2>Инспектор связи</h2>
-      {!selectedEdge ? <p>Выберите связь в списке, на карте или в матрице.</p> : <>
+      {!selectedEdge ? <p>Выберите связь на карте или в матрице.</p> : <>
         <p><strong>{METRICS.find((m) => m.id === selectedEdge.from)?.labelRu}</strong> → <strong>{METRICS.find((m) => m.id === selectedEdge.to)?.labelRu}</strong></p>
-        <p>manual: {selectedManualWeight >= 0 ? '+' : ''}{selectedManualWeight.toFixed(2)}</p>
-        <p>learned: {selectedLearnedWeight >= 0 ? '+' : ''}{selectedLearnedWeight.toFixed(2)}</p>
-        <p>mixed: {selectedWeight >= 0 ? '+' : ''}{selectedWeight.toFixed(2)} (mix {mix.toFixed(2)})</p>
+        <p>Ручной: {selectedManualWeight >= 0 ? '+' : ''}{selectedManualWeight.toFixed(2)}</p>
+        <p>Из данных: {selectedLearnedWeight >= 0 ? '+' : ''}{selectedLearnedWeight.toFixed(2)}</p>
+        <p>Смешанный: {selectedWeight >= 0 ? '+' : ''}{selectedWeight.toFixed(2)}</p>
         <p>Уверенность: {selectedStability.toFixed(2)} — {stabilityLabel(selectedStability)}</p>
-        <input type="range" min={-1} max={1} step={0.05} value={manualMatrix[selectedEdge.from]?.[selectedEdge.to] ?? 0} onChange={(e) => setManualMatrix((prev) => ({ ...prev, [selectedEdge.from]: { ...prev[selectedEdge.from], [selectedEdge.to]: Number(e.target.value) } }))} />
-        <button type="button" onClick={() => applyEdgeAsScenario(selectedEdge.from, selectedEdge.to, selectedWeight)}>Применить как сценарий</button>
       </>}
-      <div className="settings-actions">
-        <SparkButton type="button" onClick={() => void saveInfluenceMatrix(manualMatrix)}>Сохранить manual-карту</SparkButton>
-        <SparkButton type="button" onClick={async () => { await resetInfluenceMatrix(); setManualMatrix(await loadInfluenceMatrix()) }}>Сброс manual к умолчанию</SparkButton>
-      </div>
-    </aside></div>
-
-    <div ref={impulseBlockRef} tabIndex={-1}>
-      <h2>Тест импульса</h2>
-      <p className="graph-meta-hint">Шаг: волна распространения влияний (не день)</p>
-      <label>Метрика<select value={impulseMetric} onChange={(e) => setImpulseMetric(e.target.value as MetricId)}>{metricIds.map((id) => <option key={id} value={id}>{METRICS.find((m) => m.id === id)?.labelRu}</option>)}</select></label>
-      <label>Δ<input type="number" value={delta} onChange={(e) => setDelta(Number(e.target.value))} /></label>
-      <label>Шаги<select value={steps} onChange={(e) => setSteps(Number(e.target.value) as 1 | 2 | 3)}>{[1, 2, 3].map((n) => <option key={n} value={n}>{n}</option>)}</select></label>
-      <SparkButton type="button" onClick={() => runImpulseTest(impulseMetric, delta)}>Запустить</SparkButton>
-      {testResult && <p>Результат: {METRICS.map((m) => `${m.labelRu}: ${testResult[m.id].toFixed(1)}`).join(' | ')}</p>}
-    </div>
+    </aside></div>}
   </section>
 }
