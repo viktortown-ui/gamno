@@ -407,6 +407,37 @@ textarea:focus-visible,
 .graph-3d-wrap { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: #071127; }
 .graph-3d-actions { display: flex; gap: var(--space-1); padding: var(--space-2); border-top: 1px solid var(--line); }
 .graph-3d-fallback { min-height: 420px; display: grid; gap: var(--space-2); align-content: center; justify-items: start; }
+.graph-3d-help {
+  margin-left: auto;
+  width: 24px;
+  height: 24px;
+  border: 1px solid color-mix(in srgb, var(--line) 75%, #ffffff 25%);
+  border-radius: 999px;
+  display: inline-grid;
+  place-items: center;
+  color: #dbeafe;
+  font-size: 12px;
+  background: rgba(11, 23, 46, 0.7);
+}
+.graph-3d-legend {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  border-top: 1px dashed color-mix(in srgb, var(--line) 70%, #7dd3fc 30%);
+  font-size: 12px;
+  color: color-mix(in srgb, var(--text) 80%, #c4d7ff 20%);
+  background: rgba(7, 17, 39, 0.55);
+}
+.graph-3d-legend > span { display: inline-flex; align-items: center; gap: 6px; }
+.graph-3d-legend-line {
+  width: 18px;
+  height: 2px;
+  border-radius: 999px;
+  display: inline-block;
+}
+.graph-3d-legend-line--plus { background: #43f3d0; }
+.graph-3d-legend-line--minus { background: #c084fc; }
 .graph-hover-tip {
   position: fixed;
   z-index: 20;
