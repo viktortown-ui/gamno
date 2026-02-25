@@ -225,12 +225,8 @@ export function GraphMap3D(props: GraphMap3DProps) {
     }
   }
 }, [focusRequest, nodes])
-
-      }
-    }
-  }, [focusRequest, nodes])
-
-  const onUserInteraction = () => {
+ 
+   const onUserInteraction = () => {
     setIsInteracting(true)
     if (idleTimer.current) window.clearTimeout(idleTimer.current)
     idleTimer.current = window.setTimeout(() => setIsInteracting(false), 3000)
