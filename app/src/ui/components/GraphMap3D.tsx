@@ -25,10 +25,6 @@ type OrbitControlsLike = {
   update?: () => void
 }
 
-type ForceGraphMethodsLike = ForceGraphMethods<GraphNode, GraphLink> & {
-  centerAt: (x?: number, y?: number, ms?: number) => void
-}
-
 interface GraphNode3D extends GraphNode {
   id: MetricId
   name: string
@@ -139,7 +135,7 @@ export function GraphMap3D(props: GraphMap3DProps) {
   } = props
   const [webglReady] = useState(() => (typeof document === 'undefined' ? true : isWebglAvailable()))
   const [webglFailed, setWebglFailed] = useState(false)
-  const fgRef = useRef<ForceGraphMethods<GraphNode, GraphLink> | undefined>(undefined)
+  const fgRef = useRef<ForceGraphMethods<GraphNode3D, GraphLink3D> | undefined>(undefined)
   const idleTimer = useRef<number | null>(null)
   const [isInteracting, setIsInteracting] = useState(false)
 
@@ -177,9 +173,9 @@ export function GraphMap3D(props: GraphMap3DProps) {
   })), [edges])
 
   useEffect(() => {
-    const graph = fgRef.current as ForceGraphMethodsLike | undefined
+    const graph = fgRef.current
     if (!graph) return
-    graph.centerAt(0, 0, 400)
+    graph.cameraPosition(RESET_CAMERA, { x: 0, y: 0, z: 0 }, 400)
     graph.zoomToFit(400, 40)
   }, [links])
 
