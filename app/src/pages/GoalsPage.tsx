@@ -124,6 +124,15 @@ export function GoalsPage() {
     return evaluateGoalScore(selected, goalState)
   }, [selected, goalState])
 
+  const treeState = useMemo(() => {
+    if (!scoring) return null
+    if (scoring.goalGap <= -5) return { label: 'Растёт', toneClass: 'status-badge--low' }
+    if (scoring.goalGap <= 2) return { label: 'Штормит', toneClass: 'status-badge--mid' }
+    return { label: 'Сохнет', toneClass: 'status-badge--high' }
+  }, [scoring])
+
+  const nextMission = actions[0] ?? null
+
   useEffect(() => {
     let cancelled = false
     const run = async () => {
@@ -244,33 +253,59 @@ export function GoalsPage() {
           ) : <p>Выберите цель.</p>}
         </article>
 
-        <article className="summary-card panel">
-          <h2>Гравитация цели</h2>
+        <article className="summary-card panel goals-tree-state">
+          <h2>Состояние дерева</h2>
           {selected && scoring ? (
             <>
-              <p>Индекс цели: <strong>{scoring.goalScore.toFixed(1)}</strong>{historyTrend ? ` (${historyTrend === 'up' ? '↑' : '↓'})` : ''}</p>
-              <p>Разрыв: <strong>{scoring.goalGap >= 0 ? '+' : ''}{scoring.goalGap.toFixed(1)}</strong></p>
-              <h3>Топ-3 фактора</h3>
-              <ul>{scoring.explainTop3.map((item) => <li key={item.key}><strong>{item.title}:</strong> {item.textRu}</li>)}</ul>
-              <h3>3 лучших действия</h3>
-              <ol>{actions.map((item) => <li key={`${item.metricId}-${item.impulse}`}><strong>{item.titleRu}</strong> · Δцели {item.deltaGoalScore >= 0 ? '+' : ''}{item.deltaGoalScore.toFixed(1)} · Δиндекса {item.deltaIndex >= 0 ? '+' : ''}{item.deltaIndex.toFixed(2)} · ΔP(collapse) {(item.deltaPCollapse * 100).toFixed(1)} п.п.<br />{item.rationaleRu}</li>)}</ol>
+              <p>
+                Статус:{' '}
+                <span className={`status-badge ${treeState?.toneClass ?? 'status-badge--mid'}`}>
+                  {treeState?.label ?? 'Штормит'}
+                </span>
+              </p>
+              <p>
+                Почему: {scoring.explainTop3.slice(0, 3).map((item) => `${item.title} — ${item.textRu}`).join('; ')}.
+              </p>
+              <h3>Следующий шаг</h3>
+              {nextMission ? (
+                <p>
+                  <strong>{nextMission.titleRu}.</strong> {nextMission.rationaleRu}
+                </p>
+              ) : <p>Пока нет рекомендаций — добавьте свежий чек-ин.</p>}
               <button type="button" onClick={async () => {
-                if (actions.length === 0) return
-                const best = actions[0]
+                if (!nextMission) return
                 await addQuest({
                   createdAt: Date.now(),
-                  title: `Миссия цели: ${best.titleRu}`,
-                  metricTarget: best.metricId,
-                  delta: best.impulse,
+                  title: `Миссия цели: ${nextMission.titleRu}`,
+                  metricTarget: nextMission.metricId,
+                  delta: nextMission.impulse,
                   horizonDays: 3,
                   status: 'active',
-                  predictedIndexLift: Math.max(0.1, best.deltaIndex),
+                  predictedIndexLift: Math.max(0.1, nextMission.deltaIndex),
                   goalId: selected.id,
                 })
                 await addGoalEvent({ goalId: selected.id, goalScore: scoring.goalScore, goalGap: scoring.goalGap })
-              }}>Принять как миссию на 3 дня</button>
+              }}>Принять миссию на 3 дня</button>
+
+              <details className="graph-accordion">
+                <summary>Подробнее (для продвинутых)</summary>
+                <p>Сила роста: <strong>{scoring.goalScore.toFixed(1)}</strong>{historyTrend ? ` (${historyTrend === 'up' ? '↑' : '↓'})` : ''}</p>
+                <p>Насколько далеко: <strong>{scoring.goalGap >= 0 ? '+' : ''}{scoring.goalGap.toFixed(1)}</strong></p>
+                <p>Прогресс цели: <strong>{goalState?.index.toFixed(1)}</strong></p>
+                <p>Риск шторма: <strong>{((goalState?.pCollapse ?? 0) * 100).toFixed(1)}%</strong></p>
+                <h3>Топ-3 фактора</h3>
+                <ul>{scoring.explainTop3.map((item) => <li key={item.key}><strong>{item.title}:</strong> {item.textRu}</li>)}</ul>
+                <h3>3 лучших действия</h3>
+                <ol>{actions.map((item) => <li key={`${item.metricId}-${item.impulse}`}><strong>{item.titleRu}</strong> · Δсилы роста {item.deltaGoalScore >= 0 ? '+' : ''}{item.deltaGoalScore.toFixed(1)} · Δпрогресса цели {item.deltaIndex >= 0 ? '+' : ''}{item.deltaIndex.toFixed(2)} · Δриска шторма {(item.deltaPCollapse * 100).toFixed(1)} п.п.<br />{item.rationaleRu}</li>)}</ol>
+                <h3>Как читать формулы</h3>
+                <ul>
+                  <li>Сила роста = текущая оценка вашей цели по выбранным весам метрик.</li>
+                  <li>Насколько далеко = отклонение от целевого уровня (ниже — лучше).</li>
+                  <li>Риск шторма = вероятность провала устойчивости P(collapse) в понятной форме.</li>
+                </ul>
+              </details>
             </>
-          ) : <p>Нет данных для расчёта гравитации.</p>}
+          ) : <p>Нет данных для оценки состояния дерева.</p>}
         </article>
       </div>
 
