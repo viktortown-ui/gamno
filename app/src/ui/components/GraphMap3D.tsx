@@ -65,9 +65,9 @@ interface GraphMap3DProps {
   onOpenMatrix: () => void
 }
 
-const RESET_CAMERA = { x: 0, y: 0, z: 340 }
-const INITIAL_COOLDOWN_TICKS = 360
-const INITIAL_WARMUP_TICKS = 180
+const RESET_CAMERA = { x: 0, y: 0, z: 420 }
+const INITIAL_COOLDOWN_TICKS = 420
+const INITIAL_WARMUP_TICKS = 220
 const IDLE_RESUME_MS = 2600
 const ISOLATE_BOUND_RADIUS = 120
 
@@ -146,8 +146,10 @@ export function GraphMap3D(props: GraphMap3DProps) {
   const fgRef = useRef<ForceGraphMethods<GraphNode3D, GraphLink3D> | null>(null)
   const idleTimer = useRef<number | null>(null)
   const hasInitialFit = useRef(false)
+  const shouldFitOnEngineStop = useRef(true)
   const [isInteracting, setIsInteracting] = useState(false)
   const [isFrozen, setIsFrozen] = useState(false)
+  const [isNodeDragEnabled, setIsNodeDragEnabled] = useState(false)
   const [hoveredNodeIdLocal, setHoveredNodeIdLocal] = useState<MetricId | null>(null)
   const [autoOrbitAllowed, setAutoOrbitAllowed] = useState(true)
 
@@ -246,9 +248,12 @@ export function GraphMap3D(props: GraphMap3DProps) {
     const graph = fgRef.current
     if (!graph || hasInitialFit.current) return
     graph.cameraPosition(RESET_CAMERA, { x: 0, y: 0, z: 0 }, 500)
-    graph.zoomToFit(500, 40)
     hasInitialFit.current = true
   }, [links])
+
+  useEffect(() => {
+    shouldFitOnEngineStop.current = true
+  }, [graphData])
 
   useEffect(() => {
     const graph = fgRef.current
@@ -356,6 +361,8 @@ export function GraphMap3D(props: GraphMap3DProps) {
     setIsFrozen(true)
   }
 
+  const toggleNodeDrag = () => setIsNodeDragEnabled((prev) => !prev)
+
   if (!webglReady || webglFailed) return <GraphMapFallback onOpenMatrix={onOpenMatrix} />
 
   return <div className="graph-3d-wrap" onMouseDown={onUserInteraction} onWheel={onUserInteraction} onTouchStart={onUserInteraction}>
@@ -371,8 +378,16 @@ export function GraphMap3D(props: GraphMap3DProps) {
         controlType="orbit"
         warmupTicks={INITIAL_WARMUP_TICKS}
         cooldownTicks={INITIAL_COOLDOWN_TICKS}
-        d3AlphaDecay={0.11}
-        d3VelocityDecay={0.62}
+        d3AlphaDecay={0.15}
+        d3VelocityDecay={0.68}
+        onEngineStop={() => {
+          if (!shouldFitOnEngineStop.current) return
+          const graph = fgRef.current
+          if (!graph) return
+          shouldFitOnEngineStop.current = false
+          graph.cameraPosition(RESET_CAMERA, { x: 0, y: 0, z: 0 }, 400)
+          graph.zoomToFit(400, 80)
+        }}
         nodeRelSize={4}
         nodeOpacity={1}
         nodeLabel={(node) => String((node as GraphNode3D).name ?? '')}
@@ -461,7 +476,7 @@ export function GraphMap3D(props: GraphMap3DProps) {
           }
           onLinkClick({ from: link.from, to: link.to })
         }}
-        enableNodeDrag={false}
+        enableNodeDrag={isNodeDragEnabled}
       />
     </GraphMapErrorBoundary>
     <div className="graph-3d-actions">
@@ -469,6 +484,7 @@ export function GraphMap3D(props: GraphMap3DProps) {
       <button type="button" className="chip" title="Вернуть стартовую камеру и масштаб" onClick={resetView}>Сброс вида</button>
       <button type="button" className="chip" onClick={focusSelectedNode} disabled={!selectedNodeId}>Фокус узла</button>
       <button type="button" className="chip" title="Остановить/запустить движение силовой симуляции" onClick={toggleSimulation}>{isFrozen ? 'Оживить' : 'Заморозить'}</button>
+      <button type="button" className="chip" title="Перетаскивание узлов разогревает симуляцию" onClick={toggleNodeDrag}>{isNodeDragEnabled ? 'Drag: on' : 'Drag: off'}</button>
       <span className="graph-3d-help" title="Управление: ЛКМ/тач — вращение, колесо — зум, клик по узлу или связи — фокус.">?</span>
     </div>
     <div className="graph-3d-legend" aria-label="Легенда карты">
