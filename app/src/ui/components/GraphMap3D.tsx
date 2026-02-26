@@ -72,6 +72,8 @@ const INITIAL_COOLDOWN_TICKS = 420
 const INITIAL_WARMUP_TICKS = 220
 const IDLE_RESUME_MS = 2600
 const ISOLATE_BOUND_RADIUS = 120
+const ZOOM_TO_FIT_DURATION_MS = 400
+const ZOOM_TO_FIT_PADDING = 80
 
 function isWebglAvailable(): boolean {
   try {
@@ -148,7 +150,6 @@ export function GraphMap3D(props: GraphMap3DProps) {
   const [webglFailed, setWebglFailed] = useState(false)
   const fgRef = useRef<ForceGraphMethods<GraphNode3D, GraphLink3D> | null>(null)
   const idleTimer = useRef<number | null>(null)
-  const hasInitialFit = useRef(false)
   const shouldFitOnEngineStop = useRef(true)
   const [isInteracting, setIsInteracting] = useState(false)
   const [isFrozen, setIsFrozen] = useState(false)
@@ -269,13 +270,6 @@ export function GraphMap3D(props: GraphMap3DProps) {
   }, [isolatedNodeIds, nodes, sanitizedLinks])
 
   useEffect(() => {
-    const graph = fgRef.current
-    if (!graph || hasInitialFit.current) return
-    graph.cameraPosition(RESET_CAMERA, { x: 0, y: 0, z: 0 }, 500)
-    hasInitialFit.current = true
-  }, [sanitizedLinks])
-
-  useEffect(() => {
     shouldFitOnEngineStop.current = true
   }, [graphData])
 
@@ -357,12 +351,12 @@ export function GraphMap3D(props: GraphMap3DProps) {
     }
   }, [onUserInteraction])
 
-  const runZoomToFit = () => fgRef.current?.zoomToFit(500, 40)
+  const runZoomToFit = () => fgRef.current?.zoomToFit(ZOOM_TO_FIT_DURATION_MS, ZOOM_TO_FIT_PADDING)
   const resetView = () => {
     const graph = fgRef.current
     if (!graph) return
     graph.cameraPosition(RESET_CAMERA, { x: 0, y: 0, z: 0 }, 500)
-    graph.zoomToFit(500, 40)
+    graph.zoomToFit(ZOOM_TO_FIT_DURATION_MS, ZOOM_TO_FIT_PADDING)
   }
 
   const focusSelectedNode = () => {
@@ -403,7 +397,13 @@ export function GraphMap3D(props: GraphMap3DProps) {
 
   if (!webglReady || webglFailed) return <GraphMapFallback onOpenMatrix={onOpenMatrix} />
 
-  return <div ref={wrapRef} className="graph-3d-wrap" onMouseDown={onUserInteraction} onWheel={onUserInteraction} onTouchStart={onUserInteraction}>
+  return <div
+    ref={wrapRef}
+    className="graph-3d-wrap"
+    onPointerDown={onUserInteraction}
+    onWheel={onUserInteraction}
+    onTouchStart={onUserInteraction}
+  >
     <GraphMapErrorBoundary onError={() => setWebglFailed(true)}>
       <ForceGraph3D
         // @ts-expect-error library typings require undefined-based mutable ref; runtime supports standard React ref object.
@@ -424,8 +424,7 @@ export function GraphMap3D(props: GraphMap3DProps) {
           const graph = fgRef.current
           if (!graph) return
           shouldFitOnEngineStop.current = false
-          graph.cameraPosition(RESET_CAMERA, { x: 0, y: 0, z: 0 }, 400)
-          graph.zoomToFit(400, 80)
+          graph.zoomToFit(ZOOM_TO_FIT_DURATION_MS, ZOOM_TO_FIT_PADDING)
         }}
         nodeRelSize={4}
         nodeOpacity={1}
