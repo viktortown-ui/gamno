@@ -450,10 +450,10 @@ export function GraphMap3D(props: GraphMap3DProps) {
       />
     </GraphMapErrorBoundary>
     <div className="graph-3d-actions">
-      <button type="button" className="chip" onClick={runZoomToFit}>Подогнать вид</button>
-      <button type="button" className="chip" onClick={resetView}>Сброс вида</button>
+      <button type="button" className="chip" title="Подогнать весь граф в видимую область" onClick={runZoomToFit}>Подогнать вид</button>
+      <button type="button" className="chip" title="Вернуть стартовую камеру и масштаб" onClick={resetView}>Сброс вида</button>
       <button type="button" className="chip" onClick={focusSelectedNode} disabled={!selectedNodeId}>Фокус узла</button>
-      <button type="button" className="chip" onClick={toggleSimulation}>{isFrozen ? 'Оживить' : 'Заморозить'}</button>
+      <button type="button" className="chip" title="Остановить/запустить движение силовой симуляции" onClick={toggleSimulation}>{isFrozen ? 'Оживить' : 'Заморозить'}</button>
       <span className="graph-3d-help" title="Управление: ЛКМ/тач — вращение, колесо — зум, клик по узлу или связи — фокус.">?</span>
     </div>
     <div className="graph-3d-legend" aria-label="Легенда карты">

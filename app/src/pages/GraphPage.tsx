@@ -72,6 +72,7 @@ export function GraphPage() {
   const [testResult, setTestResult] = useState<MetricVector | null>(null)
   const [lastCheckSummary, setLastCheckSummary] = useState<string | null>(null)
   const [checkins, setCheckins] = useState<CheckinRecord[]>([])
+  const [helpOpen, setHelpOpen] = useState(false)
 
   useEffect(() => {
     void (async () => {
@@ -224,12 +225,22 @@ export function GraphPage() {
   }
 
   return <section className="page panel graph-page">
-    <h1>Граф влияний</h1>
-    <div className="settings-actions"><button type="button" onClick={() => {
+    <div className="graph-page__title-row">
+      <h1>Граф влияний</h1>
+      <button
+        type="button"
+        className="graph-help-button"
+        aria-label="Открыть справку по графу"
+        onClick={() => setHelpOpen(true)}
+      >
+        ?
+      </button>
+    </div>
+    <div className="settings-actions"><button type="button" title="Отправить выбранный импульс в симулятор Мультивселенной" onClick={() => {
       const ctx = { sourceTool: 'levers' as const, leverKey: impulseMetric, delta, waves: steps, horizonDays: 14, weightsMode: sourceToWeightsMode(weightsSource), mixValue: weightsSource === 'mixed' ? mix : undefined, noiseLevel: 'on' as const, shockProfile: 'normal' as const }
       sendCommand('runMultiverse', ctx)
       navigate(`/multiverse?${encodeContextToQuery(ctx)}`)
-    }}>Прогнать в Мультивселенной</button></div>
+    }}>Прогнать в Мультивселенную</button></div>
     <div className="mode-tabs">
       <button type="button" className={mode === 'levers' ? 'filter-button filter-button--active' : 'filter-button'} onClick={() => setMode('levers')}>Рычаги</button>
       <button type="button" className={mode === 'map' ? 'filter-button filter-button--active' : 'filter-button'} onClick={() => setMode('map')}>Карта</button>
@@ -407,5 +418,55 @@ export function GraphPage() {
       </> : null}
       {!selectedNodeId && !selectedEdge && hoveredEdge ? <p>Наведено: {METRICS.find((m) => m.id === hoveredEdge.from)?.labelRu} → {METRICS.find((m) => m.id === hoveredEdge.to)?.labelRu}</p> : null}
     </aside></div>}
+    {helpOpen && <div className="graph-help-sheet" role="dialog" aria-modal="true" aria-label="Справка: граф влияний">
+      <div className="graph-help-sheet__backdrop" onClick={() => setHelpOpen(false)} />
+      <aside className="graph-help-sheet__panel panel">
+        <div className="graph-help-sheet__header">
+          <h2>Справка для новичка</h2>
+          <button type="button" className="chip" onClick={() => setHelpOpen(false)}>Закрыть</button>
+        </div>
+        <section>
+          <h3>1) Что здесь показано</h3>
+          <p><strong>Узлы</strong> — это ваши метрики (сон, стресс, энергия и т.д.).</p>
+          <p><strong>Связи</strong> показывают, как одна метрика влияет на другую.</p>
+          <p><strong>Знак “+”</strong> значит «усиливает», <strong>знак “−”</strong> значит «ослабляет».</p>
+          <p><strong>Толщина линии</strong> = сила влияния: чем толще, тем заметнее эффект.</p>
+        </section>
+        <section>
+          <h3>2) Как двигаться по карте</h3>
+          <ul>
+            <li>Зажмите ЛКМ (или палец) и двигайте — вращение.</li>
+            <li>Колесо мыши / щипок — приближение и отдаление.</li>
+            <li>Клик по узлу или связи — выбрать и открыть детали справа.</li>
+            <li>Кнопки «Подогнать вид», «Сброс вида», «Заморозить» помогают быстро навести порядок.</li>
+          </ul>
+        </section>
+        <section>
+          <h3>3) Что значит «Источник весов»</h3>
+          <p><strong>Ручной</strong> — веса задаются вами вручную.</p>
+          <p><strong>Из данных</strong> — веса рассчитаны автоматически по истории чек-инов.</p>
+          <p><strong>Смешанный</strong> — комбинация ручного и из данных, долю выбираете ползунком.</p>
+        </section>
+        <section>
+          <h3>4) Быстрый сценарий работы</h3>
+          <ol>
+            <li>Выберите узел (метрику), который хотите улучшить.</li>
+            <li>Посмотрите топ входящих/исходящих влияний в инспекторе.</li>
+            <li>Запустите «Проверить импульсом», чтобы увидеть прогноз сдвига.</li>
+            <li>Если результат полезный — нажмите «Применить как сценарий».</li>
+            <li>Нажмите «Прогнать в Мультивселенную», чтобы проверить ветки будущих исходов.</li>
+          </ol>
+        </section>
+        <section>
+          <h3>5) Если граф пустой или «разъехался»</h3>
+          <ul>
+            <li>Уменьшите порог фильтра или сбросьте быстрые пресеты.</li>
+            <li>Нажмите «Подогнать вид» или «Сброс вида».</li>
+            <li>Переключитесь на «Матрица», чтобы проверить, что связи действительно есть.</li>
+            <li>Для режима «Из данных» сначала выполните «Обучить по данным».</li>
+          </ul>
+        </section>
+      </aside>
+    </div>}
   </section>
 }
