@@ -2388,3 +2388,149 @@ button.danger { background: color-mix(in srgb, #e45959 30%, var(--panel) 70%); b
   .graph-stage__overlay-tools { bottom: 12px; top: auto; }
   .graph-inspector__resize-handle { display: none; }
 }
+
+.goal-yggdrasil {
+  display: grid;
+  gap: 10px;
+  margin-bottom: var(--space-2);
+}
+
+.goal-yggdrasil__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.goal-yggdrasil__head h3 {
+  margin: 0;
+}
+
+.goal-yggdrasil__layout {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(250px, 1fr);
+  gap: 10px;
+}
+
+.goal-yggdrasil__scene {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+  background: radial-gradient(circle at 50% 10%, rgba(95, 125, 188, 0.18), rgba(8, 12, 24, 0.8));
+}
+
+.goal-yggdrasil__scene svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.goal-yggdrasil__tree {
+  transition: transform 260ms ease;
+}
+
+.goal-yggdrasil__scene--storm .goal-yggdrasil__tree {
+  animation: ygg-shake 620ms ease-in-out infinite;
+}
+
+.goal-yggdrasil__scene--grow .goal-yggdrasil__fx-glow {
+  animation: ygg-grow-glow 2.8s ease-in-out infinite;
+}
+
+.goal-yggdrasil__scene--dry .goal-yggdrasil__fx-glow {
+  opacity: 0.25;
+}
+
+.goal-yggdrasil__edge {
+  fill: none;
+  stroke-linecap: round;
+}
+
+.goal-yggdrasil__edge--grow {
+  stroke: rgba(67, 245, 198, 0.76);
+}
+
+.goal-yggdrasil__edge--risk {
+  stroke: rgba(141, 122, 255, 0.76);
+}
+
+.goal-yggdrasil__node {
+  cursor: default;
+}
+
+.goal-yggdrasil__node circle {
+  stroke: rgba(220, 232, 255, 0.35);
+  stroke-width: 1.1;
+}
+
+.goal-yggdrasil__node text {
+  fill: var(--text);
+  font-size: 11px;
+  paint-order: stroke;
+  stroke: rgba(5, 10, 20, 0.78);
+  stroke-width: 2px;
+  pointer-events: none;
+}
+
+.goal-yggdrasil__node--objective circle {
+  fill: rgba(232, 177, 95, 0.85);
+}
+
+.goal-yggdrasil__node--kr.goal-yggdrasil__node--grow circle,
+.goal-yggdrasil__node--mission.goal-yggdrasil__node--grow circle {
+  fill: rgba(54, 224, 168, 0.9);
+}
+
+.goal-yggdrasil__node--kr.goal-yggdrasil__node--risk circle,
+.goal-yggdrasil__node--mission.goal-yggdrasil__node--risk circle {
+  fill: rgba(132, 122, 247, 0.9);
+}
+
+.goal-yggdrasil__node--kr {
+  cursor: pointer;
+}
+
+.goal-yggdrasil__particles circle {
+  fill: rgba(203, 220, 255, 0.7);
+  animation: ygg-particle 1.8s linear infinite;
+}
+
+.goal-yggdrasil__details {
+  padding: var(--space-2);
+}
+
+.goal-yggdrasil__details h4,
+.goal-yggdrasil__details h5 {
+  margin: 0 0 8px;
+}
+
+.goal-yggdrasil__details p {
+  margin: 0 0 8px;
+}
+
+@keyframes ygg-shake {
+  0% { transform: translate(0px, 0px); }
+  25% { transform: translate(0.8px, -0.7px); }
+  50% { transform: translate(-0.9px, 0.4px); }
+  75% { transform: translate(0.5px, 0.8px); }
+  100% { transform: translate(0px, 0px); }
+}
+
+@keyframes ygg-grow-glow {
+  0% { opacity: 0.3; }
+  50% { opacity: 0.85; }
+  100% { opacity: 0.3; }
+}
+
+@keyframes ygg-particle {
+  from { opacity: 0.15; transform: translateY(0); }
+  to { opacity: 0.85; transform: translateY(-7px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .goal-yggdrasil__scene--storm .goal-yggdrasil__tree,
+  .goal-yggdrasil__scene--grow .goal-yggdrasil__fx-glow,
+  .goal-yggdrasil__particles circle {
+    animation: none;
+  }
+}

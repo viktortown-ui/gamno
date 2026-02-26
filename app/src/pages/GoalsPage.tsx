@@ -18,6 +18,7 @@ import {
 } from '../core/storage/repo'
 import { evaluateGoalScore, suggestGoalActions, type GoalStateInput } from '../core/engines/goal'
 import { getLatestForecastRun } from '../repo/forecastRepo'
+import { GoalYggdrasilTree } from '../ui/components/GoalYggdrasilTree'
 
 type GoalTemplateId = 'growth' | 'anti-storm' | 'energy-balance' | 'money'
 
@@ -257,6 +258,11 @@ export function GoalsPage() {
           <h2>Состояние дерева</h2>
           {selected && scoring ? (
             <>
+              <GoalYggdrasilTree
+                goal={selected}
+                actions={actions}
+                weather={treeState?.label === 'Растёт' ? 'grow' : treeState?.label === 'Штормит' ? 'storm' : 'dry'}
+              />
               <p>
                 Статус:{' '}
                 <span className={`status-badge ${treeState?.toneClass ?? 'status-badge--mid'}`}>
