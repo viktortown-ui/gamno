@@ -4,10 +4,11 @@ import { forceCenter, forceCollide, forceLink, forceManyBody, forceX, forceY } f
 import { Sprite, SpriteMaterial, CanvasTexture, Color, Group, Mesh, MeshBasicMaterial, MeshLambertMaterial, SphereGeometry } from 'three'
 import { METRICS, type MetricId } from '../../core/metrics'
 import type { InfluenceEdge } from '../../core/engines/influence/influence'
+import { canonicalMetricId, sanitizeGraphData } from './graphDataSanitizer'
 
 type GraphNode = {
   id: MetricId
-  name: string
+  label: string
   val: number
   score: number
   inScore: number
@@ -43,8 +44,8 @@ interface GraphNode3D extends GraphNode {
 }
 
 interface GraphLink3D extends GraphLink {
-  source: MetricId | GraphNode3D
-  target: MetricId | GraphNode3D
+  source: string | GraphNode3D
+  target: string | GraphNode3D
 }
 
 export interface GraphMapSelection {
@@ -63,6 +64,7 @@ interface GraphMap3DProps {
   onLinkClick: (edge: { from: MetricId; to: MetricId }) => void
   focusRequest: GraphMapSelection | null
   onOpenMatrix: () => void
+  onSanitizeIssues?: (count: number) => void
 }
 
 const RESET_CAMERA = { x: 0, y: 0, z: 420 }
@@ -140,6 +142,7 @@ export function GraphMap3D(props: GraphMap3DProps) {
     onLinkClick,
     focusRequest,
     onOpenMatrix,
+    onSanitizeIssues,
   } = props
   const [webglReady] = useState(() => (typeof document === 'undefined' ? true : isWebglAvailable()))
   const [webglFailed, setWebglFailed] = useState(false)
@@ -173,7 +176,7 @@ export function GraphMap3D(props: GraphMap3DProps) {
       const anchorAngle = (index / Math.max(1, METRICS.length)) * Math.PI * 2
       return {
         id: metric.id,
-        name: metric.labelRu,
+        label: metric.labelRu,
         inScore,
         outScore,
         score: sumScore,
@@ -198,14 +201,33 @@ export function GraphMap3D(props: GraphMap3DProps) {
     sign: edge.weight >= 0 ? 1 : -1,
   })), [edges])
 
-  const isolatedNodeIds = useMemo(() => new Set(nodes.filter((node) => node.degree === 0).map((node) => node.id)), [nodes])
-  const graphData = useMemo(() => ({ nodes, links }), [nodes, links])
+  const sanitizedGraph = useMemo(
+    () => sanitizeGraphData(nodes, links, canonicalMetricId),
+    [links, nodes],
+  )
+  const { links: sanitizedLinks, droppedExamples, droppedLinksCount } = sanitizedGraph
+
+  const isolatedNodeIds = useMemo(() => {
+    const connected = new Set<MetricId>()
+    sanitizedLinks.forEach((link) => {
+      connected.add(link.from)
+      connected.add(link.to)
+    })
+    return new Set(nodes.filter((node) => !connected.has(node.id)).map((node) => node.id))
+  }, [nodes, sanitizedLinks])
+  const graphData = useMemo(() => ({ nodes, links: sanitizedLinks }), [nodes, sanitizedLinks])
+
+  useEffect(() => {
+    onSanitizeIssues?.(droppedLinksCount)
+    if (droppedLinksCount <= 0) return
+    console.warn(`[GraphMap3D] Пропущены связи без узлов: ${droppedLinksCount}`, droppedExamples)
+  }, [droppedExamples, droppedLinksCount, onSanitizeIssues])
 
   useEffect(() => {
     const graph = fgRef.current
     if (!graph) return
     const chargeForce = forceManyBody<GraphNode3D>().strength((node) => -58 - node.val * 4)
-    const linkForce = forceLink<GraphNode3D, GraphLink3D>(links)
+    const linkForce = forceLink<GraphNode3D, GraphLink3D>(sanitizedLinks)
       .id((node) => node.id)
       .distance((link) => 52 + (1 - Math.min(1, Math.abs(link.weight))) * 34)
       .strength((link) => 0.35 + Math.abs(link.weight) * 0.25)
@@ -244,14 +266,14 @@ export function GraphMap3D(props: GraphMap3DProps) {
       }
     })
     graph.d3Force('isolate-anchor', isolateAnchorForce)
-  }, [isolatedNodeIds, links, nodes])
+  }, [isolatedNodeIds, nodes, sanitizedLinks])
 
   useEffect(() => {
     const graph = fgRef.current
     if (!graph || hasInitialFit.current) return
     graph.cameraPosition(RESET_CAMERA, { x: 0, y: 0, z: 0 }, 500)
     hasInitialFit.current = true
-  }, [links])
+  }, [sanitizedLinks])
 
   useEffect(() => {
     shouldFitOnEngineStop.current = true
@@ -299,12 +321,12 @@ export function GraphMap3D(props: GraphMap3DProps) {
     const target = selectedNodeId ?? hoveredNodeIdLocal
     if (!target) return new Set<MetricId>()
     const peers = new Set<MetricId>([target])
-    links.forEach((link) => {
+    sanitizedLinks.forEach((link) => {
       if (link.from === target) peers.add(link.to)
       if (link.to === target) peers.add(link.from)
     })
     return peers
-  }, [links, hoveredNodeIdLocal, selectedNodeId])
+  }, [hoveredNodeIdLocal, sanitizedLinks, selectedNodeId])
 
   useEffect(() => {
     const controls = fgRef.current?.controls() as OrbitControlsLike | undefined
@@ -387,6 +409,7 @@ export function GraphMap3D(props: GraphMap3DProps) {
         // @ts-expect-error library typings require undefined-based mutable ref; runtime supports standard React ref object.
         ref={fgRef}
         graphData={graphData}
+        nodeId="id"
         width={viewportSize.width}
         height={viewportSize.height}
         backgroundColor="#071127"
@@ -406,7 +429,7 @@ export function GraphMap3D(props: GraphMap3DProps) {
         }}
         nodeRelSize={4}
         nodeOpacity={1}
-        nodeLabel={(node) => String((node as GraphNode3D).name ?? '')}
+        nodeLabel={(node) => String((node as GraphNode3D).label ?? '')}
         nodeVisibility={(node) => {
           const camera = fgRef.current?.camera()
           if (!camera) return true
@@ -434,7 +457,7 @@ export function GraphMap3D(props: GraphMap3DProps) {
           )
           group.add(halo)
           group.add(sphere)
-          if (showLabel) group.add(labelSprite(node.name))
+          if (showLabel) group.add(labelSprite(node.label))
           return group
         }}
         onNodeHover={(node) => {
