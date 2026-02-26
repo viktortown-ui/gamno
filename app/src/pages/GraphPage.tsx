@@ -60,6 +60,7 @@ export function GraphPage() {
   const [hoveredEdge, setHoveredEdge] = useState<{ from: MetricId; to: MetricId } | null>(null)
   const [hoverPoint, setHoverPoint] = useState<{ x: number; y: number } | null>(null)
   const [focusRequest, setFocusRequest] = useState<GraphMapSelection | null>(null)
+  const [droppedLinksCount, setDroppedLinksCount] = useState(0)
   const [source, setSource] = useState<MetricId | 'all'>('all')
   const [target, setTarget] = useState<MetricId | 'all'>('all')
   const [sign, setSign] = useState<'all' | 'positive' | 'negative'>('all')
@@ -388,12 +389,14 @@ export function GraphPage() {
         </>}
       </div>
       {mode === 'map' && <div className="graph-map-shell">
+        {droppedLinksCount > 0 && <div className="graph-map-warning chip" role="status">Некоторые связи пропущены: нет узлов.</div>}
         <GraphMap3D
           edges={mapEdges}
           selectedNodeId={selectedNodeId}
           selectedEdge={selectedEdge}
           autoOrbitEnabled={!isReducedMotion}
           focusRequest={focusRequest}
+          onSanitizeIssues={setDroppedLinksCount}
           onNodeHover={(nodeId, point) => {
             setHoveredNodeId(nodeId)
             setHoverPoint(point)
