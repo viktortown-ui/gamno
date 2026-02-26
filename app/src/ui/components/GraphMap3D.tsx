@@ -37,6 +37,9 @@ type OrbitControlsLike = {
 
 interface GraphNode3D extends GraphNode {
   degree: number
+  anchorX: number
+  anchorY: number
+  anchorZ: number
 }
 
 interface GraphLink3D extends GraphLink {
@@ -63,8 +66,8 @@ interface GraphMap3DProps {
 }
 
 const RESET_CAMERA = { x: 0, y: 0, z: 340 }
-const INITIAL_COOLDOWN_TICKS = 320
-const INITIAL_WARMUP_TICKS = 140
+const INITIAL_COOLDOWN_TICKS = 360
+const INITIAL_WARMUP_TICKS = 180
 const IDLE_RESUME_MS = 2600
 const ISOLATE_BOUND_RADIUS = 120
 
@@ -172,6 +175,9 @@ export function GraphMap3D(props: GraphMap3DProps) {
         score: sumScore,
         degree,
         val: Math.max(2, 2 + sumScore * 4),
+        anchorX: degree === 0 ? Math.cos(anchorAngle) * anchorRadius : 0,
+        anchorY: degree === 0 ? Math.sin(anchorAngle) * anchorRadius : 0,
+        anchorZ: degree === 0 ? (index % 5) * 6 - 12 : 0,
         x: degree === 0 ? Math.cos(anchorAngle) * anchorRadius : undefined,
         y: degree === 0 ? Math.sin(anchorAngle) * anchorRadius : undefined,
         z: degree === 0 ? (index % 5) * 6 - 12 : undefined,
@@ -202,14 +208,23 @@ export function GraphMap3D(props: GraphMap3DProps) {
     const isolateAnchorForce = () => {
       for (const node of nodes) {
         if (!isolatedNodeIds.has(node.id)) continue
-        const x = node.x ?? 0
-        const y = node.y ?? 0
-        const z = node.z ?? 0
-        const distance = Math.sqrt(x * x + y * y + z * z) || 1
-        const pull = distance > ISOLATE_BOUND_RADIUS ? 0.055 : 0.025
-        node.vx = (node.vx ?? 0) - (x / distance) * pull
-        node.vy = (node.vy ?? 0) - (y / distance) * pull
-        node.vz = (node.vz ?? 0) - (z / distance) * pull
+        const x = node.x ?? node.anchorX
+        const y = node.y ?? node.anchorY
+        const z = node.z ?? node.anchorZ
+        const dx = node.anchorX - x
+        const dy = node.anchorY - y
+        const dz = node.anchorZ - z
+        const anchorDistance = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1
+        const boundDistance = Math.sqrt(x * x + y * y + z * z) || 1
+        const pull = anchorDistance > 10 ? 0.09 : 0.035
+        node.vx = (node.vx ?? 0) + (dx / anchorDistance) * pull
+        node.vy = (node.vy ?? 0) + (dy / anchorDistance) * pull
+        node.vz = (node.vz ?? 0) + (dz / anchorDistance) * pull
+        if (boundDistance > ISOLATE_BOUND_RADIUS) {
+          node.vx -= (x / boundDistance) * 0.07
+          node.vy -= (y / boundDistance) * 0.07
+          node.vz -= (z / boundDistance) * 0.07
+        }
       }
     }
 
@@ -221,7 +236,7 @@ export function GraphMap3D(props: GraphMap3DProps) {
     graph.d3Force('y', forceY<GraphNode3D>(0).strength(0.02))
     graph.d3Force('z', () => {
       for (const node of nodes) {
-        node.vz = (node.vz ?? 0) - (node.z ?? 0) * 0.02
+        node.vz = (node.vz ?? 0) - ((node.z ?? 0) - node.anchorZ) * 0.02
       }
     })
     graph.d3Force('isolate-anchor', isolateAnchorForce)
@@ -356,8 +371,8 @@ export function GraphMap3D(props: GraphMap3DProps) {
         controlType="orbit"
         warmupTicks={INITIAL_WARMUP_TICKS}
         cooldownTicks={INITIAL_COOLDOWN_TICKS}
-        d3AlphaDecay={0.09}
-        d3VelocityDecay={0.5}
+        d3AlphaDecay={0.11}
+        d3VelocityDecay={0.62}
         nodeRelSize={4}
         nodeOpacity={1}
         nodeLabel={(node) => String((node as GraphNode3D).name ?? '')}
@@ -393,7 +408,7 @@ export function GraphMap3D(props: GraphMap3DProps) {
         }}
         onNodeHover={(node) => {
           const nextNode = node as GraphNode3D | null
-          setHoveredNodeIdLocal(nextNode?.id ?? null)
+          setHoveredNodeIdLocal((prev) => (prev === (nextNode?.id ?? null) ? prev : (nextNode?.id ?? null)))
           if (nextNode?.x != null && nextNode.y != null && nextNode.z != null) {
             const point = fgRef.current?.graph2ScreenCoords(nextNode.x, nextNode.y, nextNode.z)
             onNodeHover(nextNode.id, point ? { x: point.x, y: point.y } : null)
