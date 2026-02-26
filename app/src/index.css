@@ -2371,6 +2371,40 @@ button.danger { background: color-mix(in srgb, #e45959 30%, var(--panel) 70%); b
 .graph-accordion[open] > summary { margin-bottom: var(--space-3); }
 .inspector-in-panel { margin-bottom: var(--space-3); }
 
+.goals-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(6, 10, 18, 0.7);
+  display: grid;
+  place-items: center;
+  z-index: 120;
+  padding: 20px;
+}
+
+.goals-modal {
+  width: min(560px, 100%);
+  display: grid;
+  gap: var(--space-2);
+}
+
+.goals-tree-state__top-layer {
+  display: grid;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.goals-tree-state__top-layer p {
+  margin: 0;
+}
+
+.goals-tree-state__placeholder {
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  padding: var(--space-2);
+  color: var(--muted);
+  text-align: center;
+}
+
 @media (max-width: 1024px) {
   .graph-top3 { grid-template-columns: 1fr; }
   .graph-monitor-row { grid-template-columns: 1fr; }

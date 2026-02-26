@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { METRICS, type MetricId } from '../core/metrics'
 import type { GoalKeyResult, GoalMission, GoalMissionAction, GoalRecord } from '../core/models/goal'
@@ -17,7 +17,6 @@ import {
 } from '../core/storage/repo'
 import { evaluateGoalScore, suggestGoalActions, type GoalStateInput } from '../core/engines/goal'
 import { getLatestForecastRun } from '../repo/forecastRepo'
-import { GoalYggdrasilTree } from '../ui/components/GoalYggdrasilTree'
 
 type GoalTemplateId = 'growth' | 'anti-storm' | 'energy-balance' | 'money'
 
@@ -75,6 +74,8 @@ export function GoalsPage() {
   const [seedTitle, setSeedTitle] = useState('')
   const [seedHorizon, setSeedHorizon] = useState<7 | 14 | 30>(14)
   const [duplicateCandidate, setDuplicateCandidate] = useState<GoalRecord | null>(null)
+  const seedButtonRef = useRef<HTMLButtonElement | null>(null)
+  const seedDialogRef = useRef<HTMLDivElement | null>(null)
 
   const reload = async () => {
     const [allGoals, active, latestState, latestRegime, checkins, latestForecast] = await Promise.all([
@@ -170,6 +171,61 @@ export function GoalsPage() {
     setDuplicateCandidate(null)
   }
 
+  const closeSeedModal = () => {
+    setSeedModalOpen(false)
+    setDuplicateCandidate(null)
+    requestAnimationFrame(() => seedButtonRef.current?.focus())
+  }
+
+  useEffect(() => {
+    if (!seedModalOpen) return
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    const focusableSelectors = [
+      'button:not([disabled])',
+      'input:not([disabled])',
+      'select:not([disabled])',
+      'textarea:not([disabled])',
+      '[tabindex]:not([tabindex="-1"])',
+    ].join(',')
+
+    const node = seedDialogRef.current
+    const focusable = node ? Array.from(node.querySelectorAll<HTMLElement>(focusableSelectors)) : []
+    const firstFocusable = focusable[0]
+    firstFocusable?.focus()
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!seedModalOpen) return
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        closeSeedModal()
+        return
+      }
+      if (event.key !== 'Tab') return
+      const dialogNode = seedDialogRef.current
+      if (!dialogNode) return
+      const trapped = Array.from(dialogNode.querySelectorAll<HTMLElement>(focusableSelectors))
+      if (trapped.length === 0) return
+      const first = trapped[0]
+      const last = trapped[trapped.length - 1]
+      const active = document.activeElement
+      if (!event.shiftKey && active === last) {
+        event.preventDefault()
+        first.focus()
+      } else if (event.shiftKey && active === first) {
+        event.preventDefault()
+        last.focus()
+      }
+    }
+
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('keydown', onKeyDown)
+      document.body.style.overflow = previousOverflow
+    }
+  }, [seedModalOpen])
+
   const submitSeed = async (forceCreate = false) => {
     const normalizedTitle = seedTitle.trim()
     if (!normalizedTitle) return
@@ -228,6 +284,40 @@ export function GoalsPage() {
 
   const activeMission = selected?.activeMission
   const missionCompleted = Boolean(activeMission?.completedAt)
+  const nextMissionStep = activeMission?.actions.find((item) => !item.done)?.title ?? actions[0]?.titleRu ?? 'Обновите состояние, чтобы получить следующую миссию.'
+
+  const primaryMetricIds = useMemo(() => {
+    if (!editor) return []
+    const sorted = Object.entries(editor.weights)
+      .sort((a, b) => Math.abs((b[1] ?? 0)) - Math.abs((a[1] ?? 0)))
+      .map(([metricId]) => metricId as MetricId)
+    const unique = Array.from(new Set(sorted))
+    const filled = [...unique]
+    for (const metric of METRICS) {
+      if (filled.length >= 6) break
+      if (!filled.includes(metric.id)) filled.push(metric.id)
+    }
+    return filled.slice(0, Math.max(3, Math.min(6, filled.length)))
+  }, [editor])
+
+  const editorKeyResults = useMemo(() => {
+    if (!editor) return []
+    return editor.okr.keyResults.length > 0
+      ? editor.okr.keyResults
+      : Object.entries(editor.weights).slice(0, 3).map(([metricId, weight], index) => createKrFromMetric(metricId as MetricId, weight ?? 0, index))
+  }, [editor])
+
+  const updateEditorKr = (krId: string, patch: Partial<GoalKeyResult>) => {
+    if (!editor) return
+    const nextKrs = editorKeyResults.map((item) => item.id === krId ? { ...item, ...patch } : item)
+    setEditor({
+      ...editor,
+      okr: {
+        ...editor.okr,
+        keyResults: nextKrs,
+      },
+    })
+  }
 
   const acceptMission = async () => {
     if (!selected) return
@@ -311,7 +401,7 @@ export function GoalsPage() {
       <div className="oracle-grid goals-layout">
         <article className="summary-card panel">
           <h2>Список целей</h2>
-          <button type="button" onClick={startSeed}>Посадить семя</button>
+          <button ref={seedButtonRef} type="button" onClick={startSeed}>Посадить семя</button>
           {goals.length === 0 ? <p>Пока нет целей.</p> : null}
           <ul>
             {goals.map((goal) => (
@@ -343,58 +433,41 @@ export function GoalsPage() {
                   <option value={7}>7 дней</option><option value={14}>14 дней</option><option value={30}>30 дней</option>
                 </select>
               </label>
-              <h3>Веса метрик</h3>
-              {METRICS.map((metric) => (
+              <h3>Главные ветви</h3>
+              {METRICS.filter((metric) => primaryMetricIds.includes(metric.id)).map((metric) => (
                 <label key={metric.id}>{metric.labelRu}: {(editor.weights[metric.id] ?? 0).toFixed(2)}
                   <input type="range" min={-1} max={1} step={0.1} value={editor.weights[metric.id] ?? 0} onChange={(e) => setEditor({ ...editor, weights: { ...editor.weights, [metric.id]: Number(e.target.value) } })} />
                 </label>
               ))}
 
-              <h3>Key Results</h3>
-              {(editor.okr.keyResults.length > 0 ? editor.okr.keyResults : Object.entries(editor.weights).slice(0, 3).map(([metricId, weight], index) => createKrFromMetric(metricId as MetricId, weight ?? 0, index))).map((kr, index) => (
+              <details className="graph-accordion">
+                <summary>Подробнее (для продвинутых)</summary>
+                {editorKeyResults.map((kr, index) => (
                 <div key={kr.id} className="panel" style={{ marginBottom: 8 }}>
-                  <strong>KR{index + 1}: {kr.metricId}</strong>
+                  <strong>KR{index + 1}: {METRICS.find((item) => item.id === kr.metricId)?.labelRu ?? kr.metricId}</strong>
                   <label>
-                    Направление
+                    Направление: вверх/вниз
                     <select
                       value={kr.direction}
-                      onChange={(e) => setEditor({
-                        ...editor,
-                        okr: {
-                          ...editor.okr,
-                          keyResults: editor.okr.keyResults.map((item) => item.id === kr.id ? { ...item, direction: e.target.value as 'up' | 'down' } : item),
-                        },
-                      })}
+                      onChange={(e) => updateEditorKr(kr.id, { direction: e.target.value as 'up' | 'down' })}
                     >
                       <option value="up">Вверх</option>
                       <option value="down">Вниз</option>
                     </select>
                   </label>
                   <label>
-                    Target (опционально)
+                    Цель (опционально)
                     <input
                       type="number"
                       value={kr.target ?? ''}
-                      onChange={(e) => setEditor({
-                        ...editor,
-                        okr: {
-                          ...editor.okr,
-                          keyResults: editor.okr.keyResults.map((item) => item.id === kr.id ? { ...item, target: e.target.value ? Number(e.target.value) : undefined } : item),
-                        },
-                      })}
+                      onChange={(e) => updateEditorKr(kr.id, { target: e.target.value ? Number(e.target.value) : undefined })}
                     />
                   </label>
                   <label>
-                    Режим прогресса
+                    Режим прогресса: авто/ручной
                     <select
                       value={kr.progressMode ?? 'auto'}
-                      onChange={(e) => setEditor({
-                        ...editor,
-                        okr: {
-                          ...editor.okr,
-                          keyResults: editor.okr.keyResults.map((item) => item.id === kr.id ? { ...item, progressMode: e.target.value as 'auto' | 'manual' } : item),
-                        },
-                      })}
+                      onChange={(e) => updateEditorKr(kr.id, { progressMode: e.target.value as 'auto' | 'manual' })}
                     >
                       <option value="auto">Авто</option>
                       <option value="manual">Ручной</option>
@@ -409,18 +482,13 @@ export function GoalsPage() {
                         max={1}
                         step={0.1}
                         value={kr.progress ?? 0}
-                        onChange={(e) => setEditor({
-                          ...editor,
-                          okr: {
-                            ...editor.okr,
-                            keyResults: editor.okr.keyResults.map((item) => item.id === kr.id ? { ...item, progress: clamp01(Number(e.target.value || 0)) } : item),
-                          },
-                        })}
+                        onChange={(e) => updateEditorKr(kr.id, { progress: clamp01(Number(e.target.value || 0)) })}
                       />
                     </label>
                   ) : null}
                 </div>
               ))}
+              </details>
 
               <div className="settings-actions">
                 <button type="button" onClick={async () => { await updateGoal(editor.id, editor); await reload() }}>Сохранить</button>
@@ -435,14 +503,6 @@ export function GoalsPage() {
           <h2>Состояние дерева</h2>
           {selected && scoring ? (
             <>
-              <GoalYggdrasilTree
-                goal={selected}
-                actions={actions}
-                weather={treeState?.label === 'Растёт' ? 'grow' : treeState?.label === 'Штормит' ? 'storm' : 'dry'}
-              />
-
-              <p><strong>Ветка → Действие → Результат:</strong> выберите KR в дереве, отметьте действие в миссии, получите плод и рост прогресса KR.</p>
-
               <p>
                 Статус:{' '}
                 <span className={`status-badge ${treeState?.toneClass ?? 'status-badge--mid'}`}>
@@ -450,12 +510,11 @@ export function GoalsPage() {
                 </span>
               </p>
 
-              <h3>Прогресс KR</h3>
-              <ul>
-                {krProgressRows.map((row, index) => (
-                  <li key={row.kr.id}>KR{index + 1} ({row.kr.metricId}, {row.kr.direction === 'up' ? '↑' : '↓'}): {(row.progress * 100).toFixed(0)}%</li>
-                ))}
-              </ul>
+              <div className="goals-tree-state__top-layer panel">
+                <p><strong>Следующий шаг:</strong> {nextMissionStep}</p>
+                <button type="button" onClick={acceptMission} disabled={Boolean(activeMission && !missionCompleted)}>Принять миссию на 3 дня</button>
+                <p className="goals-tree-state__placeholder">Иггдрасиль строится…</p>
+              </div>
 
               <h3>Миссия на 3 дня</h3>
               {activeMission ? (
@@ -474,7 +533,7 @@ export function GoalsPage() {
                   {selected.fruitBadge ? <p className="chip">{selected.fruitBadge}</p> : null}
                 </div>
               ) : (
-                <button type="button" onClick={acceptMission}>Принять миссию</button>
+                <p>Миссия ещё не принята.</p>
               )}
 
               <details className="graph-accordion">
@@ -490,31 +549,33 @@ export function GoalsPage() {
       </div>
 
       {seedModalOpen ? (
-        <div className="panel" role="dialog" aria-modal="true">
-          <h2>Посадить семя</h2>
-          <label>Шаблон
-            <select value={seedTemplate} onChange={(e) => setSeedTemplate(e.target.value as GoalTemplateId)}>
-              {Object.entries(templates).map(([id, item]) => <option key={id} value={id}>{item.title}</option>)}
-            </select>
-          </label>
-          <label>Название<input value={seedTitle} onChange={(e) => setSeedTitle(e.target.value)} /></label>
-          <label>Горизонт
-            <select value={seedHorizon} onChange={(e) => setSeedHorizon(Number(e.target.value) as 7 | 14 | 30)}>
-              <option value={7}>7 дней</option><option value={14}>14 дней</option><option value={30}>30 дней</option>
-            </select>
-          </label>
-          {duplicateCandidate ? (
-            <div>
-              <p>Такая цель уже есть: открыть её?</p>
-              <div className="settings-actions">
-                <button type="button" onClick={() => { setSelectedGoalId(duplicateCandidate.id); setEditor(duplicateCandidate); setSeedModalOpen(false); setDuplicateCandidate(null) }}>Открыть</button>
-                <button type="button" onClick={async () => { await submitSeed(true) }}>Всё равно создать</button>
+        <div className="goals-modal-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) closeSeedModal() }}>
+          <div ref={seedDialogRef} className="panel goals-modal" role="dialog" aria-modal="true" aria-label="Посадить семя">
+            <h2>Посадить семя</h2>
+            <label>Шаблон
+              <select value={seedTemplate} onChange={(e) => setSeedTemplate(e.target.value as GoalTemplateId)}>
+                {Object.entries(templates).map(([id, item]) => <option key={id} value={id}>{item.title}</option>)}
+              </select>
+            </label>
+            <label>Название<input value={seedTitle} onChange={(e) => setSeedTitle(e.target.value)} /></label>
+            <label>Горизонт
+              <select value={seedHorizon} onChange={(e) => setSeedHorizon(Number(e.target.value) as 7 | 14 | 30)}>
+                <option value={7}>7 дней</option><option value={14}>14 дней</option><option value={30}>30 дней</option>
+              </select>
+            </label>
+            {duplicateCandidate ? (
+              <div>
+                <p>Такая цель уже есть: открыть её?</p>
+                <div className="settings-actions">
+                  <button type="button" onClick={() => { setSelectedGoalId(duplicateCandidate.id); setEditor(duplicateCandidate); closeSeedModal() }}>Открыть</button>
+                  <button type="button" onClick={async () => { await submitSeed(true) }}>Всё равно создать</button>
+                </div>
               </div>
+            ) : null}
+            <div className="settings-actions">
+              <button type="button" onClick={async () => { await submitSeed() }}>Создать</button>
+              <button type="button" onClick={closeSeedModal}>Отмена</button>
             </div>
-          ) : null}
-          <div className="settings-actions">
-            <button type="button" onClick={async () => { await submitSeed() }}>Создать</button>
-            <button type="button" onClick={() => setSeedModalOpen(false)}>Отмена</button>
           </div>
         </div>
       ) : null}
