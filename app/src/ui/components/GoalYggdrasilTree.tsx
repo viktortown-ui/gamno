@@ -65,7 +65,7 @@ export function GoalYggdrasilTree({ goal, actions, weather }: Props) {
       const signedWeight = goal.weights[kr.metricId] ?? (kr.direction === 'up' ? 0.4 : -0.4)
       return {
         id: kr.id,
-        label: `KR${index + 1}: ${metricName.get(kr.metricId) ?? kr.metricId}`,
+        label: `KR${index + 1}: ${metricName.get(kr.metricId) ?? kr.metricId} (${Math.round(((kr.progress ?? 0) * 100))}%)`,
         kind: 'kr',
         tone: signedWeight >= 0 ? 'grow' : 'risk',
         weight: Math.max(0.9, Math.abs(signedWeight) * 2.2),

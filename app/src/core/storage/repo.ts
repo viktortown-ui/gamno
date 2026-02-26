@@ -270,6 +270,8 @@ function normalizeGoalRecord(row: unknown): GoalRecord | null {
         metricId: item.metricId,
         direction: item.direction === 'down' ? 'down' as const : 'up' as const,
         target: item.target,
+        progress: typeof item.progress === 'number' ? Math.max(0, Math.min(1, item.progress)) : undefined,
+        progressMode: item.progressMode === 'manual' ? 'manual' as const : 'auto' as const,
         note: item.note,
       })),
     }
@@ -286,6 +288,8 @@ function normalizeGoalRecord(row: unknown): GoalRecord | null {
     active: Boolean(source.active) || status === 'active',
     weights: source.weights ?? {},
     okr,
+    activeMission: source.activeMission,
+    fruitBadge: source.fruitBadge,
     template: source.template,
     targetIndex: source.targetIndex,
     targetPCollapse: source.targetPCollapse,

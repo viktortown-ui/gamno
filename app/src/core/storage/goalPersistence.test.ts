@@ -59,4 +59,37 @@ describe('goals persistence', () => {
     expect(rows[0].goalScore).toBe(61.2)
     expect(rows[1].goalScore).toBe(55.1)
   })
+
+  it('сохраняет KR прогресс и активную миссию', async () => {
+    const { createGoal, updateGoal, listGoals } = await import('./repo')
+
+    const goal = await createGoal({
+      title: 'Тест KR и миссии',
+      horizonDays: 14,
+      status: 'active',
+      weights: { focus: 0.6, stress: -0.5 },
+      okr: {
+        objective: 'Проверить persistence',
+        keyResults: [{ id: 'kr-focus', metricId: 'focus', direction: 'up', progressMode: 'manual', progress: 0.4 }],
+      },
+    })
+
+    await updateGoal(goal.id, {
+      activeMission: {
+        id: 'mission-1',
+        createdAt: 100,
+        horizonDays: 3,
+        actions: [{ id: 'a1', title: 'Сделать шаг', metricId: 'focus', krId: 'kr-focus', done: true }],
+        completedAt: 200,
+        rewardBadge: '🍎 Плод миссии: 1/1',
+      },
+      fruitBadge: '🍎 Плод миссии',
+    })
+
+    const rows = await listGoals()
+    expect(rows[0].okr.keyResults[0].progress).toBe(0.4)
+    expect(rows[0].activeMission?.actions).toHaveLength(1)
+    expect(rows[0].activeMission?.rewardBadge).toContain('Плод')
+    expect(rows[0].fruitBadge).toContain('Плод')
+  })
 })

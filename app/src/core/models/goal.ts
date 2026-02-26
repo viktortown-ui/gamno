@@ -7,7 +7,26 @@ export interface GoalKeyResult {
   metricId: MetricId
   direction: 'up' | 'down'
   target?: number
+  progress?: number
+  progressMode?: 'manual' | 'auto'
   note?: string
+}
+
+export interface GoalMissionAction {
+  id: string
+  title: string
+  metricId: MetricId
+  krId: string
+  done: boolean
+}
+
+export interface GoalMission {
+  id: string
+  createdAt: number
+  horizonDays: number
+  actions: GoalMissionAction[]
+  completedAt?: number
+  rewardBadge?: string
 }
 
 export interface GoalRecord {
@@ -23,6 +42,8 @@ export interface GoalRecord {
     objective: string
     keyResults: GoalKeyResult[]
   }
+  activeMission?: GoalMission
+  fruitBadge?: string
   template?: 'growth' | 'anti-storm' | 'energy-balance' | 'money'
   targetIndex?: number
   targetPCollapse?: number

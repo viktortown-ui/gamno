@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { METRICS } from '../core/metrics'
-import type { GoalRecord } from '../core/models/goal'
+import { METRICS, type MetricId } from '../core/metrics'
+import type { GoalKeyResult, GoalMission, GoalMissionAction, GoalRecord } from '../core/models/goal'
 import {
   addGoalEvent,
-  addQuest,
   createGoal,
   getActiveGoal,
   getLatestRegimeSnapshot,
@@ -47,6 +46,20 @@ const templates: Record<GoalTemplateId, { title: string; description: string; we
     objective: 'Улучшаю cashflow и контроль решений.',
     weights: { cashFlow: 0.8, productivity: 0.4, stress: -0.4 },
   },
+}
+
+function clamp01(value: number): number {
+  return Math.max(0, Math.min(1, value))
+}
+
+function createKrFromMetric(metricId: MetricId, weight: number, index: number): GoalKeyResult {
+  return {
+    id: `kr-${metricId}-${index}`,
+    metricId,
+    direction: weight >= 0 ? 'up' : 'down',
+    progressMode: 'auto',
+    note: 'Создано из веса метрики.',
+  }
 }
 
 export function GoalsPage() {
@@ -132,8 +145,6 @@ export function GoalsPage() {
     return { label: 'Сохнет', toneClass: 'status-badge--high' }
   }, [scoring])
 
-  const nextMission = actions[0] ?? null
-
   useEffect(() => {
     let cancelled = false
     const run = async () => {
@@ -169,6 +180,10 @@ export function GoalsPage() {
     }
 
     const tpl = templates[seedTemplate]
+    const keyResults = Object.entries(tpl.weights)
+      .slice(0, 3)
+      .map(([metricId, weight], index) => createKrFromMetric(metricId as MetricId, weight ?? 0, index))
+
     const created = await createGoal({
       title: normalizedTitle,
       description: tpl.description,
@@ -176,13 +191,95 @@ export function GoalsPage() {
       status: 'draft',
       template: seedTemplate,
       weights: tpl.weights,
-      okr: { objective: tpl.objective, keyResults: [] },
+      okr: { objective: tpl.objective, keyResults },
     })
 
     await setActiveGoal(created.id)
     setSeedModalOpen(false)
     setDuplicateCandidate(null)
     setSelectedGoalId(created.id)
+    await reload()
+  }
+
+  const krProgressRows = useMemo(() => {
+    if (!selected || !goalState) return []
+    const fallbackKrs = selected.okr.keyResults.length > 0
+      ? selected.okr.keyResults
+      : Object.entries(selected.weights).slice(0, 3).map(([metricId, weight], index) => createKrFromMetric(metricId as MetricId, weight ?? 0, index))
+
+    return fallbackKrs.map((kr) => {
+      const metric = METRICS.find((item) => item.id === kr.metricId)
+      const metricValue = goalState.metrics[kr.metricId]
+      const baseProgress = metric
+        ? kr.direction === 'up'
+          ? clamp01((metricValue - metric.min) / (metric.max - metric.min || 1))
+          : clamp01((metric.max - metricValue) / (metric.max - metric.min || 1))
+        : 0
+      const targetProgress = typeof kr.target === 'number'
+        ? (kr.direction === 'up' ? clamp01(metricValue / (kr.target || 1)) : metricValue <= kr.target ? 1 : clamp01((kr.target || 1) / (metricValue || 1)))
+        : baseProgress
+      const progress = kr.progressMode === 'manual' && typeof kr.progress === 'number'
+        ? clamp01(kr.progress)
+        : targetProgress
+
+      return { kr, metricValue, progress }
+    })
+  }, [goalState, selected])
+
+  const activeMission = selected?.activeMission
+  const missionCompleted = Boolean(activeMission?.completedAt)
+
+  const acceptMission = async () => {
+    if (!selected) return
+    const krs = (selected.okr.keyResults.length > 0 ? selected.okr.keyResults : krProgressRows.map((row) => row.kr)).slice(0, 3)
+    const generatedActions: GoalMissionAction[] = krs.slice(0, 3).map((kr, index) => {
+      const recommendation = actions.find((item) => item.metricId === kr.metricId)
+      return {
+        id: `${kr.id}-a-${index}`,
+        metricId: kr.metricId,
+        krId: kr.id,
+        done: false,
+        title: recommendation?.titleRu ?? `Действие по KR${index + 1}: ${kr.metricId}`,
+      }
+    })
+
+    const mission: GoalMission = {
+      id: `mission-${Date.now()}`,
+      createdAt: Date.now(),
+      horizonDays: 3,
+      actions: generatedActions,
+    }
+
+    await updateGoal(selected.id, { activeMission: mission, fruitBadge: undefined })
+    await reload()
+  }
+
+  const toggleMissionAction = async (actionId: string, done: boolean) => {
+    if (!selected?.activeMission) return
+    const actionsUpdated = selected.activeMission.actions.map((item) => item.id === actionId ? { ...item, done } : item)
+    const completed = actionsUpdated.every((item) => item.done)
+
+    const updatedKrs = selected.okr.keyResults.map((kr) => {
+      const completedForKr = actionsUpdated.some((item) => item.krId === kr.id && item.done)
+      if (!completedForKr) return kr
+      const current = typeof kr.progress === 'number' ? kr.progress : 0
+      return { ...kr, progressMode: 'manual' as const, progress: clamp01(current + 0.34) }
+    })
+
+    await updateGoal(selected.id, {
+      okr: { ...selected.okr, keyResults: updatedKrs },
+      activeMission: {
+        ...selected.activeMission,
+        actions: actionsUpdated,
+        completedAt: completed ? Date.now() : undefined,
+        rewardBadge: completed ? '🍎 Плод миссии: 3/3' : undefined,
+      },
+      fruitBadge: completed ? '🍎 Плод миссии' : selected.fruitBadge,
+    })
+
+    if (completed && scoring) {
+      await addGoalEvent({ goalId: selected.id, goalScore: scoring.goalScore + 0.7, goalGap: scoring.goalGap - 0.5 })
+    }
     await reload()
   }
 
@@ -193,11 +290,18 @@ export function GoalsPage() {
         <button
           type="button"
           onClick={() => {
-            const focus = Object.entries(selected?.weights ?? {})
+            if (!selected) return
+            const focus = Object.entries(selected.weights)
               .sort((a, b) => Math.abs((b[1] ?? 0)) - Math.abs((a[1] ?? 0)))
               .slice(0, 3)
             const impulses = Object.fromEntries(focus.map(([metricId, w]) => [metricId, (w ?? 0) > 0 ? 0.5 : -0.5]))
-            window.localStorage.setItem('gamno.multiverseDraft', JSON.stringify({ impulses, focusMetrics: focus.map(([metricId]) => metricId), sourceLabelRu: 'Цель → Мультивселенная' }))
+            window.localStorage.setItem('gamno.multiverseDraft', JSON.stringify({
+              impulses,
+              focusMetrics: focus.map(([metricId]) => metricId),
+              sourceLabelRu: 'Цель+миссия → Мультивселенная',
+              activeGoal: { id: selected.id, title: selected.title, objective: selected.okr.objective },
+              activeMission: selected.activeMission,
+            }))
             navigate('/multiverse')
           }}
         >
@@ -245,6 +349,79 @@ export function GoalsPage() {
                   <input type="range" min={-1} max={1} step={0.1} value={editor.weights[metric.id] ?? 0} onChange={(e) => setEditor({ ...editor, weights: { ...editor.weights, [metric.id]: Number(e.target.value) } })} />
                 </label>
               ))}
+
+              <h3>Key Results</h3>
+              {(editor.okr.keyResults.length > 0 ? editor.okr.keyResults : Object.entries(editor.weights).slice(0, 3).map(([metricId, weight], index) => createKrFromMetric(metricId as MetricId, weight ?? 0, index))).map((kr, index) => (
+                <div key={kr.id} className="panel" style={{ marginBottom: 8 }}>
+                  <strong>KR{index + 1}: {kr.metricId}</strong>
+                  <label>
+                    Направление
+                    <select
+                      value={kr.direction}
+                      onChange={(e) => setEditor({
+                        ...editor,
+                        okr: {
+                          ...editor.okr,
+                          keyResults: editor.okr.keyResults.map((item) => item.id === kr.id ? { ...item, direction: e.target.value as 'up' | 'down' } : item),
+                        },
+                      })}
+                    >
+                      <option value="up">Вверх</option>
+                      <option value="down">Вниз</option>
+                    </select>
+                  </label>
+                  <label>
+                    Target (опционально)
+                    <input
+                      type="number"
+                      value={kr.target ?? ''}
+                      onChange={(e) => setEditor({
+                        ...editor,
+                        okr: {
+                          ...editor.okr,
+                          keyResults: editor.okr.keyResults.map((item) => item.id === kr.id ? { ...item, target: e.target.value ? Number(e.target.value) : undefined } : item),
+                        },
+                      })}
+                    />
+                  </label>
+                  <label>
+                    Режим прогресса
+                    <select
+                      value={kr.progressMode ?? 'auto'}
+                      onChange={(e) => setEditor({
+                        ...editor,
+                        okr: {
+                          ...editor.okr,
+                          keyResults: editor.okr.keyResults.map((item) => item.id === kr.id ? { ...item, progressMode: e.target.value as 'auto' | 'manual' } : item),
+                        },
+                      })}
+                    >
+                      <option value="auto">Авто</option>
+                      <option value="manual">Ручной</option>
+                    </select>
+                  </label>
+                  {(kr.progressMode ?? 'auto') === 'manual' ? (
+                    <label>
+                      Progress (0..1)
+                      <input
+                        type="number"
+                        min={0}
+                        max={1}
+                        step={0.1}
+                        value={kr.progress ?? 0}
+                        onChange={(e) => setEditor({
+                          ...editor,
+                          okr: {
+                            ...editor.okr,
+                            keyResults: editor.okr.keyResults.map((item) => item.id === kr.id ? { ...item, progress: clamp01(Number(e.target.value || 0)) } : item),
+                          },
+                        })}
+                      />
+                    </label>
+                  ) : null}
+                </div>
+              ))}
+
               <div className="settings-actions">
                 <button type="button" onClick={async () => { await updateGoal(editor.id, editor); await reload() }}>Сохранить</button>
                 <button type="button" onClick={async () => { await setActiveGoal(editor.id); await reload() }}>Сделать активной</button>
@@ -263,35 +440,42 @@ export function GoalsPage() {
                 actions={actions}
                 weather={treeState?.label === 'Растёт' ? 'grow' : treeState?.label === 'Штормит' ? 'storm' : 'dry'}
               />
+
+              <p><strong>Ветка → Действие → Результат:</strong> выберите KR в дереве, отметьте действие в миссии, получите плод и рост прогресса KR.</p>
+
               <p>
                 Статус:{' '}
                 <span className={`status-badge ${treeState?.toneClass ?? 'status-badge--mid'}`}>
                   {treeState?.label ?? 'Штормит'}
                 </span>
               </p>
-              <p>
-                Почему: {scoring.explainTop3.slice(0, 3).map((item) => `${item.title} — ${item.textRu}`).join('; ')}.
-              </p>
-              <h3>Следующий шаг</h3>
-              {nextMission ? (
-                <p>
-                  <strong>{nextMission.titleRu}.</strong> {nextMission.rationaleRu}
-                </p>
-              ) : <p>Пока нет рекомендаций — добавьте свежий чек-ин.</p>}
-              <button type="button" onClick={async () => {
-                if (!nextMission) return
-                await addQuest({
-                  createdAt: Date.now(),
-                  title: `Миссия цели: ${nextMission.titleRu}`,
-                  metricTarget: nextMission.metricId,
-                  delta: nextMission.impulse,
-                  horizonDays: 3,
-                  status: 'active',
-                  predictedIndexLift: Math.max(0.1, nextMission.deltaIndex),
-                  goalId: selected.id,
-                })
-                await addGoalEvent({ goalId: selected.id, goalScore: scoring.goalScore, goalGap: scoring.goalGap })
-              }}>Принять миссию на 3 дня</button>
+
+              <h3>Прогресс KR</h3>
+              <ul>
+                {krProgressRows.map((row, index) => (
+                  <li key={row.kr.id}>KR{index + 1} ({row.kr.metricId}, {row.kr.direction === 'up' ? '↑' : '↓'}): {(row.progress * 100).toFixed(0)}%</li>
+                ))}
+              </ul>
+
+              <h3>Миссия на 3 дня</h3>
+              {activeMission ? (
+                <div className="panel">
+                  <p>Миссия #{activeMission.id.slice(-6)} · 3 дня · {missionCompleted ? 'выполнена' : 'активна'}.</p>
+                  <ul>
+                    {activeMission.actions.map((action) => (
+                      <li key={action.id}>
+                        <label>
+                          <input type="checkbox" checked={action.done} onChange={(e) => { void toggleMissionAction(action.id, e.target.checked) }} /> {action.title}
+                        </label>
+                      </li>
+                    ))}
+                  </ul>
+                  {activeMission.rewardBadge ? <p className="chip">{activeMission.rewardBadge}</p> : null}
+                  {selected.fruitBadge ? <p className="chip">{selected.fruitBadge}</p> : null}
+                </div>
+              ) : (
+                <button type="button" onClick={acceptMission}>Принять миссию</button>
+              )}
 
               <details className="graph-accordion">
                 <summary>Подробнее (для продвинутых)</summary>
@@ -299,16 +483,6 @@ export function GoalsPage() {
                 <p>Насколько далеко: <strong>{scoring.goalGap >= 0 ? '+' : ''}{scoring.goalGap.toFixed(1)}</strong></p>
                 <p>Прогресс цели: <strong>{goalState?.index.toFixed(1)}</strong></p>
                 <p>Риск шторма: <strong>{((goalState?.pCollapse ?? 0) * 100).toFixed(1)}%</strong></p>
-                <h3>Топ-3 фактора</h3>
-                <ul>{scoring.explainTop3.map((item) => <li key={item.key}><strong>{item.title}:</strong> {item.textRu}</li>)}</ul>
-                <h3>3 лучших действия</h3>
-                <ol>{actions.map((item) => <li key={`${item.metricId}-${item.impulse}`}><strong>{item.titleRu}</strong> · Δсилы роста {item.deltaGoalScore >= 0 ? '+' : ''}{item.deltaGoalScore.toFixed(1)} · Δпрогресса цели {item.deltaIndex >= 0 ? '+' : ''}{item.deltaIndex.toFixed(2)} · Δриска шторма {(item.deltaPCollapse * 100).toFixed(1)} п.п.<br />{item.rationaleRu}</li>)}</ol>
-                <h3>Как читать формулы</h3>
-                <ul>
-                  <li>Сила роста = текущая оценка вашей цели по выбранным весам метрик.</li>
-                  <li>Насколько далеко = отклонение от целевого уровня (ниже — лучше).</li>
-                  <li>Риск шторма = вероятность провала устойчивости P(collapse) в понятной форме.</li>
-                </ul>
               </details>
             </>
           ) : <p>Нет данных для оценки состояния дерева.</p>}
