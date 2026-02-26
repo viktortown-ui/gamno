@@ -45,6 +45,9 @@ function stabilityLabel(score: number): string {
 export function GraphPage() {
   const navigate = useNavigate()
   const impulseBlockRef = useRef<HTMLDivElement | null>(null)
+  const inspectorToggleRef = useRef<HTMLButtonElement | null>(null)
+  const inspectorPanelRef = useRef<HTMLElement | null>(null)
+  const helpCloseRef = useRef<HTMLButtonElement | null>(null)
   const [manualMatrix, setManualMatrix] = useState<InfluenceMatrix>(defaultInfluenceMatrix)
   const [learnedMatrix, setLearnedMatrix] = useState<InfluenceMatrix>(emptyInfluenceMatrix())
   const [stabilityMatrix, setStabilityMatrix] = useState<InfluenceMatrix>(emptyInfluenceMatrix())
@@ -76,9 +79,22 @@ export function GraphPage() {
   const [checkins, setCheckins] = useState<CheckinRecord[]>([])
   const [helpOpen, setHelpOpen] = useState(false)
   const [isNarrowLayout, setIsNarrowLayout] = useState(() => (typeof window !== 'undefined' ? window.innerWidth < 900 : false))
-  const [inspectorMode, setInspectorMode] = useState<InspectorMode>(() => (typeof window !== 'undefined' && window.innerWidth < 900 ? 'overlay' : 'pinned'))
-  const [inspectorWidth, setInspectorWidth] = useState(340)
+  const [inspectorMode, setInspectorMode] = useState<InspectorMode>(() => {
+    if (typeof window === 'undefined') return 'pinned'
+    const savedMode = window.localStorage.getItem('graphInspectorMode') as InspectorMode | null
+    return savedMode ?? (window.innerWidth < 900 ? 'overlay' : 'pinned')
+  })
+  const [inspectorWidth, setInspectorWidth] = useState(() => {
+    if (typeof window === 'undefined') return 340
+    const savedWidth = Number(window.localStorage.getItem('graphInspectorWidth') ?? '340')
+    return Number.isFinite(savedWidth) ? Math.max(260, Math.min(520, savedWidth)) : 340
+  })
   const [inspectorResizeActive, setInspectorResizeActive] = useState(false)
+  const [mobileInspectorSnap, setMobileInspectorSnap] = useState<'hidden' | 'peek' | 'full'>(() => {
+    if (typeof window === 'undefined' || window.innerWidth >= 900) return 'hidden'
+    const savedSnap = window.localStorage.getItem('graphInspectorMobileSnap') as 'hidden' | 'peek' | 'full' | null
+    return savedSnap ?? 'hidden'
+  })
 
   useEffect(() => {
     void (async () => {
@@ -106,6 +122,26 @@ export function GraphPage() {
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
   }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    window.localStorage.setItem('graphInspectorMode', inspectorMode)
+  }, [inspectorMode])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    window.localStorage.setItem('graphInspectorWidth', String(inspectorWidth))
+  }, [inspectorWidth])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    window.localStorage.setItem('graphInspectorMobileSnap', mobileInspectorSnap)
+  }, [mobileInspectorSnap])
+
+  useEffect(() => {
+    if (!helpOpen) return
+    helpCloseRef.current?.focus()
+  }, [helpOpen])
 
   useEffect(() => {
     if (!inspectorResizeActive) return
@@ -210,6 +246,42 @@ export function GraphPage() {
   const inspectorIsCollapsed = inspectorMode === 'collapsed'
   const isInspectorOverlay = !inspectorIsCollapsed && (isNarrowLayout || inspectorMode === 'overlay')
   const isInspectorPinned = !inspectorIsCollapsed && !isNarrowLayout && inspectorMode === 'pinned'
+  const mobileSheetOpen = isNarrowLayout && mode !== 'levers' && !inspectorIsCollapsed && mobileInspectorSnap !== 'hidden'
+
+  useEffect(() => {
+    if (!mobileSheetOpen && !isInspectorOverlay) return
+    inspectorPanelRef.current?.focus()
+  }, [isInspectorOverlay, mobileSheetOpen])
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      if (helpOpen) {
+        setHelpOpen(false)
+        return
+      }
+      if (isNarrowLayout && mobileInspectorSnap !== 'hidden') {
+        setMobileInspectorSnap('hidden')
+        inspectorToggleRef.current?.focus()
+        return
+      }
+      if (!isNarrowLayout && inspectorMode === 'overlay') {
+        setInspectorMode('collapsed')
+        inspectorToggleRef.current?.focus()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [helpOpen, inspectorMode, isNarrowLayout, mobileInspectorSnap])
+
+  const toggleInspector = () => {
+    if (isNarrowLayout) {
+      setInspectorMode('overlay')
+      setMobileInspectorSnap((prev) => (prev === 'hidden' ? 'peek' : 'hidden'))
+      return
+    }
+    setInspectorMode((prev) => (prev === 'collapsed' ? 'pinned' : 'collapsed'))
+  }
 
   const recompute = async () => {
     const learned = await recomputeLearnedMatrix({ trainedOnDays, lags })
@@ -380,9 +452,10 @@ export function GraphPage() {
 
     {mode !== 'levers' && <div className={`graph-layout ${isInspectorPinned ? 'graph-layout--pinned' : 'graph-layout--stage-only'} ${isInspectorOverlay ? 'graph-layout--overlay' : ''} ${isNarrowLayout ? 'graph-layout--narrow' : ''}`}><div className="graph-stage">
       <div className="graph-stage__overlay-tools panel">
-        <button type="button" className="chip" onClick={() => setInspectorMode((prev) => (prev === 'collapsed' ? (isNarrowLayout ? 'overlay' : 'pinned') : 'collapsed'))}>
-          {inspectorIsCollapsed ? 'Показать инспектор' : 'Скрыть инспектор'}
+        <button ref={inspectorToggleRef} type="button" className="chip" onClick={toggleInspector}>
+          {isNarrowLayout ? 'Показать инспектор' : inspectorIsCollapsed ? 'Показать инспектор' : 'Скрыть инспектор'}
         </button>
+        {isNarrowLayout && mobileInspectorSnap !== 'hidden' && <button type="button" className="chip" onClick={() => setMobileInspectorSnap((prev) => (prev === 'peek' ? 'full' : 'peek'))}>{mobileInspectorSnap === 'full' ? 'Свернуть лист' : 'Развернуть лист'}</button>}
         {!isNarrowLayout && <>
           <button type="button" className={inspectorMode === 'overlay' ? 'chip filter-button--active' : 'chip'} onClick={() => setInspectorMode('overlay')}>Overlay</button>
           <button type="button" className={inspectorMode === 'pinned' ? 'chip filter-button--active' : 'chip'} onClick={() => setInspectorMode('pinned')}>Pinned</button>
@@ -440,7 +513,20 @@ export function GraphPage() {
         })}</tr>)}</tbody></table>}
     </div>
 
-    {!inspectorIsCollapsed && <aside className={`inspector panel graph-inspector ${isInspectorOverlay ? 'graph-inspector--overlay' : ''} ${isNarrowLayout ? 'graph-inspector--bottom-sheet' : 'graph-inspector--side-sheet'}`} style={isInspectorPinned ? { width: inspectorWidth } : undefined}>
+    {isInspectorOverlay && <button type="button" className="graph-inspector-backdrop" aria-label="Закрыть инспектор" onClick={() => {
+      if (isNarrowLayout) {
+        setMobileInspectorSnap('hidden')
+        return
+      }
+      setInspectorMode('collapsed')
+    }} />}
+
+    {!inspectorIsCollapsed && (!isNarrowLayout || mobileInspectorSnap !== 'hidden') && <aside
+      ref={inspectorPanelRef}
+      tabIndex={-1}
+      className={`inspector panel graph-inspector ${isInspectorOverlay ? 'graph-inspector--overlay' : ''} ${isNarrowLayout ? 'graph-inspector--bottom-sheet' : 'graph-inspector--side-sheet'} ${isNarrowLayout ? `graph-inspector--${mobileInspectorSnap}` : ''}`}
+      style={isInspectorPinned ? { width: inspectorWidth } : undefined}
+    >
       {isInspectorPinned && <button type="button" className="graph-inspector__resize-handle" aria-label="Изменить ширину инспектора" onMouseDown={() => setInspectorResizeActive(true)} />}
       <h2>{selectedNodeId ? 'Инспектор узла' : 'Инспектор связи'}</h2>
       {selectedNodeId && <>
@@ -473,7 +559,7 @@ export function GraphPage() {
       <aside className="graph-help-sheet__panel panel">
         <div className="graph-help-sheet__header">
           <h2>Справка для новичка</h2>
-          <button type="button" className="chip" onClick={() => setHelpOpen(false)}>Закрыть</button>
+          <button ref={helpCloseRef} type="button" className="chip" onClick={() => setHelpOpen(false)}>Закрыть</button>
         </div>
         <section>
           <h3>1) Что здесь показано</h3>
