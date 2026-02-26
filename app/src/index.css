@@ -2654,3 +2654,73 @@ button.danger { background: color-mix(in srgb, #e45959 30%, var(--panel) 70%); b
   color: var(--muted);
   font-size: 12px;
 }
+
+.goal-yggdrasil__head h2 {
+  margin: 0;
+}
+
+.goal-yggdrasil__branch-group {
+  cursor: pointer;
+  transition: opacity 140ms ease;
+}
+
+.goal-yggdrasil__branch-group:focus-visible {
+  outline: 2px solid rgba(185, 217, 255, 0.9);
+  outline-offset: 3px;
+}
+
+.goal-yggdrasil__branch-group:hover .goal-yggdrasil__branch,
+.goal-yggdrasil__branch-group:hover .goal-yggdrasil__leaf {
+  filter: brightness(1.12);
+}
+
+.goal-yggdrasil__branch-group--selected .goal-yggdrasil__branch {
+  stroke: rgba(255, 221, 145, 0.98);
+}
+
+.goal-yggdrasil__branch-group--selected .goal-yggdrasil__leaf {
+  stroke: rgba(255, 238, 195, 0.95);
+  stroke-width: 2;
+}
+
+.goal-yggdrasil__branch-group--dimmed {
+  opacity: 0.35;
+}
+
+.goal-yggdrasil__rune {
+  fill: rgba(7, 14, 28, 0.85);
+  font-size: 11px;
+  font-weight: 700;
+  pointer-events: none;
+}
+
+.goal-yggdrasil__label {
+  fill: rgba(228, 238, 255, 0.95);
+  font-size: 11px;
+  font-weight: 600;
+  paint-order: stroke;
+  stroke: rgba(5, 8, 20, 0.8);
+  stroke-width: 2px;
+  pointer-events: none;
+}
+
+.goal-yggdrasil__mission ellipse {
+  fill: rgba(145, 221, 166, 0.9);
+  stroke: rgba(16, 56, 36, 0.6);
+  stroke-width: 1;
+}
+
+.goal-yggdrasil__mission--done ellipse {
+  fill: rgba(225, 194, 106, 0.92);
+}
+
+.goal-yggdrasil__branch-card--selected {
+  border-color: rgba(255, 225, 158, 0.7);
+  box-shadow: 0 0 0 1px rgba(255, 225, 158, 0.35) inset;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .goal-yggdrasil__branch-group {
+    transition: none;
+  }
+}

@@ -91,6 +91,7 @@ export function GoalsPage() {
   const [goalState, setGoalState] = useState<GoalStateInput | null>(null)
   const [historyTrend, setHistoryTrend] = useState<'up' | 'down' | null>(null)
   const [actions, setActions] = useState<ReturnType<typeof suggestGoalActions>>([])
+  const [selectedKrId, setSelectedKrId] = useState<string | null>(null)
   const [seedModalOpen, setSeedModalOpen] = useState(false)
   const [seedTemplate, setSeedTemplate] = useState<GoalTemplateId>('growth')
   const [seedTitle, setSeedTitle] = useState('')
@@ -283,6 +284,32 @@ export function GoalsPage() {
     return ensureGoalKeyResults(selected, goalState)
   }, [selected, goalState])
 
+  useEffect(() => {
+    if (selectedKrs.length === 0) {
+      setSelectedKrId(null)
+      return
+    }
+
+    if (selectedKrId && selectedKrs.some((item) => item.id === selectedKrId)) {
+      return
+    }
+
+    const weakest = [...selectedKrs]
+      .map((kr) => {
+        const metric = METRICS.find((item) => item.id === kr.metricId)
+        const metricValue = goalState?.metrics[kr.metricId] ?? 0
+        const progress = metric
+          ? kr.direction === 'up'
+            ? clamp01((metricValue - metric.min) / (metric.max - metric.min || 1))
+            : clamp01((metric.max - metricValue) / (metric.max - metric.min || 1))
+          : 0
+        return { krId: kr.id, progress }
+      })
+      .sort((a, b) => a.progress - b.progress)[0]
+
+    setSelectedKrId(weakest?.krId ?? selectedKrs[0]?.id ?? null)
+  }, [goalState, selectedKrId, selectedKrs])
+
   const krProgressRows = useMemo(() => {
     if (!goalState) return []
     return selectedKrs.map((kr) => {
@@ -309,16 +336,35 @@ export function GoalsPage() {
     return [...krProgressRows].sort((a, b) => a.progress - b.progress)[0]
   }, [krProgressRows])
 
+  const selectedKrRow = useMemo(() => {
+    if (!selectedKrId) return weakestKr
+    return krProgressRows.find((row) => row.kr.id === selectedKrId) ?? weakestKr
+  }, [krProgressRows, selectedKrId, weakestKr])
+
+  const selectedKrMetricLabel = useMemo(() => {
+    if (!selectedKrRow) return null
+    return METRICS.find((item) => item.id === selectedKrRow.kr.metricId)?.labelRu ?? selectedKrRow.kr.metricId
+  }, [selectedKrRow])
+
+  const selectedKrAction = useMemo(() => {
+    if (!selectedKrRow) return null
+    return actions.find((item) => item.metricId === selectedKrRow.kr.metricId) ?? null
+  }, [actions, selectedKrRow])
+
   const nextMissionStep = useMemo(() => {
-    const activeMissionStep = selected?.activeMission?.actions.find((item) => !item.done)?.title
+    if (!selectedKrRow) {
+      return 'Обновите состояние, чтобы получить следующий шаг.'
+    }
+
+    const activeMissionStep = selected?.activeMission?.actions.find((item) => !item.done && item.krId === selectedKrRow.kr.id)?.title
     if (activeMissionStep) return activeMissionStep
-    if (actions[0]?.titleRu) return actions[0].titleRu
-    if (weakestKr) {
-      const metricName = METRICS.find((item) => item.id === weakestKr.kr.metricId)?.labelRu ?? weakestKr.kr.metricId
+    if (selectedKrAction?.titleRu) return selectedKrAction.titleRu
+    if (selectedKrMetricLabel) {
+      const metricName = selectedKrMetricLabel
       return `Поддержите ветвь «${metricName}» коротким ритуалом сегодня.`
     }
     return 'Обновите состояние, чтобы получить следующий шаг.'
-  }, [actions, selected, weakestKr])
+  }, [selected, selectedKrAction, selectedKrMetricLabel, selectedKrRow])
 
   const activeMission = selected?.activeMission
   const missionCompleted = Boolean(activeMission?.completedAt)
@@ -336,6 +382,10 @@ export function GoalsPage() {
         direction: row.kr.direction,
         rune,
         strength,
+        missions: (selected?.activeMission?.actions ?? [])
+          .filter((action) => action.krId === row.kr.id)
+          .slice(0, 3)
+          .map((action) => ({ id: action.id, title: action.title, done: action.done })),
         index,
       }
     })
@@ -359,15 +409,15 @@ export function GoalsPage() {
   }
 
   const acceptMission = async () => {
-    if (!selected) return
-    const generatedActions: GoalMissionAction[] = selectedKrs.slice(0, 3).map((kr, index) => {
+    if (!selected || !selectedKrRow) return
+    const generatedActions: GoalMissionAction[] = [selectedKrRow.kr].map((kr, index) => {
       const recommendation = actions.find((item) => item.metricId === kr.metricId)
       return {
         id: `${kr.id}-a-${index}`,
         metricId: kr.metricId,
         krId: kr.id,
         done: false,
-        title: recommendation?.titleRu ?? `Ритуал по ветви KR${index + 1}: ${METRICS.find((item) => item.id === kr.metricId)?.labelRu ?? kr.metricId}`,
+        title: recommendation?.titleRu ?? `Ритуал по ветви: ${METRICS.find((item) => item.id === kr.metricId)?.labelRu ?? kr.metricId}`,
       }
     })
 
@@ -462,7 +512,13 @@ export function GoalsPage() {
 
         <article className="summary-card panel">
           {selected ? (
-            <GoalYggdrasilTree objective={selected.okr.objective} branches={yggdrasilBranches} />
+            <GoalYggdrasilTree
+              objective={selected.okr.objective}
+              branches={yggdrasilBranches}
+              selectedBranchId={selectedKrId}
+              onSelectBranch={setSelectedKrId}
+              onFocusTrunk={() => setSelectedKrId(null)}
+            />
           ) : <p>Выберите цель, чтобы увидеть сцену дерева.</p>}
         </article>
 
@@ -477,6 +533,7 @@ export function GoalsPage() {
                 </span>
               </p>
               <p><strong>Слабая ветвь:</strong> {weakestKr ? (METRICS.find((item) => item.id === weakestKr.kr.metricId)?.labelRu ?? weakestKr.kr.metricId) : '—'}</p>
+              <p><strong>Выбранная ветвь:</strong> {selectedKrMetricLabel ?? '—'}</p>
               <div className="goals-tree-state__top-layer panel">
                 <p><strong>Следующий шаг:</strong> {nextMissionStep}</p>
                 <button type="button" onClick={acceptMission} disabled={Boolean(activeMission && !missionCompleted)}>Принять миссию</button>
@@ -485,15 +542,17 @@ export function GoalsPage() {
               <h3>Миссия на 3 дня</h3>
               {activeMission ? (
                 <div className="panel">
-                  <p>Миссия #{activeMission.id.slice(-6)} · {missionCompleted ? 'выполнена' : 'активна'}.</p>
+                  <p>Миссия {missionCompleted ? 'выполнена' : 'активна'}.</p>
                   <ul>
-                    {activeMission.actions.map((action) => (
+                    {activeMission.actions
+                      .filter((action) => !selectedKrId || action.krId === selectedKrId)
+                      .map((action) => (
                       <li key={action.id}>
                         <label>
                           <input type="checkbox" checked={action.done} onChange={(e) => { void toggleMissionAction(action.id, e.target.checked) }} /> {action.title}
                         </label>
                       </li>
-                    ))}
+                      ))}
                   </ul>
                   {activeMission.rewardBadge ? <p className="chip">{activeMission.rewardBadge}</p> : null}
                   {selected.fruitBadge ? <p className="chip">{selected.fruitBadge}</p> : null}
