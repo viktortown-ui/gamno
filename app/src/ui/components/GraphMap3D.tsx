@@ -152,6 +152,8 @@ export function GraphMap3D(props: GraphMap3DProps) {
   const [isNodeDragEnabled, setIsNodeDragEnabled] = useState(false)
   const [hoveredNodeIdLocal, setHoveredNodeIdLocal] = useState<MetricId | null>(null)
   const [autoOrbitAllowed, setAutoOrbitAllowed] = useState(true)
+  const [viewportSize, setViewportSize] = useState({ width: 820, height: 420 })
+  const wrapRef = useRef<HTMLDivElement | null>(null)
 
   const nodes = useMemo<GraphNode3D[]>(() => {
     const degreeMap = METRICS.reduce<Record<MetricId, { in: number; out: number }>>((acc, metric) => {
@@ -363,16 +365,30 @@ export function GraphMap3D(props: GraphMap3DProps) {
 
   const toggleNodeDrag = () => setIsNodeDragEnabled((prev) => !prev)
 
+  useEffect(() => {
+    const updateSize = () => {
+      const el = wrapRef.current
+      if (!el) return
+      const rect = el.getBoundingClientRect()
+      const nextWidth = Math.max(320, Math.round(rect.width))
+      const nextHeight = Math.max(380, Math.round(window.innerHeight * 0.58))
+      setViewportSize({ width: nextWidth, height: nextHeight })
+    }
+    updateSize()
+    window.addEventListener('resize', updateSize)
+    return () => window.removeEventListener('resize', updateSize)
+  }, [])
+
   if (!webglReady || webglFailed) return <GraphMapFallback onOpenMatrix={onOpenMatrix} />
 
-  return <div className="graph-3d-wrap" onMouseDown={onUserInteraction} onWheel={onUserInteraction} onTouchStart={onUserInteraction}>
+  return <div ref={wrapRef} className="graph-3d-wrap" onMouseDown={onUserInteraction} onWheel={onUserInteraction} onTouchStart={onUserInteraction}>
     <GraphMapErrorBoundary onError={() => setWebglFailed(true)}>
       <ForceGraph3D
         // @ts-expect-error library typings require undefined-based mutable ref; runtime supports standard React ref object.
         ref={fgRef}
         graphData={graphData}
-        width={820}
-        height={420}
+        width={viewportSize.width}
+        height={viewportSize.height}
         backgroundColor="#071127"
         showNavInfo={false}
         controlType="orbit"

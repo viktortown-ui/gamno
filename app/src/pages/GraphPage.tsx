@@ -26,6 +26,7 @@ import { GraphMap3D, type GraphMapSelection } from '../ui/components/GraphMap3D'
 
 type ViewMode = 'levers' | 'map' | 'matrix'
 type QuickPreset = 'none' | 'strong' | 'positive' | 'negative' | 'confidence'
+type InspectorMode = 'collapsed' | 'overlay' | 'pinned'
 
 function edgeMeaning(edge: InfluenceEdge): string {
   const fromLabel = METRICS.find((metric) => metric.id === edge.from)?.labelRu ?? edge.from
@@ -73,6 +74,10 @@ export function GraphPage() {
   const [lastCheckSummary, setLastCheckSummary] = useState<string | null>(null)
   const [checkins, setCheckins] = useState<CheckinRecord[]>([])
   const [helpOpen, setHelpOpen] = useState(false)
+  const [isNarrowLayout, setIsNarrowLayout] = useState(() => (typeof window !== 'undefined' ? window.innerWidth < 900 : false))
+  const [inspectorMode, setInspectorMode] = useState<InspectorMode>(() => (typeof window !== 'undefined' && window.innerWidth < 900 ? 'overlay' : 'pinned'))
+  const [inspectorWidth, setInspectorWidth] = useState(340)
+  const [inspectorResizeActive, setInspectorResizeActive] = useState(false)
 
   useEffect(() => {
     void (async () => {
@@ -86,6 +91,35 @@ export function GraphPage() {
       }
     })()
   }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const onResize = () => {
+      const narrow = window.innerWidth < 900
+      setIsNarrowLayout(narrow)
+      setInspectorMode((prev) => {
+        if (narrow) return prev === 'collapsed' ? 'collapsed' : 'overlay'
+        return prev === 'collapsed' ? 'collapsed' : 'pinned'
+      })
+    }
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+
+  useEffect(() => {
+    if (!inspectorResizeActive) return
+    const onMove = (event: MouseEvent) => {
+      const next = Math.max(260, Math.min(520, window.innerWidth - event.clientX - 40))
+      setInspectorWidth(next)
+    }
+    const onUp = () => setInspectorResizeActive(false)
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    return () => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+  }, [inspectorResizeActive])
 
   const metricIds = METRICS.map((m) => m.id)
   const activeMatrix = useMemo(
@@ -172,6 +206,9 @@ export function GraphPage() {
   }, [visibleEdges])
 
   const primaryLever = topLeversByMetric[0]
+  const inspectorIsCollapsed = inspectorMode === 'collapsed'
+  const isInspectorOverlay = !inspectorIsCollapsed && (isNarrowLayout || inspectorMode === 'overlay')
+  const isInspectorPinned = !inspectorIsCollapsed && !isNarrowLayout && inspectorMode === 'pinned'
 
   const recompute = async () => {
     const learned = await recomputeLearnedMatrix({ trainedOnDays, lags })
@@ -340,7 +377,16 @@ export function GraphPage() {
       />
     </div>}
 
-    {mode !== 'levers' && <div className="graph-layout"><div>
+    {mode !== 'levers' && <div className={`graph-layout ${isInspectorPinned ? 'graph-layout--pinned' : 'graph-layout--stage-only'} ${isInspectorOverlay ? 'graph-layout--overlay' : ''} ${isNarrowLayout ? 'graph-layout--narrow' : ''}`}><div className="graph-stage">
+      <div className="graph-stage__overlay-tools panel">
+        <button type="button" className="chip" onClick={() => setInspectorMode((prev) => (prev === 'collapsed' ? (isNarrowLayout ? 'overlay' : 'pinned') : 'collapsed'))}>
+          {inspectorIsCollapsed ? 'Показать инспектор' : 'Скрыть инспектор'}
+        </button>
+        {!isNarrowLayout && <>
+          <button type="button" className={inspectorMode === 'overlay' ? 'chip filter-button--active' : 'chip'} onClick={() => setInspectorMode('overlay')}>Overlay</button>
+          <button type="button" className={inspectorMode === 'pinned' ? 'chip filter-button--active' : 'chip'} onClick={() => setInspectorMode('pinned')}>Pinned</button>
+        </>}
+      </div>
       {mode === 'map' && <div className="graph-map-shell">
         <GraphMap3D
           edges={mapEdges}
@@ -391,7 +437,8 @@ export function GraphPage() {
         })}</tr>)}</tbody></table>}
     </div>
 
-    <aside className="inspector panel">
+    {!inspectorIsCollapsed && <aside className={`inspector panel graph-inspector ${isInspectorOverlay ? 'graph-inspector--overlay' : ''} ${isNarrowLayout ? 'graph-inspector--bottom-sheet' : 'graph-inspector--side-sheet'}`} style={isInspectorPinned ? { width: inspectorWidth } : undefined}>
+      {isInspectorPinned && <button type="button" className="graph-inspector__resize-handle" aria-label="Изменить ширину инспектора" onMouseDown={() => setInspectorResizeActive(true)} />}
       <h2>{selectedNodeId ? 'Инспектор узла' : 'Инспектор связи'}</h2>
       {selectedNodeId && <>
         <p><strong>{selectedNodeLabel}</strong></p>
@@ -417,7 +464,7 @@ export function GraphPage() {
         <p>Смысл: {edgeMeaning({ from: selectedEdge.from, to: selectedEdge.to, weight: selectedWeight, absWeight: Math.abs(selectedWeight) })}</p>
       </> : null}
       {!selectedNodeId && !selectedEdge && hoveredEdge ? <p>Наведено: {METRICS.find((m) => m.id === hoveredEdge.from)?.labelRu} → {METRICS.find((m) => m.id === hoveredEdge.to)?.labelRu}</p> : null}
-    </aside></div>}
+    </aside>}</div>}
     {helpOpen && <div className="graph-help-sheet" role="dialog" aria-modal="true" aria-label="Справка: граф влияний">
       <div className="graph-help-sheet__backdrop" onClick={() => setHelpOpen(false)} />
       <aside className="graph-help-sheet__panel panel">
