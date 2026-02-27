@@ -3056,8 +3056,9 @@ button.danger { background: color-mix(in srgb, #e45959 30%, var(--panel) 70%); b
   border: none;
   border-radius: var(--radius-inner);
   background:
-    radial-gradient(circle at 50% 6%, rgba(119, 151, 220, 0.32), rgba(13, 19, 38, 0.68) 42%),
-    linear-gradient(180deg, rgba(6, 10, 20, 0.58), rgba(7, 11, 20, 0.92));
+    radial-gradient(circle at 50% 2%, rgba(180, 214, 255, 0.28), rgba(16, 24, 44, 0.26) 40%, rgba(8, 12, 22, 0.84) 88%),
+    radial-gradient(circle at 80% 18%, rgba(95, 130, 199, 0.18), transparent 46%),
+    linear-gradient(180deg, rgba(8, 13, 25, 0.66), rgba(7, 11, 20, 0.95));
 }
 
 .goal-yggdrasil {
@@ -3072,8 +3073,8 @@ button.danger { background: color-mix(in srgb, #e45959 30%, var(--panel) 70%); b
 
 .goal-yggdrasil__floating-controls {
   position: absolute;
-  top: 12px;
-  right: 12px;
+  top: 14px;
+  right: 14px;
   z-index: 3;
   display: flex;
   gap: 8px;
@@ -3084,35 +3085,45 @@ button.danger { background: color-mix(in srgb, #e45959 30%, var(--panel) 70%); b
 
 .goal-yggdrasil__floating-controls .filter-button {
   padding: 6px 10px;
-  border-radius: 10px;
+  border-radius: 999px;
   font-size: 12px;
   backdrop-filter: blur(3px);
-  background: color-mix(in srgb, var(--surface-1) 72%, rgba(6, 12, 26, 0.28) 28%);
+  border: 1px solid color-mix(in srgb, #d8e7ff 20%, transparent 80%);
+  background: color-mix(in srgb, var(--surface-1) 65%, rgba(6, 12, 26, 0.35) 35%);
 }
 
 .goal-yggdrasil__trunk {
-  fill: none;
-  stroke: url(#trunkGradient);
-  stroke-width: 26;
-  stroke-linecap: round;
+  fill: url(#trunkGradient);
+  filter: url(#branchShadow);
   opacity: 0.98;
 }
 
 .goal-yggdrasil__branch {
-  fill: none;
-  stroke-width: 3.8;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-opacity: 0.72;
-  transition: stroke-opacity 120ms ease, stroke-width 120ms ease;
+  fill-opacity: 0.84;
+  filter: url(#branchShadow);
+  transition: opacity 140ms ease, filter 140ms ease;
 }
 
-.goal-yggdrasil__branch--weak { stroke: url(#branchWeak); }
-.goal-yggdrasil__branch--normal { stroke: url(#branchNormal); }
-.goal-yggdrasil__branch--strong { stroke: url(#branchStrong); }
+.goal-yggdrasil__branch--weak { fill: url(#branchWeak); }
+.goal-yggdrasil__branch--normal { fill: url(#branchNormal); }
+.goal-yggdrasil__branch--strong { fill: url(#branchStrong); }
 .goal-yggdrasil__branch--selected {
-  stroke-width: 6;
-  stroke-opacity: 1;
+  fill-opacity: 1;
+  filter: url(#branchGlow);
+}
+
+.goal-yggdrasil__branch-sheen {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.28);
+  stroke-width: 1.1;
+  stroke-linecap: round;
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.goal-yggdrasil__branch-sheen--selected {
+  stroke: rgba(255, 255, 255, 0.56);
+  opacity: 1;
 }
 
 .goal-yggdrasil__branch-group--dimmed {
@@ -3125,24 +3136,22 @@ button.danger { background: color-mix(in srgb, #e45959 30%, var(--panel) 70%); b
 }
 
 .goal-yggdrasil__node-core {
+  stroke: rgba(255, 255, 255, 0.7);
   stroke-width: 1.8;
   transition: transform 120ms ease, stroke-width 120ms ease, fill-opacity 120ms ease;
   transform-origin: center;
 }
 
 .goal-yggdrasil__node-core--weak {
-  fill: rgba(247, 126, 126, 0.9);
-  stroke: rgba(255, 232, 230, 0.9);
+  fill: url(#budWeak);
 }
 
 .goal-yggdrasil__node-core--normal {
-  fill: rgba(131, 170, 241, 0.9);
-  stroke: rgba(232, 242, 255, 0.9);
+  fill: url(#budNormal);
 }
 
 .goal-yggdrasil__node-core--strong {
-  fill: rgba(92, 224, 174, 0.92);
-  stroke: rgba(224, 255, 245, 0.9);
+  fill: url(#budStrong);
 }
 
 .goal-yggdrasil__node-core--selected {

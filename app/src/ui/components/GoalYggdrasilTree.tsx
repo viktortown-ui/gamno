@@ -40,12 +40,72 @@ interface TreeHierarchyNode {
 const DEFAULT_SCENE_WIDTH = 900
 const DEFAULT_SCENE_HEIGHT = 560
 const FIT_PADDING = 32
+const RIBBON_SEGMENTS = 44
 
 function branchPath(sourceX: number, sourceY: number, targetX: number, targetY: number): string {
   const dx = targetX - sourceX
   const dy = targetY - sourceY
   const bend = Math.max(30, Math.abs(dy) * 0.42)
   return `M${sourceX},${sourceY} C${sourceX + dx * 0.22},${sourceY - bend} ${targetX - dx * 0.2},${targetY + bend * 0.5} ${targetX},${targetY}`
+}
+
+interface CubicCurve {
+  p0: { x: number; y: number }
+  p1: { x: number; y: number }
+  p2: { x: number; y: number }
+  p3: { x: number; y: number }
+}
+
+function branchCurve(sourceX: number, sourceY: number, targetX: number, targetY: number): CubicCurve {
+  const dx = targetX - sourceX
+  const dy = targetY - sourceY
+  const bend = Math.max(30, Math.abs(dy) * 0.42)
+  return {
+    p0: { x: sourceX, y: sourceY },
+    p1: { x: sourceX + dx * 0.22, y: sourceY - bend },
+    p2: { x: targetX - dx * 0.2, y: targetY + bend * 0.5 },
+    p3: { x: targetX, y: targetY },
+  }
+}
+
+function cubicPoint(curve: CubicCurve, t: number) {
+  const mt = 1 - t
+  const a = mt * mt * mt
+  const b = 3 * mt * mt * t
+  const c = 3 * mt * t * t
+  const d = t * t * t
+  return {
+    x: a * curve.p0.x + b * curve.p1.x + c * curve.p2.x + d * curve.p3.x,
+    y: a * curve.p0.y + b * curve.p1.y + c * curve.p2.y + d * curve.p3.y,
+  }
+}
+
+function cubicDerivative(curve: CubicCurve, t: number) {
+  const mt = 1 - t
+  return {
+    x: 3 * mt * mt * (curve.p1.x - curve.p0.x) + 6 * mt * t * (curve.p2.x - curve.p1.x) + 3 * t * t * (curve.p3.x - curve.p2.x),
+    y: 3 * mt * mt * (curve.p1.y - curve.p0.y) + 6 * mt * t * (curve.p2.y - curve.p1.y) + 3 * t * t * (curve.p3.y - curve.p2.y),
+  }
+}
+
+function makeRibbonPath(curve: CubicCurve, widthStart: number, widthEnd: number, segments = RIBBON_SEGMENTS): string {
+  const left: string[] = []
+  const right: string[] = []
+
+  for (let i = 0; i <= segments; i += 1) {
+    const t = i / segments
+    const point = cubicPoint(curve, t)
+    const tangent = cubicDerivative(curve, t)
+    const tangentLength = Math.hypot(tangent.x, tangent.y) || 1
+    const nx = -tangent.y / tangentLength
+    const ny = tangent.x / tangentLength
+    const width = widthStart + (widthEnd - widthStart) * t
+    const half = width / 2
+    left.push(`${point.x + nx * half},${point.y + ny * half}`)
+    right.push(`${point.x - nx * half},${point.y - ny * half}`)
+  }
+
+  return `M${left.join(' L')} L${right.reverse().join(' L')} Z`
 }
 
 function truncateLabel(value: string, max = 22): string {
@@ -137,8 +197,8 @@ export function GoalYggdrasilTree({ objective, branches, selectedBranchId, onSel
     if (bbox.width === 0 || bbox.height === 0 || viewportBounds.width === 0 || viewportBounds.height === 0) return
 
     const availableWidth = Math.max(10, viewportBounds.width - FIT_PADDING * 2)
-    const availableHeight = Math.max(10, viewportBounds.height - FIT_PADDING * 2)
-    const scale = Math.max(0.7, Math.min(1.9, Math.min(availableWidth / bbox.width, availableHeight / bbox.height) * 0.82))
+    const targetHeight = Math.max(10, viewportBounds.height * 0.78)
+    const scale = Math.max(0.55, Math.min(2.4, Math.min(availableWidth / bbox.width, targetHeight / bbox.height)))
     const translateX = (viewportBounds.width - bbox.width * scale) / 2 - bbox.x * scale
     const translateY = (viewportBounds.height - bbox.height * scale) / 2 - bbox.y * scale
 
@@ -221,8 +281,9 @@ export function GoalYggdrasilTree({ objective, branches, selectedBranchId, onSel
         <svg ref={sceneRef} viewBox={`0 0 ${viewSize.width} ${viewSize.height}`} role="img" aria-label="Дерево Objective и KR ветвей">
           <defs>
             <linearGradient id="trunkGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#7f5338" />
-              <stop offset="100%" stopColor="#2e1f18" />
+              <stop offset="0%" stopColor="rgba(154, 117, 91, 0.94)" />
+              <stop offset="52%" stopColor="rgba(103, 74, 54, 0.98)" />
+              <stop offset="100%" stopColor="rgba(48, 31, 24, 0.98)" />
             </linearGradient>
             <linearGradient id="branchWeak" x1="0" y1="0" x2="1" y2="1">
               <stop offset="0%" stopColor="rgba(255, 177, 173, 0.94)" />
@@ -243,11 +304,37 @@ export function GoalYggdrasilTree({ objective, branches, selectedBranchId, onSel
                 <feMergeNode in="SourceGraphic" />
               </feMerge>
             </filter>
+            <filter id="branchShadow" x="-30%" y="-30%" width="160%" height="160%">
+              <feDropShadow dx="0" dy="2" stdDeviation="4.5" floodColor="rgba(7, 10, 20, 0.52)" />
+            </filter>
+            <filter id="branchGlow" x="-40%" y="-40%" width="180%" height="180%">
+              <feGaussianBlur stdDeviation="3" result="soft" />
+              <feMerge>
+                <feMergeNode in="soft" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+            <radialGradient id="budWeak" cx="32%" cy="28%" r="70%">
+              <stop offset="0%" stopColor="rgba(255, 244, 242, 0.98)" />
+              <stop offset="100%" stopColor="rgba(237, 117, 117, 0.92)" />
+            </radialGradient>
+            <radialGradient id="budNormal" cx="32%" cy="28%" r="70%">
+              <stop offset="0%" stopColor="rgba(241, 250, 255, 0.98)" />
+              <stop offset="100%" stopColor="rgba(98, 152, 255, 0.92)" />
+            </radialGradient>
+            <radialGradient id="budStrong" cx="32%" cy="28%" r="70%">
+              <stop offset="0%" stopColor="rgba(238, 255, 247, 0.98)" />
+              <stop offset="100%" stopColor="rgba(86, 223, 170, 0.94)" />
+            </radialGradient>
           </defs>
           <g transform={transform.toString()}>
             <g className="tree-viewport" ref={treeViewportRef}>
               <path
-                d={`M${rootNode.x},${viewSize.height - 12} C${rootNode.x - 13},${viewSize.height - 120} ${rootNode.x + 13},${rootNode.y + 84} ${rootNode.x},${rootNode.y + 18}`}
+                d={makeRibbonPath(
+                  branchCurve(rootNode.x, viewSize.height - 12, rootNode.x, rootNode.y + 18),
+                  38,
+                  20,
+                )}
                 className="goal-yggdrasil__trunk"
               />
 
@@ -257,6 +344,10 @@ export function GoalYggdrasilTree({ objective, branches, selectedBranchId, onSel
                 const isSelected = selectedBranchId === branch.id
                 const isDimmed = selectedBranchId !== null && !isSelected
                 const showLabel = !isMobile || isSelected
+                const curve = branchCurve(rootNode.x, rootNode.y + 12, krNode.x, krNode.y)
+                const centerPath = branchPath(rootNode.x, rootNode.y + 12, krNode.x, krNode.y)
+                const branchBaseWidth = branch.strength === 'strong' ? 16 : branch.strength === 'normal' ? 14 : 12
+                const ribbonPath = makeRibbonPath(curve, branchBaseWidth * 1.35, branchBaseWidth * 0.78)
 
                 return (
                   <g
@@ -264,12 +355,17 @@ export function GoalYggdrasilTree({ objective, branches, selectedBranchId, onSel
                     className={`goal-yggdrasil__branch-group ${isSelected ? 'goal-yggdrasil__branch-group--selected' : ''} ${isDimmed ? 'goal-yggdrasil__branch-group--dimmed' : ''}`}
                   >
                     <path
-                      d={branchPath(rootNode.x, rootNode.y + 12, krNode.x, krNode.y)}
+                      d={ribbonPath}
                       className={`goal-yggdrasil__branch goal-yggdrasil__branch--${branch.strength} ${isSelected ? 'goal-yggdrasil__branch--selected' : ''}`}
                     />
+                    <path d={centerPath} className={`goal-yggdrasil__branch-sheen ${isSelected ? 'goal-yggdrasil__branch-sheen--selected' : ''}`} />
                     <g transform={`translate(${krNode.x}, ${krNode.y})`}>
                       <circle className="goal-yggdrasil__node-hit" r="22" onClick={() => onSelectBranch(branch.id)} />
-                      <circle className={`goal-yggdrasil__node-core goal-yggdrasil__node-core--${branch.strength} ${isSelected ? 'goal-yggdrasil__node-core--selected' : ''}`} r="10" filter="url(#nodeGlow)" />
+                      <path
+                        d="M-2,-11 C7,-10 13,-3 10,6 C7,14 -5,14 -11,8 C-15,3 -12,-6 -2,-11 Z"
+                        className={`goal-yggdrasil__node-core goal-yggdrasil__node-core--${branch.strength} ${isSelected ? 'goal-yggdrasil__node-core--selected' : ''}`}
+                        filter="url(#nodeGlow)"
+                      />
                     </g>
                     {showLabel ? (
                       <text x={krNode.x + 15} y={krNode.y + 5} className={`goal-yggdrasil__node-label ${isSelected ? 'goal-yggdrasil__node-label--selected' : ''}`}>
