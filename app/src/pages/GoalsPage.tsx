@@ -369,6 +369,26 @@ export function GoalsPage() {
   const activeMission = selected?.activeMission
   const missionCompleted = Boolean(activeMission?.completedAt)
 
+  const trunkHealth = useMemo(() => {
+    if (!scoring) return { label: 'Норма', toneClass: 'status-badge--mid' }
+    if (scoring.goalGap <= -5) return { label: 'Норма', toneClass: 'status-badge--low' }
+    if (scoring.goalGap <= 2) return { label: 'Под риском', toneClass: 'status-badge--mid' }
+    return { label: 'Критично', toneClass: 'status-badge--high' }
+  }, [scoring])
+
+  const stormStatus = useMemo(() => {
+    const collapse = goalState?.pCollapse ?? 0
+    if (collapse < 0.18) return { label: 'Штиль', toneClass: 'status-badge--low' }
+    if (collapse < 0.35) return { label: 'Умеренный', toneClass: 'status-badge--mid' }
+    return { label: 'Сильный', toneClass: 'status-badge--high' }
+  }, [goalState?.pCollapse])
+
+  const impulseStatus = useMemo(() => {
+    if (historyTrend === 'up') return { label: 'Растёт', toneClass: 'status-badge--low' }
+    if (historyTrend === 'down') return { label: 'Падает', toneClass: 'status-badge--high' }
+    return { label: 'Стоит', toneClass: 'status-badge--mid' }
+  }, [historyTrend])
+
   const yggdrasilBranches = useMemo(() => {
     return krProgressRows.map((row, index) => {
       const label = METRICS.find((item) => item.id === row.kr.metricId)?.labelRu ?? row.kr.metricId
@@ -462,12 +482,14 @@ export function GoalsPage() {
   }
 
   return (
-    <section className="page">
-      <h1>Цели</h1>
-      <div className="settings-actions">
-        <button
-          type="button"
-          onClick={() => {
+    <section className="goals-page">
+      <div className="goals-page__topbar">
+        <h1>Цели</h1>
+        <div className="settings-actions">
+          <button ref={seedButtonRef} type="button" onClick={startSeed}>Посадить семя</button>
+          <button
+            type="button"
+            onClick={() => {
             if (!selected) return
             const focus = Object.entries(selected.weights)
               .sort((a, b) => Math.abs((b[1] ?? 0)) - Math.abs((a[1] ?? 0)))
@@ -480,37 +502,47 @@ export function GoalsPage() {
               activeGoal: { id: selected.id, title: selected.title, objective: selected.okr.objective },
               activeMission: selected.activeMission,
             }))
-            navigate('/multiverse')
-          }}
-        >
-          Открыть в Мультивселенной
-        </button>
+              navigate('/multiverse')
+            }}
+          >
+            Открыть в Мультивселенной
+          </button>
+        </div>
       </div>
 
-      <div className="oracle-grid goals-layout goals-layout--yggdrasil">
-        <article className="summary-card panel goals-forest">
+      <div className="goals-aaa-grid">
+        <article className="panel goals-pane goals-pane--forest goals-forest">
           <h2>Лес целей</h2>
-          <button ref={seedButtonRef} type="button" onClick={startSeed}>Посадить семя</button>
-          {goals.length === 0 ? <p>Пока нет целей.</p> : null}
-          <ul>
-            {goals.map((goal) => (
-              <li key={goal.id}>
-                <button
-                  type="button"
-                  className={selectedGoalId === goal.id ? 'filter-button filter-button--active' : 'filter-button'}
-                  onClick={() => {
-                    setSelectedGoalId(goal.id)
-                    setEditor(goal)
-                  }}
-                >
-                  {goal.title} {goal.active ? '· Активна' : ''} {goal.status === 'archived' ? '· Архив' : ''}
-                </button>
-              </li>
-            ))}
-          </ul>
+          <p className="goals-pane__hint">Список целей прокручивается внутри панели.</p>
+          <button type="button" onClick={startSeed}>Посадить семя</button>
+          <div className="goals-forest__list">
+            {goals.length === 0 ? (
+              <div className="goals-pane__empty">
+                <p><strong>Пока нет целей.</strong></p>
+                <p>Начните с одного семени и выберите горизонт в 7, 14 или 30 дней.</p>
+              </div>
+            ) : (
+              <ul>
+                {goals.map((goal) => (
+                  <li key={goal.id}>
+                    <button
+                      type="button"
+                      className={selectedGoalId === goal.id ? 'filter-button filter-button--active' : 'filter-button'}
+                      onClick={() => {
+                        setSelectedGoalId(goal.id)
+                        setEditor(goal)
+                      }}
+                    >
+                      {goal.title} {goal.active ? '· Активна' : ''} {goal.status === 'archived' ? '· Архив' : ''}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </article>
 
-        <article className="summary-card panel">
+        <article className="panel goals-pane goals-pane--stage">
           {selected ? (
             <GoalYggdrasilTree
               objective={selected.okr.objective}
@@ -519,10 +551,29 @@ export function GoalsPage() {
               onSelectBranch={setSelectedKrId}
               onFocusTrunk={() => setSelectedKrId(null)}
             />
-          ) : <p>Выберите цель, чтобы увидеть сцену дерева.</p>}
+          ) : (
+            <div className="goals-pane__empty goals-pane__empty--stage">
+              <p><strong>Выберите цель, чтобы увидеть сцену дерева.</strong></p>
+              <p>Когда цель выбрана, здесь появится Иггдрасиль, ветви и фокус на следующем шаге.</p>
+              <button type="button" onClick={startSeed}>Посадить семя</button>
+            </div>
+          )}
+
+          <section className="goals-stage-krs">
+            <h3>Ключевые ветви</h3>
+            {selectedKrs.length === 0 ? <p>Ветви появятся после выбора цели.</p> : null}
+            <ul>
+              {selectedKrs.slice(0, 5).map((kr) => (
+                <li key={kr.id} className={selectedKrId === kr.id ? 'goals-stage-krs__item goals-stage-krs__item--selected' : 'goals-stage-krs__item'}>
+                  <strong>{METRICS.find((item) => item.id === kr.metricId)?.labelRu ?? kr.metricId}</strong>
+                  <span>{kr.direction === 'up' ? 'Фокус на росте' : 'Фокус на снижении'}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
         </article>
 
-        <article className="summary-card panel goals-tree-state">
+        <article className="panel goals-pane goals-pane--druid goals-tree-state">
           <h2>Друид</h2>
           {selected && scoring ? (
             <>
@@ -532,6 +583,20 @@ export function GoalsPage() {
                   {treeState?.label ?? 'Штормит'}
                 </span>
               </p>
+              <div className="goals-druid-gauges" aria-label="Приборка состояния дерева">
+                <div className="goals-druid-gauges__item">
+                  <span>Здоровье ствола</span>
+                  <strong className={`status-badge ${trunkHealth.toneClass}`}>{trunkHealth.label}</strong>
+                </div>
+                <div className="goals-druid-gauges__item">
+                  <span>Шторм</span>
+                  <strong className={`status-badge ${stormStatus.toneClass}`}>{stormStatus.label}</strong>
+                </div>
+                <div className="goals-druid-gauges__item">
+                  <span>Импульс</span>
+                  <strong className={`status-badge ${impulseStatus.toneClass}`}>{impulseStatus.label}</strong>
+                </div>
+              </div>
               <p><strong>Слабая ветвь:</strong> {weakestKr ? (METRICS.find((item) => item.id === weakestKr.kr.metricId)?.labelRu ?? weakestKr.kr.metricId) : '—'}</p>
               <p><strong>Выбранная ветвь:</strong> {selectedKrMetricLabel ?? '—'}</p>
               <div className="goals-tree-state__top-layer panel">
@@ -541,7 +606,7 @@ export function GoalsPage() {
 
               <h3>Миссия на 3 дня</h3>
               {activeMission ? (
-                <div className="panel">
+                <div className="panel goals-druid-mission">
                   <p>Миссия {missionCompleted ? 'выполнена' : 'активна'}.</p>
                   <ul>
                     {activeMission.actions
@@ -558,10 +623,16 @@ export function GoalsPage() {
                   {selected.fruitBadge ? <p className="chip">{selected.fruitBadge}</p> : null}
                 </div>
               ) : (
-                <p>Миссия ещё не принята.</p>
+                <p className="goals-pane__hint">Миссия ещё не принята.</p>
               )}
             </>
-          ) : <p>Нет данных для оценки состояния дерева.</p>}
+          ) : (
+            <div className="goals-pane__empty">
+              <p><strong>Друид ждёт выбранную цель.</strong></p>
+              <p>Выберите цель в Лесу или посадите семя, чтобы получить миссию на 3 дня.</p>
+              <button type="button" onClick={startSeed}>Посадить семя</button>
+            </div>
+          )}
         </article>
       </div>
 
