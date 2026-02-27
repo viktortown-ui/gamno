@@ -2760,3 +2760,195 @@ button.danger { background: color-mix(in srgb, #e45959 30%, var(--panel) 70%); b
     transition: none;
   }
 }
+
+.goals-page {
+  min-height: calc(100vh - var(--page-gutter) * 2);
+  display: grid;
+  gap: var(--space-2);
+  align-content: start;
+}
+
+.goals-page__topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.goals-page__topbar h1 {
+  margin: 0;
+  font-size: 24px;
+}
+
+.goals-aaa-grid {
+  min-height: calc(100vh - 170px);
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr) 320px;
+  gap: var(--page-gutter);
+  align-items: stretch;
+}
+
+.goals-pane {
+  min-height: 0;
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  overflow: hidden;
+}
+
+.goals-pane--forest,
+.goals-pane--druid {
+  align-content: start;
+}
+
+.goals-pane--stage {
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
+.goals-pane__hint {
+  font-size: 12px;
+}
+
+.goals-pane__empty {
+  min-height: 220px;
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  display: grid;
+  align-content: center;
+  justify-items: start;
+  gap: var(--space-2);
+  padding: var(--space-3);
+}
+
+.goals-pane__empty--stage {
+  min-height: 100%;
+}
+
+.goals-forest__list {
+  min-height: 0;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.goals-forest ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.goal-yggdrasil {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+}
+
+.goal-yggdrasil__scene {
+  min-height: clamp(340px, 50vh, 620px);
+  overflow: hidden;
+}
+
+.goal-yggdrasil__scene svg {
+  width: 100%;
+  height: 100%;
+}
+
+.goal-yggdrasil__branches {
+  overflow: auto;
+  max-height: 220px;
+}
+
+.goals-stage-krs {
+  border-top: 1px solid var(--line);
+  padding-top: var(--space-2);
+}
+
+.goals-stage-krs ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.goals-stage-krs__item {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px;
+  display: grid;
+  gap: 4px;
+}
+
+.goals-stage-krs__item span {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.goals-stage-krs__item--selected {
+  border-color: color-mix(in srgb, var(--accent-alt) 62%, var(--line) 38%);
+}
+
+.goals-druid-gauges {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.goals-druid-gauges__item {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px;
+  display: grid;
+  gap: 6px;
+}
+
+.goals-druid-gauges__item span {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.goals-druid-mission ul {
+  margin: 0;
+  padding-left: 16px;
+  display: grid;
+  gap: 8px;
+}
+
+@media (max-width: 1199px) {
+  .goals-aaa-grid {
+    min-height: auto;
+    grid-template-columns: 300px minmax(0, 1fr);
+  }
+
+  .goals-pane--druid {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 959px) {
+  .goals-aaa-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .goals-pane--stage {
+    order: 1;
+  }
+
+  .goals-pane--druid {
+    order: 2;
+  }
+
+  .goals-pane--forest {
+    order: 3;
+  }
+
+  .goals-druid-gauges {
+    grid-template-columns: 1fr;
+  }
+
+  .goal-yggdrasil__scene {
+    min-height: 320px;
+  }
+}
