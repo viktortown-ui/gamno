@@ -3226,3 +3226,110 @@ button.danger { background: color-mix(in srgb, #e45959 30%, var(--panel) 70%); b
     border-top: 1px solid var(--stroke-subtle);
   }
 }
+
+/* PR-04.2 Yggdrasil ART PASS */
+.goal-yggdrasil__scene {
+  position: relative;
+  min-height: clamp(340px, 56vh, 700px);
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 50% 14%, rgba(111, 150, 229, 0.22), rgba(11, 17, 31, 0.84) 60%),
+    radial-gradient(circle at 88% 78%, rgba(84, 170, 144, 0.14), transparent 42%),
+    #0a0f1d;
+}
+
+.goal-yggdrasil__scene svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.goal-yggdrasil__tools {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 2;
+  display: flex;
+  gap: 8px;
+  padding: 7px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface-0) 70%, rgba(8, 12, 22, 0.3) 30%);
+  backdrop-filter: blur(5px);
+}
+
+.goal-yggdrasil__tools .filter-button {
+  font-size: 12px;
+  padding: 6px 10px;
+}
+
+.goal-yggdrasil__trunk,
+.goal-yggdrasil__branch {
+  opacity: 0.96;
+}
+
+.goal-yggdrasil__branch-group {
+  transition: opacity 180ms ease;
+}
+
+.goal-yggdrasil__branch-group--dimmed {
+  opacity: 0.35;
+}
+
+.goal-yggdrasil__branch-highlight {
+  fill: none;
+  stroke: rgba(177, 220, 255, 0.78);
+  stroke-width: 3.2;
+  stroke-linecap: round;
+}
+
+.goal-yggdrasil__bud {
+  cursor: pointer;
+  stroke: rgba(255, 255, 255, 0.35);
+  stroke-width: 0.8;
+}
+
+.goal-yggdrasil__bud--weak { fill: url(#budWeak); }
+.goal-yggdrasil__bud--normal { fill: url(#budNormal); }
+.goal-yggdrasil__bud--strong { fill: url(#budStrong); }
+
+.goal-yggdrasil__bud-glint {
+  fill: rgba(255, 255, 255, 0.56);
+  pointer-events: none;
+}
+
+.goal-yggdrasil__node-hit {
+  fill: transparent;
+  cursor: pointer;
+}
+
+.goal-yggdrasil__node-label {
+  font-size: 12px;
+  font-weight: 600;
+  fill: color-mix(in srgb, var(--text) 85%, #dbe7ff 15%);
+  opacity: 0.86;
+  pointer-events: none;
+}
+
+.goal-yggdrasil__node-label--selected {
+  opacity: 1;
+  fill: #e8f4ff;
+}
+
+.goal-yggdrasil__node-subtitle {
+  font-size: 11px;
+  font-weight: 500;
+  fill: color-mix(in srgb, var(--muted) 82%, #d6e8ff 18%);
+}
+
+@media (max-width: 760px) {
+  .goal-yggdrasil__tools {
+    top: 8px;
+    right: 8px;
+    padding: 6px;
+  }
+
+  .goal-yggdrasil__tools .filter-button {
+    font-size: 11px;
+    padding: 5px 8px;
+  }
+}
