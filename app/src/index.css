@@ -2813,7 +2813,7 @@ button.danger { background: color-mix(in srgb, #e45959 30%, var(--panel) 70%); b
 
 .goals-pane__empty {
   min-height: 220px;
-  border: 1px dashed var(--line);
+  border: 1px solid color-mix(in srgb, var(--line) 60%, transparent 40%);
   border-radius: 12px;
   display: grid;
   align-content: center;
@@ -3035,9 +3035,98 @@ button.danger { background: color-mix(in srgb, #e45959 30%, var(--panel) 70%); b
 }
 
 .goals-pane__empty {
-  border: 1px dashed var(--stroke-subtle);
+  border: 1px solid color-mix(in srgb, var(--stroke-subtle) 64%, transparent 36%);
   border-radius: var(--radius-inner);
-  background: color-mix(in srgb, var(--surface-2) 72%, transparent 28%);
+  background:
+    radial-gradient(circle at 20% 10%, color-mix(in srgb, #9cd2ff 20%, transparent 80%), transparent 56%),
+    color-mix(in srgb, var(--surface-2) 78%, transparent 22%);
+}
+
+.goal-yggdrasil__tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.goal-yggdrasil__scene {
+  position: relative;
+  min-height: clamp(320px, 52vh, 640px);
+  overflow: hidden;
+  touch-action: none;
+}
+
+.goal-yggdrasil__scene svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.goal-yggdrasil__trunk {
+  fill: none;
+  stroke: url(#trunkGradient);
+  stroke-width: 22;
+  stroke-linecap: round;
+  opacity: 0.95;
+}
+
+.goal-yggdrasil__branch {
+  fill: none;
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: stroke-opacity 120ms ease, stroke-width 120ms ease;
+}
+
+.goal-yggdrasil__branch--weak { stroke: rgba(247, 126, 126, 0.82); }
+.goal-yggdrasil__branch--normal { stroke: rgba(131, 170, 241, 0.9); }
+.goal-yggdrasil__branch--strong { stroke: rgba(92, 224, 174, 0.92); }
+.goal-yggdrasil__branch--selected {
+  stroke-width: 6;
+  stroke-opacity: 1;
+}
+
+.goal-yggdrasil__branch-group--dimmed {
+  opacity: 0.35;
+}
+
+.goal-yggdrasil__node-button {
+  width: 188px;
+  height: 68px;
+  border-radius: 14px;
+  border: 1px solid transparent;
+  display: grid;
+  gap: 3px;
+  align-content: center;
+  justify-items: center;
+  cursor: pointer;
+  background: color-mix(in srgb, var(--surface-0) 90%, rgba(5, 10, 22, 0.1) 10%);
+  color: var(--text);
+  padding: 6px 10px;
+}
+
+.goal-yggdrasil__node-button--weak { border-color: rgba(247, 126, 126, 0.45); }
+.goal-yggdrasil__node-button--normal { border-color: rgba(131, 170, 241, 0.45); }
+.goal-yggdrasil__node-button--strong { border-color: rgba(92, 224, 174, 0.45); }
+
+.goal-yggdrasil__node-button--selected {
+  border-width: 2px;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 36%, transparent 64%);
+}
+
+.goal-yggdrasil__node-button:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 65%, #fff 35%);
+  outline-offset: 2px;
+}
+
+.goal-yggdrasil__node-title {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.goal-yggdrasil__node-status {
+  font-size: 11px;
+  color: color-mix(in srgb, var(--muted) 82%, var(--text) 18%);
 }
 
 .goal-yggdrasil {

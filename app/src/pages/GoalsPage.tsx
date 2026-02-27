@@ -93,6 +93,7 @@ export function GoalsPage() {
   const [historyTrend, setHistoryTrend] = useState<'up' | 'down' | null>(null)
   const [actions, setActions] = useState<ReturnType<typeof suggestGoalActions>>([])
   const [selectedKrId, setSelectedKrId] = useState<string | null>(null)
+  const [stageResetSignal, setStageResetSignal] = useState(0)
   const [seedModalOpen, setSeedModalOpen] = useState(false)
   const [seedTemplate, setSeedTemplate] = useState<GoalTemplateId>('growth')
   const [seedTitle, setSeedTitle] = useState('')
@@ -295,27 +296,13 @@ export function GoalsPage() {
       return
     }
 
-    const weakest = [...selectedKrs]
-      .map((kr) => {
-        const metric = METRICS.find((item) => item.id === kr.metricId)
-        const metricValue = goalState?.metrics[kr.metricId] ?? 0
-        const progress = metric
-          ? kr.direction === 'up'
-            ? clamp01((metricValue - metric.min) / (metric.max - metric.min || 1))
-            : clamp01((metric.max - metricValue) / (metric.max - metric.min || 1))
-          : 0
-        return { krId: kr.id, progress }
-      })
-      .sort((a, b) => a.progress - b.progress)[0]
-
-    setSelectedKrId(weakest?.krId ?? selectedKrs[0]?.id ?? null)
-  }, [goalState, selectedKrId, selectedKrs])
+    setSelectedKrId(null)
+  }, [selectedKrId, selectedKrs])
 
   const krProgressRows = useMemo(() => {
-    if (!goalState) return []
     return selectedKrs.map((kr) => {
       const metric = METRICS.find((item) => item.id === kr.metricId)
-      const metricValue = goalState.metrics[kr.metricId]
+      const metricValue = goalState?.metrics[kr.metricId] ?? (metric ? (metric.min + metric.max) / 2 : 0)
       const baseProgress = metric
         ? kr.direction === 'up'
           ? clamp01((metricValue - metric.min) / (metric.max - metric.min || 1))
@@ -338,9 +325,9 @@ export function GoalsPage() {
   }, [krProgressRows])
 
   const selectedKrRow = useMemo(() => {
-    if (!selectedKrId) return weakestKr
-    return krProgressRows.find((row) => row.kr.id === selectedKrId) ?? weakestKr
-  }, [krProgressRows, selectedKrId, weakestKr])
+    if (!selectedKrId) return null
+    return krProgressRows.find((row) => row.kr.id === selectedKrId) ?? null
+  }, [krProgressRows, selectedKrId])
 
   const selectedKrMetricLabel = useMemo(() => {
     if (!selectedKrRow) return null
@@ -354,7 +341,7 @@ export function GoalsPage() {
 
   const nextMissionStep = useMemo(() => {
     if (!selectedKrRow) {
-      return 'Обновите состояние, чтобы получить следующий шаг.'
+      return 'Выберите ветвь на сцене, чтобы получить следующий шаг.'
     }
 
     const activeMissionStep = selected?.activeMission?.actions.find((item) => !item.done && item.krId === selectedKrRow.kr.id)?.title
@@ -369,6 +356,19 @@ export function GoalsPage() {
 
   const activeMission = selected?.activeMission
   const missionCompleted = Boolean(activeMission?.completedAt)
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key.toLowerCase() !== 'r') return
+      const target = event.target as HTMLElement | null
+      if (target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return
+      event.preventDefault()
+      setStageResetSignal((value) => value + 1)
+    }
+
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [])
 
   const trunkHealth = useMemo(() => {
     if (!scoring) return { label: 'N/A', stateKind: 'na' as const, value01: null }
@@ -553,7 +553,7 @@ export function GoalsPage() {
               branches={yggdrasilBranches}
               selectedBranchId={selectedKrId}
               onSelectBranch={setSelectedKrId}
-              onFocusTrunk={() => setSelectedKrId(null)}
+              resetSignal={stageResetSignal}
             />
           ) : (
             <div className="goals-pane__empty goals-pane__empty--stage">
@@ -592,8 +592,8 @@ export function GoalsPage() {
                 <DruidGauge label="Шторм" value01={stormStatus.value01} stateLabel={stormStatus.label} stateKind={stormStatus.stateKind} />
                 <DruidGauge label="Импульс" value01={impulseStatus.value01} stateLabel={impulseStatus.label} stateKind={impulseStatus.stateKind} />
               </div>
-              <p><strong>Слабая ветвь:</strong> {weakestKr ? (METRICS.find((item) => item.id === weakestKr.kr.metricId)?.labelRu ?? weakestKr.kr.metricId) : '—'}</p>
-              <p><strong>Выбранная ветвь:</strong> {selectedKrMetricLabel ?? '—'}</p>
+              <p><strong>Слабая ветвь:</strong> {weakestKr ? (METRICS.find((item) => item.id === weakestKr.kr.metricId)?.labelRu ?? weakestKr.kr.metricId) : 'Выберите ветвь'}</p>
+              <p><strong>Выбранная ветвь:</strong> {selectedKrMetricLabel ?? 'Выберите ветвь'}</p>
               <div className="goals-tree-state__top-layer">
                 <p><strong>Следующий шаг:</strong> {nextMissionStep}</p>
                 <button type="button" onClick={acceptMission} disabled={Boolean(activeMission && !missionCompleted)}>Принять миссию</button>
