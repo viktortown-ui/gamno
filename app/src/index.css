@@ -3050,9 +3050,18 @@ button.danger { background: color-mix(in srgb, #e45959 30%, var(--panel) 70%); b
 
 .goal-yggdrasil__scene {
   position: relative;
-  min-height: clamp(320px, 52vh, 640px);
+  min-height: clamp(340px, 60vh, 720px);
   overflow: hidden;
   touch-action: none;
+  border: none;
+  border-radius: var(--radius-inner);
+  background:
+    radial-gradient(circle at 50% 6%, rgba(119, 151, 220, 0.32), rgba(13, 19, 38, 0.68) 42%),
+    linear-gradient(180deg, rgba(6, 10, 20, 0.58), rgba(7, 11, 20, 0.92));
+}
+
+.goal-yggdrasil {
+  gap: var(--space-3);
 }
 
 .goal-yggdrasil__scene svg {
@@ -3061,82 +3070,114 @@ button.danger { background: color-mix(in srgb, #e45959 30%, var(--panel) 70%); b
   display: block;
 }
 
+.goal-yggdrasil__floating-controls {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 3;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  max-width: min(95%, 360px);
+}
+
+.goal-yggdrasil__floating-controls .filter-button {
+  padding: 6px 10px;
+  border-radius: 10px;
+  font-size: 12px;
+  backdrop-filter: blur(3px);
+  background: color-mix(in srgb, var(--surface-1) 72%, rgba(6, 12, 26, 0.28) 28%);
+}
+
 .goal-yggdrasil__trunk {
   fill: none;
   stroke: url(#trunkGradient);
-  stroke-width: 22;
+  stroke-width: 26;
   stroke-linecap: round;
-  opacity: 0.95;
+  opacity: 0.98;
 }
 
 .goal-yggdrasil__branch {
   fill: none;
-  stroke-width: 4;
+  stroke-width: 3.8;
   stroke-linecap: round;
   stroke-linejoin: round;
+  stroke-opacity: 0.72;
   transition: stroke-opacity 120ms ease, stroke-width 120ms ease;
 }
 
-.goal-yggdrasil__branch--weak { stroke: rgba(247, 126, 126, 0.82); }
-.goal-yggdrasil__branch--normal { stroke: rgba(131, 170, 241, 0.9); }
-.goal-yggdrasil__branch--strong { stroke: rgba(92, 224, 174, 0.92); }
+.goal-yggdrasil__branch--weak { stroke: url(#branchWeak); }
+.goal-yggdrasil__branch--normal { stroke: url(#branchNormal); }
+.goal-yggdrasil__branch--strong { stroke: url(#branchStrong); }
 .goal-yggdrasil__branch--selected {
   stroke-width: 6;
   stroke-opacity: 1;
 }
 
 .goal-yggdrasil__branch-group--dimmed {
-  opacity: 0.35;
+  opacity: 0.34;
 }
 
-.goal-yggdrasil__node-button {
-  width: 188px;
-  height: 68px;
-  border-radius: 14px;
-  border: 1px solid transparent;
-  display: grid;
-  gap: 3px;
-  align-content: center;
-  justify-items: center;
+.goal-yggdrasil__node-hit {
+  fill: transparent;
   cursor: pointer;
-  background: color-mix(in srgb, var(--surface-0) 90%, rgba(5, 10, 22, 0.1) 10%);
-  color: var(--text);
-  padding: 6px 10px;
 }
 
-.goal-yggdrasil__node-button--weak { border-color: rgba(247, 126, 126, 0.45); }
-.goal-yggdrasil__node-button--normal { border-color: rgba(131, 170, 241, 0.45); }
-.goal-yggdrasil__node-button--strong { border-color: rgba(92, 224, 174, 0.45); }
-
-.goal-yggdrasil__node-button--selected {
-  border-width: 2px;
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 36%, transparent 64%);
+.goal-yggdrasil__node-core {
+  stroke-width: 1.8;
+  transition: transform 120ms ease, stroke-width 120ms ease, fill-opacity 120ms ease;
+  transform-origin: center;
 }
 
-.goal-yggdrasil__node-button:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--accent) 65%, #fff 35%);
-  outline-offset: 2px;
+.goal-yggdrasil__node-core--weak {
+  fill: rgba(247, 126, 126, 0.9);
+  stroke: rgba(255, 232, 230, 0.9);
 }
 
-.goal-yggdrasil__node-title {
-  font-size: 14px;
-  font-weight: 700;
-  line-height: 1.2;
+.goal-yggdrasil__node-core--normal {
+  fill: rgba(131, 170, 241, 0.9);
+  stroke: rgba(232, 242, 255, 0.9);
 }
 
-.goal-yggdrasil__node-status {
-  font-size: 11px;
-  color: color-mix(in srgb, var(--muted) 82%, var(--text) 18%);
+.goal-yggdrasil__node-core--strong {
+  fill: rgba(92, 224, 174, 0.92);
+  stroke: rgba(224, 255, 245, 0.9);
 }
 
-.goal-yggdrasil {
-  gap: var(--space-3);
+.goal-yggdrasil__node-core--selected {
+  stroke-width: 2.8;
+  transform: scale(1.12);
 }
 
-.goal-yggdrasil__scene {
-  border: none;
-  border-radius: var(--radius-inner);
-  background: radial-gradient(circle at 50% 10%, rgba(95, 125, 188, 0.22), rgba(8, 12, 24, 0.68));
+.goal-yggdrasil__branch-group:hover .goal-yggdrasil__node-core,
+.goal-yggdrasil__branch-group:focus-within .goal-yggdrasil__node-core {
+  transform: scale(1.08);
+}
+
+.goal-yggdrasil__node-label {
+  font-size: 12px;
+  font-weight: 600;
+  fill: color-mix(in srgb, var(--text) 86%, #f5f9ff 14%);
+  pointer-events: none;
+  opacity: 0.86;
+}
+
+.goal-yggdrasil__node-label--selected {
+  fill: color-mix(in srgb, var(--accent) 42%, #f7fbff 58%);
+  opacity: 1;
+}
+
+.goal-yggdrasil__root-core {
+  fill: color-mix(in srgb, #7f5338 72%, #d6bca3 28%);
+  stroke: rgba(255, 235, 219, 0.8);
+  stroke-width: 2;
+}
+
+.goal-yggdrasil__root-aura {
+  fill: rgba(207, 168, 121, 0.12);
+  stroke: rgba(225, 193, 156, 0.28);
+  stroke-width: 1;
 }
 
 .goal-yggdrasil__branches {
@@ -3224,5 +3265,30 @@ button.danger { background: color-mix(in srgb, #e45959 30%, var(--panel) 70%); b
   .druid-gauge + .druid-gauge {
     border-left: none;
     border-top: 1px solid var(--stroke-subtle);
+  }
+}
+
+@media (max-width: 860px) {
+  .goal-yggdrasil__floating-controls {
+    flex-direction: column;
+    align-items: flex-end;
+    max-width: 180px;
+  }
+
+  .goal-yggdrasil__floating-controls .filter-button {
+    width: 100%;
+    padding: 5px 8px;
+    font-size: 11px;
+  }
+
+  .goal-yggdrasil__scene {
+    min-height: clamp(320px, 52vh, 520px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .goal-yggdrasil__branch,
+  .goal-yggdrasil__node-core {
+    transition: none;
   }
 }
