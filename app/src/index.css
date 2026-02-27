@@ -551,6 +551,7 @@ textarea:focus-visible,
 .status-badge--low { background: rgba(46, 233, 210, 0.18); border-color: rgba(46, 233, 210, 0.55); }
 .status-badge--mid { background: rgba(255, 196, 92, 0.2); border-color: rgba(255, 196, 92, 0.6); color: color-mix(in srgb, var(--text) 75%, #ffdc90 25%); }
 .status-badge--high { background: rgba(255, 107, 145, 0.2); border-color: rgba(255, 107, 145, 0.6); color: color-mix(in srgb, var(--text) 78%, #ff9cb7 22%); }
+.status-badge--na { background: color-mix(in srgb, var(--line) 55%, transparent 45%); border-color: color-mix(in srgb, var(--line) 85%, transparent 15%); color: var(--muted); }
 
 .starfield {
   position: fixed;
@@ -2896,18 +2897,64 @@ button.danger { background: color-mix(in srgb, #e45959 30%, var(--panel) 70%); b
   gap: 8px;
 }
 
-.goals-druid-gauges__item {
+.druid-gauge {
   border: 1px solid var(--line);
   border-radius: 10px;
   padding: 8px;
   display: grid;
   gap: 6px;
+  background: color-mix(in srgb, var(--surface) 84%, var(--line) 16%);
 }
 
-.goals-druid-gauges__item span {
+.druid-gauge__svg {
+  width: 100%;
+  height: auto;
+}
+
+.druid-gauge__track,
+.druid-gauge__sector {
+  fill: none;
+  stroke-linecap: round;
+  stroke-width: 10;
+}
+
+.druid-gauge__track {
+  stroke: color-mix(in srgb, var(--line) 78%, transparent 22%);
+}
+
+.druid-gauge__sector--good {
+  stroke: color-mix(in srgb, var(--accent) 62%, #2ee9d2 38%);
+}
+
+.druid-gauge__sector--warn {
+  stroke: color-mix(in srgb, #ffc45c 78%, var(--line) 22%);
+}
+
+.druid-gauge__sector--bad {
+  stroke: color-mix(in srgb, #ff6b91 72%, var(--line) 28%);
+}
+
+.druid-gauge__needle {
+  stroke: color-mix(in srgb, var(--text) 90%, var(--line) 10%);
+  stroke-width: 2;
+}
+
+.druid-gauge__hub {
+  fill: var(--surface);
+  stroke: color-mix(in srgb, var(--line) 82%, var(--text) 18%);
+  stroke-width: 2;
+}
+
+.druid-gauge__meta {
+  display: grid;
+  gap: 6px;
+}
+
+.druid-gauge__meta span {
   font-size: 11px;
   color: var(--muted);
 }
+
 
 .goals-druid-mission ul {
   margin: 0;

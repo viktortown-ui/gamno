@@ -18,6 +18,7 @@ import {
 import { evaluateGoalScore, suggestGoalActions, type GoalStateInput } from '../core/engines/goal'
 import { getLatestForecastRun } from '../repo/forecastRepo'
 import { GoalYggdrasilTree, type BranchStrength } from '../ui/components/GoalYggdrasilTree'
+import { DruidGauge } from './goals/components/DruidGauge'
 
 type GoalTemplateId = 'growth' | 'anti-storm' | 'energy-balance' | 'money'
 
@@ -370,23 +371,26 @@ export function GoalsPage() {
   const missionCompleted = Boolean(activeMission?.completedAt)
 
   const trunkHealth = useMemo(() => {
-    if (!scoring) return { label: 'Норма', toneClass: 'status-badge--mid' }
-    if (scoring.goalGap <= -5) return { label: 'Норма', toneClass: 'status-badge--low' }
-    if (scoring.goalGap <= 2) return { label: 'Под риском', toneClass: 'status-badge--mid' }
-    return { label: 'Критично', toneClass: 'status-badge--high' }
+    if (!scoring) return { label: 'N/A', stateKind: 'na' as const, value01: null }
+    if (scoring.goalGap <= -5) return { label: 'Норма', stateKind: 'good' as const, value01: 0.8 }
+    if (scoring.goalGap <= 2) return { label: 'Под риском', stateKind: 'warn' as const, value01: 0.5 }
+    return { label: 'Критично', stateKind: 'bad' as const, value01: 0.2 }
   }, [scoring])
 
   const stormStatus = useMemo(() => {
-    const collapse = goalState?.pCollapse ?? 0
-    if (collapse < 0.18) return { label: 'Штиль', toneClass: 'status-badge--low' }
-    if (collapse < 0.35) return { label: 'Умеренный', toneClass: 'status-badge--mid' }
-    return { label: 'Сильный', toneClass: 'status-badge--high' }
+    if (typeof goalState?.pCollapse !== 'number') {
+      return { label: 'N/A', stateKind: 'na' as const, value01: null }
+    }
+    const collapse = goalState.pCollapse
+    if (collapse < 0.18) return { label: 'Штиль', stateKind: 'good' as const, value01: 0.84 }
+    if (collapse < 0.35) return { label: 'Умеренный', stateKind: 'warn' as const, value01: 0.5 }
+    return { label: 'Сильный', stateKind: 'bad' as const, value01: 0.18 }
   }, [goalState?.pCollapse])
 
   const impulseStatus = useMemo(() => {
-    if (historyTrend === 'up') return { label: 'Растёт', toneClass: 'status-badge--low' }
-    if (historyTrend === 'down') return { label: 'Падает', toneClass: 'status-badge--high' }
-    return { label: 'Стоит', toneClass: 'status-badge--mid' }
+    if (historyTrend === 'up') return { label: 'Растёт', stateKind: 'good' as const, value01: 0.8 }
+    if (historyTrend === 'down') return { label: 'Падает', stateKind: 'bad' as const, value01: 0.22 }
+    return { label: 'Стоит', stateKind: 'warn' as const, value01: 0.5 }
   }, [historyTrend])
 
   const yggdrasilBranches = useMemo(() => {
@@ -575,27 +579,18 @@ export function GoalsPage() {
 
         <article className="panel goals-pane goals-pane--druid goals-tree-state">
           <h2>Друид</h2>
-          {selected && scoring ? (
+          {selected ? (
             <>
               <p>
                 Статус дерева:{' '}
                 <span className={`status-badge ${treeState?.toneClass ?? 'status-badge--mid'}`}>
-                  {treeState?.label ?? 'Штормит'}
+                  {treeState?.label ?? 'N/A'}
                 </span>
               </p>
               <div className="goals-druid-gauges" aria-label="Приборка состояния дерева">
-                <div className="goals-druid-gauges__item">
-                  <span>Здоровье ствола</span>
-                  <strong className={`status-badge ${trunkHealth.toneClass}`}>{trunkHealth.label}</strong>
-                </div>
-                <div className="goals-druid-gauges__item">
-                  <span>Шторм</span>
-                  <strong className={`status-badge ${stormStatus.toneClass}`}>{stormStatus.label}</strong>
-                </div>
-                <div className="goals-druid-gauges__item">
-                  <span>Импульс</span>
-                  <strong className={`status-badge ${impulseStatus.toneClass}`}>{impulseStatus.label}</strong>
-                </div>
+                <DruidGauge label="Здоровье" value01={trunkHealth.value01} stateLabel={trunkHealth.label} stateKind={trunkHealth.stateKind} />
+                <DruidGauge label="Шторм" value01={stormStatus.value01} stateLabel={stormStatus.label} stateKind={stormStatus.stateKind} />
+                <DruidGauge label="Импульс" value01={impulseStatus.value01} stateLabel={impulseStatus.label} stateKind={impulseStatus.stateKind} />
               </div>
               <p><strong>Слабая ветвь:</strong> {weakestKr ? (METRICS.find((item) => item.id === weakestKr.kr.metricId)?.labelRu ?? weakestKr.kr.metricId) : '—'}</p>
               <p><strong>Выбранная ветвь:</strong> {selectedKrMetricLabel ?? '—'}</p>
