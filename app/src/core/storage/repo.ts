@@ -253,6 +253,27 @@ function createGoalId(): string {
   return `goal-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
 
+
+function normalizeGoalLinks(rawLinks: unknown, currentGoalId: string): GoalRecord['links'] {
+  if (!Array.isArray(rawLinks)) return []
+  const dedup = new Set<string>()
+  const normalized = rawLinks
+    .map((item) => {
+      if (!item || typeof item !== 'object') return null
+      const row = item as { toGoalId?: unknown; type?: unknown }
+      const toGoalId = typeof row.toGoalId === 'string' ? row.toGoalId : typeof row.toGoalId === 'number' ? String(row.toGoalId) : ''
+      if (!toGoalId || toGoalId === currentGoalId) return null
+      const type: NonNullable<GoalRecord['links']>[number]['type'] | null = row.type === 'depends_on' || row.type === 'supports' || row.type === 'conflicts' ? row.type : null
+      if (!type) return null
+      const key = `${type}:${toGoalId}`
+      if (dedup.has(key)) return null
+      dedup.add(key)
+      return { toGoalId, type }
+    })
+    .filter((item): item is NonNullable<typeof item> => Boolean(item))
+  return normalized
+}
+
 function normalizeGoalRecord(row: unknown): GoalRecord | null {
   if (!row || typeof row !== 'object') return null
   const source = row as Partial<GoalRecord> & { id?: string | number; status?: string; active?: boolean; weights?: Record<string, number>; okr?: GoalRecord['okr'] }
@@ -375,6 +396,7 @@ function normalizeGoalRecord(row: unknown): GoalRecord | null {
     trashedAt: typeof source.trashedAt === 'string' ? source.trashedAt : undefined,
     groveId: typeof source.groveId === 'string' ? source.groveId : undefined,
     parentGoalId: typeof source.parentGoalId === 'string' ? source.parentGoalId : undefined,
+    links: normalizeGoalLinks((source as { links?: unknown }).links, id),
     targetIndex: source.targetIndex,
     targetPCollapse: source.targetPCollapse,
     constraints: source.constraints,
@@ -453,6 +475,7 @@ export interface CreateGoalInput {
   manualTuning?: GoalRecord['manualTuning']
   groveId?: string
   parentGoalId?: string
+  links?: GoalRecord['links']
 }
 
 
@@ -480,6 +503,7 @@ export async function createGoal(goal: CreateGoalInput): Promise<GoalRecord> {
     trashedAt: goal.status === 'trashed' ? new Date(now).toISOString() : undefined,
     groveId: goal.groveId,
     parentGoalId: goal.parentGoalId,
+    links: goal.links ?? [],
     createdAt: now,
     updatedAt: now,
   }
@@ -543,7 +567,12 @@ export async function listGoals(): Promise<GoalRecord[]> {
     if (titleKey) byTitle.add(`${goal.status}:${titleKey}`)
     deduped.push(goal)
   }
-  return deduped
+
+  const visibleGoalIds = new Set(deduped.filter((item) => item.status !== 'trashed').map((item) => item.id))
+  return deduped.map((goal) => ({
+    ...goal,
+    links: (goal.links ?? []).filter((link) => visibleGoalIds.has(link.toGoalId)),
+  }))
 }
 
 export async function getActiveGoal(): Promise<GoalRecord | undefined> {

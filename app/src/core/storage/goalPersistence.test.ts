@@ -106,6 +106,33 @@ describe('goals persistence', () => {
   })
 
 
+  it('сохраняет связи между целями и скрывает ссылки на корзину', async () => {
+    const { createGoal, listGoals, updateGoal } = await import('./repo')
+    const alpha = await createGoal({ title: 'Alpha', status: 'active' })
+    const beta = await createGoal({ title: 'Beta', status: 'active' })
+    const gamma = await createGoal({ title: 'Gamma', status: 'active' })
+
+    await updateGoal(alpha.id, {
+      links: [
+        { toGoalId: beta.id, type: 'supports' },
+        { toGoalId: gamma.id, type: 'depends_on' },
+        { toGoalId: alpha.id, type: 'conflicts' },
+      ],
+    })
+
+    let rows = await listGoals()
+    const updated = rows.find((item) => item.id === alpha.id)
+    expect(updated?.links).toEqual([
+      { toGoalId: beta.id, type: 'supports' },
+      { toGoalId: gamma.id, type: 'depends_on' },
+    ])
+
+    await updateGoal(gamma.id, { status: 'trashed' })
+    rows = await listGoals()
+    const afterTrash = rows.find((item) => item.id === alpha.id)
+    expect(afterTrash?.links).toEqual([{ toGoalId: beta.id, type: 'supports' }])
+  })
+
 
   it('архивирует, отправляет в корзину и восстанавливает цель', async () => {
     const { createGoal, updateGoal, listGoals } = await import('./repo')
