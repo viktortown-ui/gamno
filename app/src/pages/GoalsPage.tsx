@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { METRICS, type MetricId } from '../core/metrics'
-import type { GoalKeyResult, GoalModePresetId, GoalRecord } from '../core/models/goal'
+import type { GoalKeyResult, GoalLinkType, GoalModePresetId, GoalRecord } from '../core/models/goal'
 import {
   addGoalEvent,
   createGoal,
@@ -123,6 +123,12 @@ const forestTabLabels: Record<ForestTab, string> = {
   trashed: 'Корзина',
 }
 
+const linkTypeLabels: Record<GoalLinkType, string> = {
+  supports: 'Помогает',
+  depends_on: 'Зависит от',
+  conflicts: 'Конфликтует',
+}
+
 function buildPresetKrs(presetId: GoalModePresetId): GoalKeyResult[] {
   const preset = modePresetsMap[presetId]
   return preset.keyMetrics.map((metricId, index) => createKrFromMetric(metricId, (preset.weights[metricId] ?? 0) >= 0 ? 'up' : 'down', index, `Ключевая ветвь режима «${preset.title}».`))
@@ -215,6 +221,11 @@ export function GoalsPage() {
   const [forestTab, setForestTab] = useState<ForestTab>('active')
   const [forestSearch, setForestSearch] = useState('')
   const [forestSort, setForestSort] = useState<ForestSort>('recent')
+  const [forestViewMode, setForestViewMode] = useState<'forest' | 'roots'>('forest')
+  const [linkModalOpen, setLinkModalOpen] = useState(false)
+  const [linkSearch, setLinkSearch] = useState('')
+  const [linkTargetId, setLinkTargetId] = useState('')
+  const [linkTypeDraft, setLinkTypeDraft] = useState<GoalLinkType>('supports')
   const [isForgeOpen, setIsForgeOpen] = useState(false)
   const [showDebugNumbers, setShowDebugNumbers] = useState(false)
   const forgeOpenButtonRef = useRef<HTMLButtonElement | null>(null)
@@ -284,6 +295,29 @@ export function GoalsPage() {
   }, [])
 
   const selected = useMemo(() => goals.find((item) => item.id === selectedGoalId) ?? null, [goals, selectedGoalId])
+  const goalTitleMap = useMemo(() => new Map(goals.map((goal) => [goal.id, goal.title])), [goals])
+
+  const selectedLinksByType = useMemo(() => {
+    const grouped: Record<GoalLinkType, Array<{ toGoalId: string; type: GoalLinkType }>> = {
+      supports: [],
+      depends_on: [],
+      conflicts: [],
+    }
+    for (const link of selected?.links ?? []) {
+      if (!goalTitleMap.has(link.toGoalId)) continue
+      grouped[link.type].push(link)
+    }
+    return grouped
+  }, [goalTitleMap, selected?.links])
+
+  const linkCandidates = useMemo(() => {
+    const query = linkSearch.trim().toLowerCase()
+    return goals
+      .filter((goal) => goal.id !== selected?.id && goal.status !== 'trashed')
+      .filter((goal) => !query || goal.title.toLowerCase().includes(query))
+  }, [goals, linkSearch, selected?.id])
+
+
 
   const selectedPreset = useMemo(() => {
     const presetId = selected?.modePresetId ?? 'balance'
@@ -994,6 +1028,30 @@ export function GoalsPage() {
     await reload()
   }
 
+  const openLinkModal = () => {
+    if (!selected) return
+    setLinkSearch('')
+    setLinkTargetId('')
+    setLinkTypeDraft('supports')
+    setLinkModalOpen(true)
+  }
+
+  const addGoalLink = async () => {
+    if (!selected || !linkTargetId || linkTargetId === selected.id) return
+    const existing = selected.links ?? []
+    if (existing.some((item) => item.toGoalId === linkTargetId && item.type === linkTypeDraft)) return
+    await updateGoal(selected.id, { links: [...existing, { toGoalId: linkTargetId, type: linkTypeDraft }] })
+    setLinkModalOpen(false)
+    await reload()
+  }
+
+  const removeGoalLink = async (toGoalId: string, type: GoalLinkType) => {
+    if (!selected) return
+    const next = (selected.links ?? []).filter((item) => !(item.toGoalId === toGoalId && item.type === type))
+    await updateGoal(selected.id, { links: next })
+    await reload()
+  }
+
 
   return (
     <section className="goals-page">
@@ -1032,65 +1090,97 @@ export function GoalsPage() {
           <p className="goals-pane__hint">Портфель целей: активные, архив и корзина.</p>
           <button type="button" onClick={startSeed}>Посадить семя</button>
           <div className="settings-actions">
-            {(['active', 'archived', 'trashed'] as ForestTab[]).map((tab) => (
-              <button key={tab} type="button" className={forestTab === tab ? 'filter-button filter-button--active' : 'filter-button'} onClick={() => setForestTab(tab)}>{forestTabLabels[tab]}</button>
-            ))}
+            <button type="button" className={forestViewMode === 'forest' ? 'filter-button filter-button--active' : 'filter-button'} onClick={() => setForestViewMode('forest')}>Лес</button>
+            <button type="button" className={forestViewMode === 'roots' ? 'filter-button filter-button--active' : 'filter-button'} onClick={() => setForestViewMode('roots')}>Корни</button>
           </div>
-          <label>
-            Поиск
-            <input value={forestSearch} onChange={(event) => setForestSearch(event.target.value)} placeholder="Название цели" />
-          </label>
-          <label>
-            Сортировка
-            <select value={forestSort} onChange={(event) => setForestSort(event.target.value as ForestSort)}>
-              <option value="recent">Недавние</option>
-              <option value="progress">По прогрессу</option>
-              <option value="preset">По режиму</option>
-            </select>
-          </label>
-          <div className="goals-forest__list">
-            {visibleForestGoals.length === 0 ? (
-              <div className="goals-pane__empty">
-                <p><strong>В этой вкладке пока пусто.</strong></p>
+          {forestViewMode === 'forest' ? (
+            <div className="settings-actions">
+              {(['active', 'archived', 'trashed'] as ForestTab[]).map((tab) => (
+                <button key={tab} type="button" className={forestTab === tab ? 'filter-button filter-button--active' : 'filter-button'} onClick={() => setForestTab(tab)}>{forestTabLabels[tab]}</button>
+              ))}
+            </div>
+          ) : null}
+          {forestViewMode === 'forest' ? (
+            <>
+              <label>
+                Поиск
+                <input value={forestSearch} onChange={(event) => setForestSearch(event.target.value)} placeholder="Название цели" />
+              </label>
+              <label>
+                Сортировка
+                <select value={forestSort} onChange={(event) => setForestSort(event.target.value as ForestSort)}>
+                  <option value="recent">Недавние</option>
+                  <option value="progress">По прогрессу</option>
+                  <option value="preset">По режиму</option>
+                </select>
+              </label>
+              <div className="goals-forest__list">
+                {visibleForestGoals.length === 0 ? (
+                  <div className="goals-pane__empty">
+                    <p><strong>В этой вкладке пока пусто.</strong></p>
+                  </div>
+                ) : (
+                  groves.map(([groveTitle, groveGoals]) => (
+                    <details key={groveTitle} open>
+                      <summary>{groveTitle} · {groveGoals.length}</summary>
+                      <ul>
+                        {groveGoals.map((goal) => {
+                          const children = goals.filter((item) => item.parentGoalId === goal.id && item.status === forestTab)
+                          const progress = goalProgressMap.get(goal.id)
+                          return (
+                            <li key={goal.id}>
+                              <button
+                                type="button"
+                                className={selectedGoalId === goal.id ? 'filter-button filter-button--active' : 'filter-button'}
+                                onClick={() => {
+                                  setSelectedGoalId(goal.id)
+                                  setEditor(goal)
+                                }}
+                              >
+                                {goal.title} {goal.active ? '· Активна' : ''} {goal.parentGoalId ? '· Дочерняя' : ''} {children.length ? `· Супер-цель (${children.length})` : ''} {typeof progress === 'number' ? `· ${Math.round(progress)}%` : ''}
+                              </button>
+                              <div className="settings-actions">
+                                <button type="button" onClick={async () => { await setActiveGoal(goal.id); await reload() }} disabled={goal.status !== 'active'}>Сделать активной</button>
+                                <button type="button" onClick={async () => { await renameGoal(goal) }}>Переименовать</button>
+                                <button type="button" onClick={async () => { await assignGrove(goal) }}>Назначить рощу</button>
+                                <button type="button" onClick={async () => { await moveToSuperGoal(goal) }}>{goal.parentGoalId ? 'Убрать из супер-цели' : 'В супер-цель'}</button>
+                                {goal.status === 'active' ? <button type="button" onClick={async () => { await archiveGoal(goal) }}>Архивировать</button> : null}
+                                {goal.status !== 'trashed' ? <button type="button" onClick={async () => { await trashGoal(goal) }}>В корзину</button> : null}
+                                {goal.status !== 'active' ? <button type="button" onClick={async () => { await restoreGoal(goal) }}>Восстановить</button> : null}
+                                {goal.status === 'trashed' ? <button type="button" onClick={async () => { await deleteForever(goal) }}>Удалить навсегда</button> : null}
+                              </div>
+                            </li>
+                          )
+                        })}
+                      </ul>
+                    </details>
+                  ))
+                )}
               </div>
-            ) : (
-              groves.map(([groveTitle, groveGoals]) => (
-                <details key={groveTitle} open>
-                  <summary>{groveTitle} · {groveGoals.length}</summary>
-                  <ul>
-                    {groveGoals.map((goal) => {
-                      const children = goals.filter((item) => item.parentGoalId === goal.id && item.status === forestTab)
-                      const progress = goalProgressMap.get(goal.id)
-                      return (
-                        <li key={goal.id}>
-                          <button
-                            type="button"
-                            className={selectedGoalId === goal.id ? 'filter-button filter-button--active' : 'filter-button'}
-                            onClick={() => {
-                              setSelectedGoalId(goal.id)
-                              setEditor(goal)
-                            }}
-                          >
-                            {goal.title} {goal.active ? '· Активна' : ''} {goal.parentGoalId ? '· Дочерняя' : ''} {children.length ? `· Супер-цель (${children.length})` : ''} {typeof progress === 'number' ? `· ${Math.round(progress)}%` : ''}
-                          </button>
-                          <div className="settings-actions">
-                            <button type="button" onClick={async () => { await setActiveGoal(goal.id); await reload() }} disabled={goal.status !== 'active'}>Сделать активной</button>
-                            <button type="button" onClick={async () => { await renameGoal(goal) }}>Переименовать</button>
-                            <button type="button" onClick={async () => { await assignGrove(goal) }}>Назначить рощу</button>
-                            <button type="button" onClick={async () => { await moveToSuperGoal(goal) }}>{goal.parentGoalId ? 'Убрать из супер-цели' : 'В супер-цель'}</button>
-                            {goal.status === 'active' ? <button type="button" onClick={async () => { await archiveGoal(goal) }}>Архивировать</button> : null}
-                            {goal.status !== 'trashed' ? <button type="button" onClick={async () => { await trashGoal(goal) }}>В корзину</button> : null}
-                            {goal.status !== 'active' ? <button type="button" onClick={async () => { await restoreGoal(goal) }}>Восстановить</button> : null}
-                            {goal.status === 'trashed' ? <button type="button" onClick={async () => { await deleteForever(goal) }}>Удалить навсегда</button> : null}
-                          </div>
-                        </li>
-                      )
-                    })}
-                  </ul>
-                </details>
-              ))
-            )}
-          </div>
+            </>
+          ) : (
+            <div className="goals-roots-map" aria-label="Карта корней">
+              {!selected ? <p>Выберите цель в лесу, чтобы увидеть карту корней.</p> : null}
+              {selected ? (
+                <>
+                  <h3>Карта корней: {selected.title}</h3>
+                  <div className="goals-roots-map__center">{selected.title}</div>
+                  <div className="goals-roots-map__groups">
+                    {(['depends_on', 'supports', 'conflicts'] as GoalLinkType[]).map((type) => (
+                      <section key={type}>
+                        <h4>{linkTypeLabels[type]}</h4>
+                        <ul>
+                          {selectedLinksByType[type].length ? selectedLinksByType[type].map((link) => (
+                            <li key={`${type}-${link.toGoalId}`}>{goalTitleMap.get(link.toGoalId) ?? link.toGoalId}</li>
+                          )) : <li>—</li>}
+                        </ul>
+                      </section>
+                    ))}
+                  </div>
+                </>
+              ) : null}
+            </div>
+          )}
         </article>
 
         <article className="panel goals-pane goals-pane--stage">
@@ -1162,6 +1252,28 @@ export function GoalsPage() {
               <p><strong>Слабая ветвь:</strong> {weakestKr ? `🕸 Трещина: ${METRICS.find((item) => item.id === weakestKr.kr.metricId)?.labelRu ?? weakestKr.kr.metricId}` : 'Выберите ветвь'}</p>
               <p className="goals-pane__hint">{selected.isManualTuning ? 'Ручная настройка активна: Друид опирается на ваш профиль.' : selectedPreset.druidHint}</p>
               <p><strong>Выбранная ветвь:</strong> {selectedKrMetricLabel ?? 'Выберите ветвь'}</p>
+              <section className="summary-card goals-roots-block">
+                <div className="settings-actions">
+                  <h3>Корни</h3>
+                  <button type="button" onClick={openLinkModal}>Добавить связь</button>
+                </div>
+                {(['supports', 'depends_on', 'conflicts'] as GoalLinkType[]).map((type) => (
+                  <div key={type}>
+                    <strong>{linkTypeLabels[type]}</strong>
+                    <ul>
+                      {selectedLinksByType[type].length ? selectedLinksByType[type].map((link) => (
+                        <li key={`${type}-${link.toGoalId}`} className="goals-roots-item">
+                          <span>{goalTitleMap.get(link.toGoalId) ?? link.toGoalId}</span>
+                          <div className="settings-actions">
+                            <button type="button" onClick={() => { setSelectedGoalId(link.toGoalId); setForestViewMode('forest') }}>Открыть</button>
+                            <button type="button" aria-label="Удалить связь" onClick={async () => { await removeGoalLink(link.toGoalId, type) }}>×</button>
+                          </div>
+                        </li>
+                      )) : <li>—</li>}
+                    </ul>
+                  </div>
+                ))}
+              </section>
               {!activeMission ? (
                 <div className="goals-tree-state__top-layer">
                   <h3>Следующая миссия</h3>
@@ -1323,6 +1435,36 @@ export function GoalsPage() {
       ) : null}
 
 
+      {linkModalOpen ? (
+        <div className="goals-modal-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) setLinkModalOpen(false) }}>
+          <div className="panel goals-modal" role="dialog" aria-modal="true" aria-label="Добавить связь">
+            <h2>Добавить связь</h2>
+            <label>
+              Поиск цели
+              <input value={linkSearch} onChange={(event) => setLinkSearch(event.target.value)} placeholder="Найти цель" />
+            </label>
+            <label>
+              Тип связи
+              <select value={linkTypeDraft} onChange={(event) => setLinkTypeDraft(event.target.value as GoalLinkType)}>
+                <option value="supports">Помогает</option>
+                <option value="depends_on">Зависит от</option>
+                <option value="conflicts">Конфликтует</option>
+              </select>
+            </label>
+            <label>
+              Цель
+              <select value={linkTargetId} onChange={(event) => setLinkTargetId(event.target.value)}>
+                <option value="">Выберите цель</option>
+                {linkCandidates.map((goal) => <option key={goal.id} value={goal.id}>{goal.title}</option>)}
+              </select>
+            </label>
+            <div className="settings-actions">
+              <button type="button" onClick={async () => { await addGoalLink() }} disabled={!linkTargetId}>Сохранить</button>
+              <button type="button" onClick={() => setLinkModalOpen(false)}>Отмена</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {missionConfirmOpen && activeMission ? (
         <div className="goals-modal-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) closeMissionConfirm() }}>

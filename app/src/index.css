@@ -3833,3 +3833,34 @@ button.danger { background: color-mix(in srgb, #e45959 30%, var(--panel) 70%); b
 @media (prefers-reduced-motion: reduce) {
   .rune-dial__needle { transition: none; }
 }
+
+.goals-roots-block ul,
+.goals-roots-map__groups ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+
+.goals-roots-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.goals-roots-map {
+  display: grid;
+  gap: 12px;
+}
+
+.goals-roots-map__center {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 8px 12px;
+  text-align: center;
+  font-weight: 600;
+}
+
+.goals-roots-map__groups {
+  display: grid;
+  gap: 8px;
+}

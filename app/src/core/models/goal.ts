@@ -2,6 +2,12 @@ import type { MetricId } from '../metrics'
 
 export type GoalStatus = 'active' | 'archived' | 'trashed'
 export type GoalModePresetId = 'balance' | 'recovery' | 'sprint' | 'finance' | 'social-shield'
+export type GoalLinkType = 'depends_on' | 'supports' | 'conflicts'
+
+export interface GoalLink {
+  toGoalId: string
+  type: GoalLinkType
+}
 
 export interface GoalManualTuning {
   weights: Record<string, number>
@@ -86,6 +92,7 @@ export interface GoalRecord {
   trashedAt?: string
   groveId?: string
   parentGoalId?: string
+  links?: GoalLink[]
 }
 
 export interface GoalEventRecord {
