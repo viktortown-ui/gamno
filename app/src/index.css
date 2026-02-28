@@ -3410,3 +3410,117 @@ button.danger { background: color-mix(in srgb, #e45959 30%, var(--panel) 70%); b
   align-items: center;
   gap: 8px;
 }
+
+.forge-sheet-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  background: color-mix(in oklab, #05070f 68%, transparent);
+  backdrop-filter: blur(6px);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.forge-sheet {
+  width: min(92vw, 480px);
+  height: 100vh;
+  overflow: auto;
+  background:
+    radial-gradient(120% 80% at 100% 0%, color-mix(in oklab, var(--accent) 24%, transparent), transparent 65%),
+    linear-gradient(180deg, color-mix(in oklab, var(--panel) 90%, #0a1020), color-mix(in oklab, var(--panel) 96%, #060a14));
+  border-left: 1px solid color-mix(in oklab, var(--border) 82%, #ffffff12);
+  box-shadow: -16px 0 48px #0000004d;
+  padding: var(--space-4);
+  display: grid;
+  gap: var(--space-3);
+}
+
+.forge-sheet__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+}
+
+.forge-sheet__eyebrow { margin: 0; opacity: 0.7; letter-spacing: 0.08em; text-transform: uppercase; font-size: 0.75rem; }
+.forge-sheet__header h2 { margin: 0; }
+.forge-sheet__section h3 { margin-top: 0; }
+.forge-sheet__section-head { display: flex; justify-content: space-between; align-items: center; gap: var(--space-2); }
+
+.forge-presets {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.forge-preset {
+  text-align: left;
+  padding: 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in oklab, var(--border) 76%, #ffffff16);
+  background: color-mix(in oklab, var(--panel) 88%, #0d1529);
+}
+
+.forge-preset--active {
+  border-color: color-mix(in oklab, var(--accent) 65%, #ffffff20);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--accent) 24%, transparent), inset 0 0 24px #4f8cff1c;
+}
+
+.forge-preset span { display: block; font-size: 0.8rem; opacity: 0.78; margin-top: 4px; }
+
+.forge-runes-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.rune-dial {
+  border: 1px solid color-mix(in oklab, var(--border) 78%, #ffffff14);
+  border-radius: var(--radius-md);
+  padding: 10px;
+  background: color-mix(in oklab, var(--panel) 90%, #0f162a);
+}
+.rune-dial h4 { margin: 0 0 2px; font-size: 0.9rem; }
+.rune-dial p { margin: 0; opacity: 0.82; }
+.rune-dial svg { width: 100%; max-width: 160px; display: block; margin: 0 auto; }
+.rune-dial__halo { fill: #d8e8ff0f; }
+.rune-dial__arc { fill: none; stroke: #9fb5d34f; stroke-width: 10; stroke-linecap: round; }
+.rune-dial__arc--active { stroke: color-mix(in oklab, var(--accent) 64%, #bde2ff); }
+.rune-dial__hit { fill: none; stroke: transparent; stroke-width: 24; cursor: pointer; }
+.rune-dial__needle { stroke: #dcecff; stroke-width: 3; transition: transform 140ms steps(2); }
+.rune-dial__hub { fill: #f5f9ff; }
+
+.forge-preview {
+  border: 1px solid color-mix(in oklab, var(--border) 78%, #ffffff14);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  background: color-mix(in oklab, var(--panel) 88%, #0f1b30);
+}
+
+.forge-preview h3 { margin-top: 0; }
+.forge-preview__cores { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+.forge-preview__cores strong { font-size: 1.4rem; }
+.forge-preview__line { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.forge-preview__weather-scale { display: inline-grid; grid-template-columns: repeat(3, 16px); gap: 4px; }
+.forge-preview__weather-scale i { width: 16px; height: 8px; border-radius: 4px; background: #7f92b033; }
+.forge-preview__weather-scale i.is-active { background: color-mix(in oklab, var(--accent) 72%, #d9ecff); }
+
+.forge-advanced { border: 1px dashed color-mix(in oklab, var(--border) 75%, #ffffff1d); border-radius: var(--radius-md); padding: 10px; }
+.forge-advanced__kr { padding: 8px 0; border-bottom: 1px solid #ffffff12; }
+.forge-advanced__kr:last-child { border-bottom: 0; }
+.forge-sheet__editor { margin: 0; }
+
+@media (max-width: 840px) {
+  .forge-sheet-overlay { align-items: flex-end; }
+  .forge-sheet {
+    width: 100%;
+    height: 78vh;
+    border-left: 0;
+    border-top: 1px solid color-mix(in oklab, var(--border) 82%, #ffffff12);
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -16px 48px #0000005c;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rune-dial__needle { transition: none; }
+}

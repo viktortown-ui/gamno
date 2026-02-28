@@ -19,6 +19,11 @@ import { evaluateGoalScore, suggestGoalActions, type GoalStateInput } from '../c
 import { getLatestForecastRun } from '../repo/forecastRepo'
 import { GoalYggdrasilTree, type BranchStrength } from '../ui/components/GoalYggdrasilTree'
 import { DruidGauge } from './goals/components/DruidGauge'
+import { ForgeSheet } from './goals/components/ForgeSheet'
+import { PresetSelector } from './goals/components/PresetSelector'
+import { RuneDial } from './goals/components/RuneDial'
+import { ForgePreview } from './goals/components/ForgePreview'
+import { AdvancedTuning } from './goals/components/AdvancedTuning'
 
 type GoalTemplateId = 'growth' | 'anti-storm' | 'energy-balance' | 'money'
 
@@ -114,6 +119,31 @@ function buildPresetKrs(presetId: GoalModePresetId): GoalKeyResult[] {
 }
 
 
+
+const forgeRuneMetricIds: MetricId[] = ['energy', 'focus', 'productivity', 'sleepHours', 'stress', 'mood', 'social', 'cashFlow']
+const runeStateLabels = ['Низко', 'Низко', 'Норм', 'Норм', 'Сильно', 'Макс'] as const
+
+function weightToRuneLevel(weight: number): number {
+  const normalized = Math.min(1, Math.max(0, Math.abs(weight)))
+  return Math.round(normalized * 5)
+}
+
+function runeLevelToWeight(level: number, sign: -1 | 1): number {
+  return Math.max(0, Math.min(5, level)) / 5 * sign
+}
+
+function getWeatherLabel(levelAvg: number): 'Штиль' | 'Ветер' | 'Шторм' {
+  if (levelAvg <= 1.8) return 'Штиль'
+  if (levelAvg <= 3.6) return 'Ветер'
+  return 'Шторм'
+}
+
+function getRiskLabel(levelAvg: number): 'Низкий' | 'Средний' | 'Высокий' {
+  if (levelAvg <= 2) return 'Низкий'
+  if (levelAvg <= 3.8) return 'Средний'
+  return 'Высокий'
+}
+
 const missionTemplatesByMetric: Record<MetricId, string[]> = {
   sleepHours: ['Ритуал сна 20 минут', 'Отбой на 30 минут раньше', 'Тихий час без экрана перед сном', 'Подготовить спальню до 22:00', 'Подъём в одно и то же время'],
   energy: ['10 минут прогулка', 'Стакан воды сразу после подъёма', 'Короткая зарядка 7 минут', 'Пауза на восстановление днём', 'Режим воды + еды по графику'],
@@ -189,6 +219,7 @@ export function GoalsPage() {
   const [duplicateCandidate, setDuplicateCandidate] = useState<GoalRecord | null>(null)
   const [isForgeOpen, setIsForgeOpen] = useState(false)
   const [showDebugNumbers, setShowDebugNumbers] = useState(false)
+  const forgeOpenButtonRef = useRef<HTMLButtonElement | null>(null)
   const [nextMissionDuration, setNextMissionDuration] = useState<1 | 3>(3)
   const [missionConfirmOpen, setMissionConfirmOpen] = useState(false)
   const [missionAwardDraft, setMissionAwardDraft] = useState(5)
@@ -267,6 +298,32 @@ export function GoalsPage() {
     return selectedPreset.weights
   }, [selected, selectedPreset])
 
+  const forgeRunes = useMemo(() => {
+    return forgeRuneMetricIds.map((metricId) => {
+      const metric = METRICS.find((item) => item.id === metricId)
+      const weight = selectedWeights[metricId] ?? 0
+      return {
+        metricId,
+        label: metric?.labelRu ?? metricId,
+        level: weightToRuneLevel(weight),
+        sign: ((weight || metricId === 'stress' ? Math.sign(weight || -1) : 1) >= 0 ? 1 : -1) as -1 | 1,
+      }
+    })
+  }, [selectedWeights])
+
+  const forgePreview = useMemo(() => {
+    const levels = forgeRunes.map((item) => item.level)
+    const levelAvg = levels.length ? levels.reduce((acc, value) => acc + value, 0) / levels.length : 0
+    const coresMin = Math.max(1, Math.round(levelAvg * 1.5))
+    const coresMax = coresMin + 4 + Math.round(levelAvg)
+    return {
+      coresMin,
+      coresMax,
+      weather: getWeatherLabel(levelAvg),
+      risk: getRiskLabel(levelAvg),
+    }
+  }, [forgeRunes])
+
   const applyModePreset = async (presetId: GoalModePresetId) => {
     if (!selected) return
     const preset = modePresetsMap[presetId]
@@ -300,6 +357,26 @@ export function GoalsPage() {
         },
       })
     }
+    await reload()
+  }
+
+  const applyRuneLevel = async (metricId: MetricId, level: number) => {
+    if (!selected) return
+    const current = selectedWeights[metricId] ?? 0
+    const sign = (current < 0 || metricId === 'stress' ? -1 : 1) as -1 | 1
+    const nextWeight = runeLevelToWeight(level, sign)
+    const nextWeights = { ...selectedWeights, [metricId]: nextWeight }
+
+    await updateGoal(selected.id, {
+      isManualTuning: true,
+      modePresetId: undefined,
+      weights: nextWeights,
+      manualTuning: {
+        weights: nextWeights,
+        horizonDays: selected.manualTuning?.horizonDays ?? selected.horizonDays,
+        krDirections: selected.manualTuning?.krDirections,
+      },
+    })
     await reload()
   }
 
@@ -504,6 +581,11 @@ export function GoalsPage() {
   const activeMission = selected?.activeMission
   const missionProgress = activeMission ? missionProgressLabel(activeMission.startedAt, activeMission.durationDays) : null
   const missionHistory = selected?.missionHistory ?? []
+
+  const closeForge = () => {
+    setIsForgeOpen(false)
+    requestAnimationFrame(() => forgeOpenButtonRef.current?.focus())
+  }
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -720,32 +802,15 @@ export function GoalsPage() {
           >
             Открыть в Мультивселенной
           </button>
+          {editor ? (
+            <button ref={forgeOpenButtonRef} type="button" onClick={() => setIsForgeOpen(true)}>
+              Кузница / Настроить режим
+            </button>
+          ) : null}
         </div>
       </div>
 
-      {selected ? (
-        <article className="panel goals-mode-panel">
-          <p><strong>Режим:</strong> {selected.isManualTuning ? 'Ручная настройка' : selectedPreset.title}</p>
-          <div className="goals-mode-grid">
-            {modePresets.map((preset) => (
-              <button
-                key={preset.id}
-                type="button"
-                className={!selected.isManualTuning && (selected.modePresetId ?? 'balance') === preset.id ? 'filter-button filter-button--active' : 'filter-button'}
-                onClick={async () => { await applyModePreset(preset.id) }}
-              >
-                <strong>{preset.title}</strong>
-                <span>{preset.summary}</span>
-              </button>
-            ))}
-          </div>
-          <div className="settings-actions">
-            <button type="button" onClick={async () => { await toggleManualTuning() }}>
-              {selected.isManualTuning ? 'Вернуться к пресету' : 'Настроить вручную'}
-            </button>
-          </div>
-        </article>
-      ) : null}
+
 
       <div className="goals-aaa-grid">
         <article className="panel goals-pane goals-pane--forest goals-forest">
@@ -874,12 +939,65 @@ export function GoalsPage() {
         </article>
       </div>
 
+
       {editor ? (
-        <details className="graph-accordion" open={isForgeOpen}>
-          <summary onClick={(event) => { event.preventDefault(); setIsForgeOpen((value) => !value) }}>Кузница (для продвинутых)</summary>
-          <article className="summary-card panel">
-            <h3>Настройка цели</h3>
-            {!editor.isManualTuning ? <p className="goals-pane__hint">Выбран пресет «{selectedPreset.title}». Для ручной настройки включите режим выше.</p> : null}
+        <ForgeSheet open={isForgeOpen} onClose={closeForge} title="Кузница: настройка режима">
+          <header className="forge-sheet__header">
+            <div>
+              <p className="forge-sheet__eyebrow">Forge Cockpit</p>
+              <h2>Кузница</h2>
+            </div>
+            <button type="button" onClick={closeForge} aria-label="Закрыть кузницу">✕</button>
+          </header>
+
+          <section className="forge-sheet__section">
+            <h3>Режим</h3>
+            <PresetSelector
+              presets={modePresets.map((preset) => ({ id: preset.id, title: preset.title, summary: preset.summary }))}
+              activePresetId={(selected?.modePresetId ?? 'balance') as GoalModePresetId}
+              onSelect={(presetId) => { void applyModePreset(presetId) }}
+            />
+          </section>
+
+          <section className="forge-sheet__section">
+            <div className="forge-sheet__section-head">
+              <h3>Руны</h3>
+              <label className="goals-debug-toggle">
+                <input type="checkbox" checked={selected?.isManualTuning ?? false} onChange={() => { void toggleManualTuning() }} />
+                Ручной режим
+              </label>
+            </div>
+            <div className="forge-runes-grid">
+              {forgeRunes.map((rune) => (
+                <RuneDial
+                  key={rune.metricId}
+                  label={rune.label}
+                  level={rune.level}
+                  stateLabel={runeStateLabels[rune.level]}
+                  onChange={(level) => { void applyRuneLevel(rune.metricId, level) }}
+                />
+              ))}
+            </div>
+          </section>
+
+          <ForgePreview
+            coresMin={forgePreview.coresMin}
+            coresMax={forgePreview.coresMax}
+            weather={forgePreview.weather}
+            risk={forgePreview.risk}
+          />
+
+          {selected?.isManualTuning ? (
+            <AdvancedTuning
+              keyResults={editorKeyResults}
+              showDebugNumbers={showDebugNumbers}
+              onToggleDebugNumbers={setShowDebugNumbers}
+              onUpdateKr={updateEditorKr}
+            />
+          ) : null}
+
+          <article className="summary-card panel forge-sheet__editor">
+            <h3>Параметры цели</h3>
             <label>Название<input value={editor.title} onChange={(e) => setEditor({ ...editor, title: e.target.value })} /></label>
             <label>Objective<input value={editor.okr.objective} onChange={(e) => setEditor({ ...editor, okr: { ...editor.okr, objective: e.target.value } })} /></label>
             <label>Описание<textarea value={editor.description ?? ''} onChange={(e) => setEditor({ ...editor, description: e.target.value })} /></label>
@@ -889,86 +1007,13 @@ export function GoalsPage() {
                 <option value={7}>7 дней</option><option value={14}>14 дней</option><option value={30}>30 дней</option>
               </select>
             </label>
-
-            {editor.isManualTuning ? (
-              <>
-                <h4>Веса метрик</h4>
-                {METRICS.map((metric) => (
-                  <label key={metric.id}>{metric.labelRu}
-                    <input
-                      type="range"
-                      min={-1}
-                      max={1}
-                      step={0.1}
-                      value={editor.weights[metric.id] ?? 0}
-                      onChange={(e) => setEditor({
-                        ...editor,
-                        weights: { ...editor.weights, [metric.id]: Number(e.target.value) },
-                        manualTuning: {
-                          weights: { ...(editor.manualTuning?.weights ?? editor.weights), [metric.id]: Number(e.target.value) },
-                          horizonDays: editor.manualTuning?.horizonDays ?? editor.horizonDays,
-                          krDirections: editor.manualTuning?.krDirections,
-                        },
-                      })}
-                    />
-                  </label>
-                ))}
-
-                <h4>KR и прогресс</h4>
-                {editorKeyResults.map((kr, index) => (
-                  <div key={kr.id} className="panel" style={{ marginBottom: 8 }}>
-                    <strong>KR{index + 1}: {METRICS.find((item) => item.id === kr.metricId)?.labelRu ?? kr.metricId}</strong>
-                    <label>
-                      Направление
-                      <select value={kr.direction} onChange={(e) => updateEditorKr(kr.id, { direction: e.target.value as 'up' | 'down' })}>
-                        <option value="up">Вверх</option>
-                        <option value="down">Вниз</option>
-                      </select>
-                    </label>
-                    <label>
-                      Режим прогресса
-                      <select value={kr.progressMode ?? 'auto'} onChange={(e) => updateEditorKr(kr.id, { progressMode: e.target.value as 'auto' | 'manual' })}>
-                        <option value="auto">Авто</option>
-                        <option value="manual">Ручной</option>
-                      </select>
-                    </label>
-                    {showDebugNumbers ? (
-                      <>
-                        <label>
-                          Цель (debug)
-                          <input type="number" value={kr.target ?? ''} onChange={(e) => updateEditorKr(kr.id, { target: e.target.value ? Number(e.target.value) : undefined })} />
-                        </label>
-                        {(kr.progressMode ?? 'auto') === 'manual' ? (
-                          <label>
-                            Progress (0..1) debug
-                            <input type="number" min={0} max={1} step={0.1} value={kr.progress ?? 0} onChange={(e) => updateEditorKr(kr.id, { progress: clamp01(Number(e.target.value || 0)) })} />
-                          </label>
-                        ) : null}
-                      </>
-                    ) : null}
-                  </div>
-                ))}
-                <label className="goals-debug-toggle">
-                  <input type="checkbox" checked={showDebugNumbers} onChange={(e) => setShowDebugNumbers(e.target.checked)} />
-                  Показать числа (debug)
-                </label>
-              </>
-            ) : null}
-
-            {scoring ? (
-              <div>
-                <p>Сила роста: <strong>{historyTrend === 'up' ? 'Усиливается' : historyTrend === 'down' ? 'Ослабевает' : 'Стабильна'}</strong></p>
-                <p>Текущий вектор: <strong>{treeState?.label ?? 'N/A'}</strong></p>
-              </div>
-            ) : null}
-
             <div className="settings-actions">
               <button type="button" onClick={async () => { await updateGoal(editor.id, editor); await reload() }}>Сохранить</button>
               <button type="button" onClick={async () => { await setActiveGoal(editor.id); await reload() }}>Сделать активной</button>
               <button type="button" onClick={async () => { await updateGoal(editor.id, { status: 'archived', active: false }); await reload() }}>Архивировать</button>
             </div>
           </article>
-        </details>
+        </ForgeSheet>
       ) : null}
 
 
