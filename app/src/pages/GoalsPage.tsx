@@ -648,25 +648,48 @@ export function GoalsPage() {
   }, [historyTrend])
 
   const yggdrasilBranches = useMemo(() => {
-    return krProgressRows.map((row, index) => {
-      const label = METRICS.find((item) => item.id === row.kr.metricId)?.labelRu ?? row.kr.metricId
+    const rowsWithPriority = krProgressRows.map((row) => {
       const weight = selectedWeights[row.kr.metricId] ?? 0
-      const runeLevel = Math.max(1, Math.min(5, Math.round(Math.abs(weight) * 5)))
-      const rune = (['I', 'II', 'III', 'IV', 'V'][runeLevel - 1] ?? 'I') as 'I' | 'II' | 'III' | 'IV' | 'V'
+      const runeLevel = Math.max(0, Math.min(5, weightToRuneLevel(weight)))
+      return { row, runeLevel }
+    })
+    const topPriorityBranchId = rowsWithPriority.reduce<{ id: string | null; level: number }>((best, current) => {
+      if (current.runeLevel > best.level) {
+        return { id: current.row.kr.id, level: current.runeLevel }
+      }
+      return best
+    }, { id: null, level: -1 }).id
+    const weakestBranchId = weakestKr?.kr.id ?? null
+
+    return rowsWithPriority.map(({ row, runeLevel }, index) => {
+      const label = METRICS.find((item) => item.id === row.kr.metricId)?.labelRu ?? row.kr.metricId
+      const normalizedRune = Math.max(1, runeLevel)
+      const rune = (['I', 'II', 'III', 'IV', 'V'][normalizedRune - 1] ?? 'I') as 'I' | 'II' | 'III' | 'IV' | 'V'
       const strength: BranchStrength = row.progress < 0.34 ? 'weak' : row.progress < 0.67 ? 'normal' : 'strong'
+      const priorityBand: 'low' | 'medium' | 'high' = runeLevel <= 1 ? 'low' : runeLevel <= 3 ? 'medium' : 'high'
+      const missionEffectMin = Math.max(2, Math.min(4, runeLevel + 1))
+      const missionEffectMax = Math.max(missionEffectMin + 1, Math.min(6, runeLevel + 2))
+      const activeMissionForBranch = selected?.activeMission
+      const isActiveMissionBranch = Boolean(activeMissionForBranch && activeMissionForBranch.krKey === row.kr.id)
+
       return {
         id: row.kr.id,
         title: label,
         direction: row.kr.direction,
         rune,
         strength,
-        missions: selected?.activeMission && selected.activeMission.krKey === row.kr.id
-          ? [{ id: selected.activeMission.id, title: selected.activeMission.title, done: false }]
+        priorityBand,
+        isTopPriority: row.kr.id === topPriorityBranchId,
+        isWeak: row.kr.id === weakestBranchId,
+        missionEffectCores: { min: missionEffectMin, max: missionEffectMax },
+        missionDayLabel: isActiveMissionBranch && missionProgress ? `день ${missionProgress}` : undefined,
+        missions: isActiveMissionBranch && activeMissionForBranch
+          ? [{ id: activeMissionForBranch.id, title: activeMissionForBranch.title, done: false }]
           : [],
         index,
       }
     })
-  }, [krProgressRows, selected, selectedWeights])
+  }, [krProgressRows, missionProgress, selected, selectedWeights, weakestKr])
 
   const editorKeyResults = useMemo(() => {
     if (!editor) return []
@@ -880,6 +903,8 @@ export function GoalsPage() {
             </div>
           )}
 
+          <p className="goals-stage-legend">Толще ветвь = выше приоритет. Трещина = слабая. Плод = активная миссия.</p>
+
           <section className="goals-stage-krs">
             <h3>Ключевые ветви</h3>
             {selectedKrs.length === 0 ? <p>Ветви появятся после выбора цели.</p> : null}
@@ -917,7 +942,7 @@ export function GoalsPage() {
                 <DruidGauge label="Шторм" value01={stormStatus.value01} stateLabel={stormStatus.label} stateKind={stormStatus.stateKind} />
                 <DruidGauge label="Импульс" value01={impulseStatus.value01} stateLabel={impulseStatus.label} stateKind={impulseStatus.stateKind} />
               </div>
-              <p><strong>Слабая ветвь:</strong> {weakestKr ? (METRICS.find((item) => item.id === weakestKr.kr.metricId)?.labelRu ?? weakestKr.kr.metricId) : 'Выберите ветвь'}</p>
+              <p><strong>Слабая ветвь:</strong> {weakestKr ? `🌩 ${METRICS.find((item) => item.id === weakestKr.kr.metricId)?.labelRu ?? weakestKr.kr.metricId}` : 'Выберите ветвь'}</p>
               <p className="goals-pane__hint">{selected.isManualTuning ? 'Ручная настройка активна: Друид опирается на ваш профиль.' : selectedPreset.druidHint}</p>
               <p><strong>Выбранная ветвь:</strong> {selectedKrMetricLabel ?? 'Выберите ветвь'}</p>
               {!activeMission ? (
