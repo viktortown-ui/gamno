@@ -26,7 +26,7 @@ export interface OracleScenarioRecord extends OracleScenario {
   id?: number
 }
 
-export const schemaVersion = 17
+export const schemaVersion = 18
 
 class ConcoreDb extends Dexie {
   checkins!: EntityTable<CheckinRecord, 'id'>
