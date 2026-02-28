@@ -39,14 +39,23 @@ interface TreeHierarchyNode {
 
 const DEFAULT_SCENE_WIDTH = 900
 const DEFAULT_SCENE_HEIGHT = 560
-const FIT_PADDING = 32
+const FIT_PADDING = 40
 const RIBBON_SEGMENTS = 44
 
-function branchPath(sourceX: number, sourceY: number, targetX: number, targetY: number): string {
+function hashSeed(input: string): number {
+  let hash = 2166136261
+  for (let i = 0; i < input.length; i += 1) {
+    hash ^= input.charCodeAt(i)
+    hash = Math.imul(hash, 16777619)
+  }
+  return Math.abs(hash >>> 0)
+}
+
+function branchPath(sourceX: number, sourceY: number, targetX: number, targetY: number, sway = 0): string {
   const dx = targetX - sourceX
   const dy = targetY - sourceY
-  const bend = Math.max(30, Math.abs(dy) * 0.42)
-  return `M${sourceX},${sourceY} C${sourceX + dx * 0.22},${sourceY - bend} ${targetX - dx * 0.2},${targetY + bend * 0.5} ${targetX},${targetY}`
+  const bend = Math.max(34, Math.abs(dy) * 0.45)
+  return `M${sourceX},${sourceY} C${sourceX + dx * (0.2 + sway * 0.04)},${sourceY - bend * (0.9 + sway * 0.2)} ${targetX - dx * (0.24 - sway * 0.03)},${targetY + bend * (0.42 + sway * 0.1)} ${targetX},${targetY}`
 }
 
 interface CubicCurve {
@@ -56,14 +65,14 @@ interface CubicCurve {
   p3: { x: number; y: number }
 }
 
-function branchCurve(sourceX: number, sourceY: number, targetX: number, targetY: number): CubicCurve {
+function branchCurve(sourceX: number, sourceY: number, targetX: number, targetY: number, sway = 0): CubicCurve {
   const dx = targetX - sourceX
   const dy = targetY - sourceY
-  const bend = Math.max(30, Math.abs(dy) * 0.42)
+  const bend = Math.max(34, Math.abs(dy) * 0.45)
   return {
     p0: { x: sourceX, y: sourceY },
-    p1: { x: sourceX + dx * 0.22, y: sourceY - bend },
-    p2: { x: targetX - dx * 0.2, y: targetY + bend * 0.5 },
+    p1: { x: sourceX + dx * (0.2 + sway * 0.04), y: sourceY - bend * (0.9 + sway * 0.2) },
+    p2: { x: targetX - dx * (0.24 - sway * 0.03), y: targetY + bend * (0.42 + sway * 0.1) },
     p3: { x: targetX, y: targetY },
   }
 }
@@ -170,17 +179,31 @@ export function GoalYggdrasilTree({ objective, branches, selectedBranchId, onSel
       })),
     })
 
-    const horizontalPadding = Math.max(42, Math.min(108, viewSize.width * 0.1))
-    const verticalPadding = Math.max(40, Math.min(90, viewSize.height * 0.12))
+    const horizontalPadding = Math.max(42, Math.min(110, viewSize.width * 0.11))
+    const verticalPadding = Math.max(26, Math.min(72, viewSize.height * 0.11))
     const tidyTree = tree<TreeHierarchyNode>()
-      .size([Math.max(220, viewSize.width - horizontalPadding * 2), Math.max(180, viewSize.height - verticalPadding * 2)])
+      .size([Math.max(220, viewSize.width - horizontalPadding * 2), Math.max(280, viewSize.height - verticalPadding * 2)])
       .separation((a, b) => (a.parent === b.parent ? 1.45 : 1.75))
 
     const root = tidyTree(treeData)
+    const trunkY = viewSize.height * 0.84
+    const crownTop = viewSize.height * 0.14
+    const crownBottom = viewSize.height * 0.42
+    const span = Math.max(1, (root.children?.length ?? 1) - 1)
 
     root.descendants().forEach((node) => {
-      node.x += horizontalPadding
-      node.y = viewSize.height - verticalPadding - node.y
+      if (node.depth === 0) {
+        node.x = viewSize.width / 2
+        node.y = trunkY
+        return
+      }
+
+      const idx = node.parent?.children?.findIndex((child) => child.data.id === node.data.id) ?? 0
+      const lane = span === 0 ? 0 : idx / span
+      const sway = lane - 0.5
+      node.x = horizontalPadding + lane * (viewSize.width - horizontalPadding * 2) + sway * 48
+      const verticalShift = Math.abs(sway) * 0.16
+      node.y = crownBottom - (crownBottom - crownTop) * (0.6 + verticalShift)
     })
 
     return { root }
@@ -197,10 +220,14 @@ export function GoalYggdrasilTree({ objective, branches, selectedBranchId, onSel
     if (bbox.width === 0 || bbox.height === 0 || viewportBounds.width === 0 || viewportBounds.height === 0) return
 
     const availableWidth = Math.max(10, viewportBounds.width - FIT_PADDING * 2)
-    const targetHeight = Math.max(10, viewportBounds.height * 0.78)
-    const scale = Math.max(0.55, Math.min(2.4, Math.min(availableWidth / bbox.width, targetHeight / bbox.height)))
-    const translateX = (viewportBounds.width - bbox.width * scale) / 2 - bbox.x * scale
-    const translateY = (viewportBounds.height - bbox.height * scale) / 2 - bbox.y * scale
+    const availableHeight = Math.max(10, viewportBounds.height - FIT_PADDING * 2)
+    const scale = Math.max(0.6, Math.min(2.5, Math.min(availableWidth / bbox.width, availableHeight / bbox.height)))
+    const viewportCenterX = viewportBounds.width / 2
+    const viewportCenterY = viewportBounds.height / 2
+    const bboxCenterX = bbox.x + bbox.width / 2
+    const bboxCenterY = bbox.y + bbox.height / 2
+    const translateX = viewportCenterX - bboxCenterX * scale
+    const translateY = viewportCenterY - bboxCenterY * scale
 
     const target = zoomIdentity.translate(translateX, translateY).scale(scale)
     const selection = select(sceneRef.current)
@@ -228,10 +255,10 @@ export function GoalYggdrasilTree({ objective, branches, selectedBranchId, onSel
     if (!sceneRef.current) return
 
     const behavior = zoom<SVGSVGElement, unknown>()
-      .scaleExtent([0.45, 2.8])
+      .scaleExtent([0.6, 2.5])
       .translateExtent([
-        [-viewSize.width * 0.35, -viewSize.height * 0.35],
-        [viewSize.width * 1.35, viewSize.height * 1.35],
+        [-viewSize.width * 0.45, -viewSize.height * 0.45],
+        [viewSize.width * 1.45, viewSize.height * 1.45],
       ])
       .on('zoom', (event) => {
         setTransform(event.transform)
@@ -240,11 +267,14 @@ export function GoalYggdrasilTree({ objective, branches, selectedBranchId, onSel
     zoomRef.current = behavior
     const selection = select(sceneRef.current)
     selection.call(behavior)
+    requestAnimationFrame(() => {
+      runFitToView()
+    })
 
     return () => {
       selection.on('.zoom', null)
     }
-  }, [viewSize.height, viewSize.width])
+  }, [runFitToView, viewSize.height, viewSize.width])
 
   useEffect(() => {
     runFitToView()
@@ -275,8 +305,8 @@ export function GoalYggdrasilTree({ objective, branches, selectedBranchId, onSel
       <p className="goal-yggdrasil__objective"><strong>Objective:</strong> {fallbackObjective}</p>
       <div className="goal-yggdrasil__scene" aria-label="Сцена Иггдрасиля" ref={sceneWrapRef}>
         <div className="goal-yggdrasil__floating-controls" role="toolbar" aria-label="Управление сценой">
-          <button type="button" className="filter-button" onClick={resetView}>Сброс вида (R)</button>
-          <button type="button" className="filter-button" onClick={focusTrunk}>Фокус на стволе</button>
+          <button type="button" className="filter-button" onClick={resetView} aria-label="Сброс вида">{isMobile ? '↺' : 'Сброс вида (R)'}</button>
+          <button type="button" className="filter-button" onClick={focusTrunk} aria-label="Фокус на стволе">{isMobile ? '◎' : 'Фокус на стволе'}</button>
         </div>
         <svg ref={sceneRef} viewBox={`0 0 ${viewSize.width} ${viewSize.height}`} role="img" aria-label="Дерево Objective и KR ветвей">
           <defs>
@@ -326,6 +356,25 @@ export function GoalYggdrasilTree({ objective, branches, selectedBranchId, onSel
               <stop offset="0%" stopColor="rgba(238, 255, 247, 0.98)" />
               <stop offset="100%" stopColor="rgba(86, 223, 170, 0.94)" />
             </radialGradient>
+            <radialGradient id="leafWeak" cx="45%" cy="36%" r="74%">
+              <stop offset="0%" stopColor="rgba(255, 233, 231, 0.92)" />
+              <stop offset="100%" stopColor="rgba(235, 127, 127, 0.78)" />
+            </radialGradient>
+            <radialGradient id="leafNormal" cx="45%" cy="36%" r="74%">
+              <stop offset="0%" stopColor="rgba(236, 248, 255, 0.92)" />
+              <stop offset="100%" stopColor="rgba(130, 178, 255, 0.78)" />
+            </radialGradient>
+            <radialGradient id="leafStrong" cx="45%" cy="36%" r="74%">
+              <stop offset="0%" stopColor="rgba(233, 255, 247, 0.92)" />
+              <stop offset="100%" stopColor="rgba(102, 229, 181, 0.82)" />
+            </radialGradient>
+            <filter id="leafGlow" x="-55%" y="-55%" width="210%" height="210%">
+              <feGaussianBlur stdDeviation="2.2" result="soft" />
+              <feMerge>
+                <feMergeNode in="soft" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
           </defs>
           <g transform={transform.toString()}>
             <g className="tree-viewport" ref={treeViewportRef}>
@@ -344,10 +393,21 @@ export function GoalYggdrasilTree({ objective, branches, selectedBranchId, onSel
                 const isSelected = selectedBranchId === branch.id
                 const isDimmed = selectedBranchId !== null && !isSelected
                 const showLabel = !isMobile || isSelected
-                const curve = branchCurve(rootNode.x, rootNode.y + 12, krNode.x, krNode.y)
-                const centerPath = branchPath(rootNode.x, rootNode.y + 12, krNode.x, krNode.y)
-                const branchBaseWidth = branch.strength === 'strong' ? 16 : branch.strength === 'normal' ? 14 : 12
+                const sway = ((hashSeed(branch.id) % 100) / 100 - 0.5) * 1.6
+                const curve = branchCurve(rootNode.x, rootNode.y + 14, krNode.x, krNode.y, sway)
+                const centerPath = branchPath(rootNode.x, rootNode.y + 14, krNode.x, krNode.y, sway)
+                const branchBaseWidth = branch.strength === 'strong' ? 17 : branch.strength === 'normal' ? 14 : 11
                 const ribbonPath = makeRibbonPath(curve, branchBaseWidth * 1.35, branchBaseWidth * 0.78)
+                const particleCount = 10 + (hashSeed(`${branch.id}-leaf-count`) % 21)
+                const particles = Array.from({ length: particleCount }, (_, index) => {
+                  const seed = hashSeed(`${branch.id}-${index}`)
+                  const angle = (seed % 360) * (Math.PI / 180)
+                  const radius = 12 + (seed % 36)
+                  const x = Math.cos(angle) * radius * (1.05 + ((seed >> 3) % 12) / 28)
+                  const y = Math.sin(angle) * radius * (0.78 + ((seed >> 7) % 10) / 22)
+                  const size = 2 + ((seed >> 11) % 8) * 0.44
+                  return { x, y, size }
+                })
 
                 return (
                   <g
@@ -360,7 +420,19 @@ export function GoalYggdrasilTree({ objective, branches, selectedBranchId, onSel
                     />
                     <path d={centerPath} className={`goal-yggdrasil__branch-sheen ${isSelected ? 'goal-yggdrasil__branch-sheen--selected' : ''}`} />
                     <g transform={`translate(${krNode.x}, ${krNode.y})`}>
+                      <g className={`goal-yggdrasil__leaf-cluster goal-yggdrasil__leaf-cluster--${branch.strength}`}>
+                        {particles.map((particle) => (
+                          <circle
+                            key={`${branch.id}-${particle.x}-${particle.y}`}
+                            cx={particle.x}
+                            cy={particle.y}
+                            r={particle.size}
+                            className="goal-yggdrasil__leaf-particle"
+                          />
+                        ))}
+                      </g>
                       <circle className="goal-yggdrasil__node-hit" r="22" onClick={() => onSelectBranch(branch.id)} />
+                      <circle className={`goal-yggdrasil__node-halo goal-yggdrasil__node-halo--${branch.strength}`} r="17" />
                       <path
                         d="M-2,-11 C7,-10 13,-3 10,6 C7,14 -5,14 -11,8 C-15,3 -12,-6 -2,-11 Z"
                         className={`goal-yggdrasil__node-core goal-yggdrasil__node-core--${branch.strength} ${isSelected ? 'goal-yggdrasil__node-core--selected' : ''}`}
