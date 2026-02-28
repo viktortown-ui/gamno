@@ -23,7 +23,12 @@ export interface GoalActiveMission {
   id: string
   goalId: string
   krKey: string
+  templateId?: string
   title: string
+  why?: string
+  timeBandMinutes?: 5 | 15 | 30
+  effectProfile?: 'small' | 'medium' | 'large'
+  ifThenPlan?: string
   durationDays: 1 | 3
   startedAt: number
   endsAt: number
@@ -36,10 +41,18 @@ export interface GoalMissionHistoryItem {
   id: string
   goalId: string
   krKey: string
+  templateId?: string
   title: string
   durationDays: 1 | 3
   completedAt: number
   coresAwarded: number
+}
+
+export interface GoalMissionControl {
+  rerollDayKey?: string
+  rerollsUsed?: number
+  lastRerollAt?: number
+  lastSuggestions?: Array<{ krKey: string; templateId: string; ts: number }>
 }
 
 export interface GoalRecord {
@@ -57,6 +70,7 @@ export interface GoalRecord {
   }
   activeMission?: GoalActiveMission
   missionHistory?: GoalMissionHistoryItem[]
+  missionControl?: GoalMissionControl
   modePresetId?: GoalModePresetId
   isManualTuning?: boolean
   manualTuning?: GoalManualTuning

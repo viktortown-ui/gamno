@@ -290,7 +290,14 @@ function normalizeGoalRecord(row: unknown): GoalRecord | null {
       id: String(source.activeMission.id ?? `mission-${id}`),
       goalId: String((source.activeMission as { goalId?: string }).goalId ?? id),
       krKey: String((source.activeMission as { krKey?: string }).krKey ?? legacyMission?.actions?.[0]?.krId ?? okr.keyResults[0]?.id ?? 'kr-unknown'),
+      templateId: (source.activeMission as { templateId?: string }).templateId,
       title: String((source.activeMission as { title?: string }).title ?? 'Миссия'),
+      why: (source.activeMission as { why?: string }).why,
+      timeBandMinutes: ((source.activeMission as { timeBandMinutes?: number }).timeBandMinutes === 5 || (source.activeMission as { timeBandMinutes?: number }).timeBandMinutes === 30 ? (source.activeMission as { timeBandMinutes?: number }).timeBandMinutes : 15) as 5 | 15 | 30,
+      effectProfile: ((source.activeMission as { effectProfile?: string }).effectProfile === 'small' || (source.activeMission as { effectProfile?: string }).effectProfile === 'large'
+        ? (source.activeMission as { effectProfile?: 'small' | 'large' }).effectProfile
+        : 'medium') as 'small' | 'medium' | 'large',
+      ifThenPlan: (source.activeMission as { ifThenPlan?: string }).ifThenPlan,
       durationDays: ((source.activeMission as { durationDays?: number }).durationDays === 1 ? 1 : 3) as 1 | 3,
       startedAt: Number((source.activeMission as { startedAt?: number }).startedAt ?? legacyMission?.createdAt ?? now),
       endsAt: Number((source.activeMission as { endsAt?: number }).endsAt ?? ((legacyMission?.createdAt ?? now) + ((legacyMission?.horizonDays === 1 ? 1 : 3) * 24 * 60 * 60 * 1000))),
@@ -309,6 +316,7 @@ function normalizeGoalRecord(row: unknown): GoalRecord | null {
           id: String(rowItem.id ?? `mission-history-${Math.random().toString(36).slice(2, 8)}`),
           goalId: String(rowItem.goalId ?? id),
           krKey: String(rowItem.krKey ?? okr.keyResults[0]?.id ?? 'kr-unknown'),
+          templateId: typeof rowItem.templateId === 'string' ? rowItem.templateId : undefined,
           title: String(rowItem.title ?? 'Миссия'),
           durationDays: (Number(rowItem.durationDays) === 1 ? 1 : 3) as 1 | 3,
           completedAt: Number(rowItem.completedAt ?? now),
@@ -318,6 +326,29 @@ function normalizeGoalRecord(row: unknown): GoalRecord | null {
       .filter((item): item is NonNullable<typeof item> => Boolean(item))
       .slice(0, 10)
     : []
+
+  const missionControl = source.missionControl && typeof source.missionControl === 'object'
+    ? {
+      rerollDayKey: typeof source.missionControl.rerollDayKey === 'string' ? source.missionControl.rerollDayKey : undefined,
+      rerollsUsed: Number.isFinite(source.missionControl.rerollsUsed) ? Math.max(0, Math.min(2, Number(source.missionControl.rerollsUsed))) : 0,
+      lastRerollAt: Number.isFinite(source.missionControl.lastRerollAt) ? Number(source.missionControl.lastRerollAt) : undefined,
+      lastSuggestions: Array.isArray(source.missionControl.lastSuggestions)
+        ? source.missionControl.lastSuggestions
+          .map((item) => {
+            if (!item || typeof item !== 'object') return null
+            const rowItem = item as Record<string, unknown>
+            if (typeof rowItem.krKey !== 'string' || typeof rowItem.templateId !== 'string') return null
+            return {
+              krKey: rowItem.krKey,
+              templateId: rowItem.templateId,
+              ts: Number.isFinite(rowItem.ts) ? Number(rowItem.ts) : now,
+            }
+          })
+          .filter((item): item is NonNullable<typeof item> => Boolean(item))
+          .slice(0, 20)
+        : [],
+    }
+    : { rerollsUsed: 0, lastSuggestions: [] }
 
   return {
     id,
@@ -332,6 +363,7 @@ function normalizeGoalRecord(row: unknown): GoalRecord | null {
     okr,
     activeMission,
     missionHistory,
+    missionControl,
     modePresetId: source.modePresetId,
     isManualTuning: Boolean(source.isManualTuning),
     manualTuning: source.manualTuning ? {

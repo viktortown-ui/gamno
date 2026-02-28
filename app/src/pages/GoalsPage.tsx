@@ -11,11 +11,10 @@ import {
   listCheckins,
   listGoalEvents,
   listGoals,
-  loadInfluenceMatrix,
   setActiveGoal,
   updateGoal,
 } from '../core/storage/repo'
-import { evaluateGoalScore, suggestGoalActions, type GoalStateInput } from '../core/engines/goal'
+import { evaluateGoalScore, type GoalStateInput } from '../core/engines/goal'
 import { getLatestForecastRun } from '../repo/forecastRepo'
 import { GoalYggdrasilTree, type BranchStrength } from '../ui/components/GoalYggdrasilTree'
 import { DruidGauge } from './goals/components/DruidGauge'
@@ -24,6 +23,8 @@ import { PresetSelector } from './goals/components/PresetSelector'
 import { RuneDial } from './goals/components/RuneDial'
 import { ForgePreview } from './goals/components/ForgePreview'
 import { AdvancedTuning } from './goals/components/AdvancedTuning'
+import { dayKeyFromTs } from '../core/utils/dayKey'
+import { buildMissionSuggestion, missionEffectRange } from './goals/missionPlanner'
 
 type GoalTemplateId = 'growth' | 'anti-storm' | 'energy-balance' | 'money'
 
@@ -144,27 +145,13 @@ function getRiskLabel(levelAvg: number): 'Низкий' | 'Средний' | 'В
   return 'Высокий'
 }
 
-const missionTemplatesByMetric: Record<MetricId, string[]> = {
-  sleepHours: ['Ритуал сна 20 минут', 'Отбой на 30 минут раньше', 'Тихий час без экрана перед сном', 'Подготовить спальню до 22:00', 'Подъём в одно и то же время'],
-  energy: ['10 минут прогулка', 'Стакан воды сразу после подъёма', 'Короткая зарядка 7 минут', 'Пауза на восстановление днём', 'Режим воды + еды по графику'],
-  stress: ['3 минуты дыхание', 'Снять один раздражитель', '15 минут без уведомлений', 'Короткая пауза на тело', 'Записать и закрыть тревожную мысль'],
-  focus: ['Один блок глубокой работы 25 минут', 'Отключить отвлечения на первый спринт', 'Сделать главный шаг до обеда', 'План из трёх фокус-задач', 'Пять минут планирования перед стартом'],
-  productivity: ['Закрыть 1 приоритет до 12:00', 'Разобрать список задач на сегодня', 'Сделать 2 коротких спринта', 'Закрыть одну зависшую задачу', 'Подготовить старт следующего дня'],
-  mood: ['Короткая прогулка на свету', '1 действие для подъёма настроения', 'Музыкальная пауза 5 минут', 'Записать три хорошие вещи дня', 'Тёплый контакт с близким человеком'],
-  social: ['Один качественный разговор', 'Сообщение поддержки важному человеку', 'Короткий звонок вместо переписки', '15 минут на живой контакт', 'План одной встречи на неделю'],
-  health: ['10 минут мягкой активности', 'Полезный приём пищи по режиму', 'Пауза на осанку и дыхание', 'Контроль воды за день', 'Короткая разминка между задачами'],
-  cashFlow: ['Проверить один финансовый поток', 'Закрыть один денежный хвост', 'Сделать действие для дохода', 'Разобрать одну расходную утечку', 'Обновить недельный денежный план'],
-}
-
-const missionDurationOptions: Record<1 | 3, { min: number; max: number; expected: number }> = {
-  1: { min: 1, max: 4, expected: 2 },
-  3: { min: 3, max: 8, expected: 5 },
-}
+const MISSION_REROLL_LIMIT_PER_DAY = 2
+const MISSION_REROLL_COOLDOWN_MS = 30_000
 
 function missionProgressLabel(startedAt: number, durationDays: 1 | 3): string {
   const passedDays = Math.max(1, Math.ceil((Date.now() - startedAt) / (24 * 60 * 60 * 1000) + 0.01))
   const capped = Math.min(durationDays, passedDays)
-  return `день ${capped}/${durationDays}`
+  return `День ${capped}/${durationDays}`
 }
 
 function clamp01(value: number): number {
@@ -209,7 +196,6 @@ export function GoalsPage() {
   const [editor, setEditor] = useState<GoalRecord | null>(null)
   const [goalState, setGoalState] = useState<GoalStateInput | null>(null)
   const [historyTrend, setHistoryTrend] = useState<'up' | 'down' | null>(null)
-  const [actions, setActions] = useState<ReturnType<typeof suggestGoalActions>>([])
   const [selectedKrId, setSelectedKrId] = useState<string | null>(null)
   const [stageResetSignal, setStageResetSignal] = useState(0)
   const [seedModalOpen, setSeedModalOpen] = useState(false)
@@ -221,6 +207,8 @@ export function GoalsPage() {
   const [showDebugNumbers, setShowDebugNumbers] = useState(false)
   const forgeOpenButtonRef = useRef<HTMLButtonElement | null>(null)
   const [nextMissionDuration, setNextMissionDuration] = useState<1 | 3>(3)
+  const [missionSuggestionSalt, setMissionSuggestionSalt] = useState(0)
+  const [missionDetailsOpen, setMissionDetailsOpen] = useState(false)
   const [missionConfirmOpen, setMissionConfirmOpen] = useState(false)
   const [missionAwardDraft, setMissionAwardDraft] = useState(5)
   const seedButtonRef = useRef<HTMLButtonElement | null>(null)
@@ -420,9 +408,7 @@ export function GoalsPage() {
     let cancelled = false
     const run = async () => {
       if (!selected || !goalState) return
-      const matrix = await loadInfluenceMatrix()
       if (cancelled) return
-      setActions(suggestGoalActions(selected, goalState, matrix))
       if (scoring) {
         await addGoalEvent({ goalId: selected.id, goalScore: scoring.goalScore, goalGap: scoring.goalGap })
       }
@@ -585,23 +571,45 @@ export function GoalsPage() {
     return METRICS.find((item) => item.id === selectedKrRow.kr.metricId)?.labelRu ?? selectedKrRow.kr.metricId
   }, [selectedKrRow])
 
-  const selectedKrAction = useMemo(() => {
-    if (!selectedKrRow) return null
-    return actions.find((item) => item.metricId === selectedKrRow.kr.metricId) ?? null
-  }, [actions, selectedKrRow])
-
   const missionTargetKr = selectedKrRow ?? weakestKr ?? null
 
-  const nextMissionTitle = useMemo(() => {
-    if (!missionTargetKr) return 'Выберите ветвь на сцене, чтобы получить миссию.'
-    const templates = missionTemplatesByMetric[missionTargetKr.kr.metricId] ?? []
-    if (templates.length > 0) {
-      const hash = missionTargetKr.kr.id.split('').reduce((acc, symbol) => acc + symbol.charCodeAt(0), 0)
-      return templates[hash % templates.length]
-    }
-    return selectedKrAction?.titleRu ?? `Ритуал по ветви «${selectedKrMetricLabel ?? missionTargetKr.kr.metricId}»`
-  }, [missionTargetKr, selectedKrAction, selectedKrMetricLabel])
+  const missionRecentTemplateIds = useMemo(() => {
+    if (!selected || !missionTargetKr) return []
+    const historyTemplateIds = (selected.missionHistory ?? [])
+      .filter((item) => item.krKey === missionTargetKr.kr.id && typeof item.templateId === 'string')
+      .slice(0, 5)
+      .map((item) => item.templateId as string)
+    const suggestionTemplateIds = (selected.missionControl?.lastSuggestions ?? [])
+      .filter((item) => item.krKey === missionTargetKr.kr.id)
+      .sort((a, b) => b.ts - a.ts)
+      .slice(0, 5)
+      .map((item) => item.templateId)
+    return [...new Set([...historyTemplateIds, ...suggestionTemplateIds])]
+  }, [selected, missionTargetKr])
 
+  const nextMissionTemplate = useMemo(() => {
+    if (!missionTargetKr) return null
+    return buildMissionSuggestion({
+      metricId: missionTargetKr.kr.metricId,
+      presetId: selected?.modePresetId ?? 'balance',
+      durationDays: nextMissionDuration,
+      excludedTemplateIds: missionRecentTemplateIds,
+      salt: missionSuggestionSalt + missionTargetKr.kr.id.length,
+    })
+  }, [missionTargetKr, missionRecentTemplateIds, missionSuggestionSalt, nextMissionDuration, selected?.modePresetId])
+
+  const nextMissionEffect = useMemo(() => {
+    if (!nextMissionTemplate) return null
+    return missionEffectRange(nextMissionDuration, nextMissionTemplate.effectProfile)
+  }, [nextMissionDuration, nextMissionTemplate])
+
+  const nextMissionTitle = nextMissionTemplate?.title ?? (missionTargetKr ? `Ритуал по ветви «${selectedKrMetricLabel ?? missionTargetKr.kr.metricId}»` : 'Выберите ветвь на сцене, чтобы получить миссию.')
+
+  const currentDayKey = dayKeyFromTs(Date.now())
+  const rerollsUsedToday = selected?.missionControl?.rerollDayKey === currentDayKey ? (selected?.missionControl?.rerollsUsed ?? 0) : 0
+  const lastRerollAt = selected?.missionControl?.lastRerollAt ?? 0
+  const rerollCooldownLeftMs = Math.max(0, MISSION_REROLL_COOLDOWN_MS - (Date.now() - lastRerollAt))
+  const canReroll = Boolean(missionTargetKr && !selected?.activeMission && rerollsUsedToday < MISSION_REROLL_LIMIT_PER_DAY && rerollCooldownLeftMs === 0)
   const activeMission = selected?.activeMission
   const missionProgress = activeMission ? missionProgressLabel(activeMission.startedAt, activeMission.durationDays) : null
   const missionHistory = selected?.missionHistory ?? []
@@ -709,24 +717,91 @@ export function GoalsPage() {
     })
   }
 
-  const acceptMission = async () => {
-    if (!selected || !missionTargetKr || activeMission) return
+  const saveMissionSuggestion = async () => {
+    if (!selected || !missionTargetKr || !nextMissionTemplate) return
     const now = Date.now()
-    const missionRange = missionDurationOptions[nextMissionDuration]
+    const nextSuggestions = [
+      { krKey: missionTargetKr.kr.id, templateId: nextMissionTemplate.id, ts: now },
+      ...(selected.missionControl?.lastSuggestions ?? []).filter((item) => !(item.krKey === missionTargetKr.kr.id && item.templateId === nextMissionTemplate.id)),
+    ].slice(0, 20)
+    await updateGoal(selected.id, {
+      missionControl: {
+        ...(selected.missionControl ?? {}),
+        lastSuggestions: nextSuggestions,
+      },
+    })
+  }
+
+  const rerollMission = async () => {
+    if (!selected || !canReroll) return
+    const now = Date.now()
+    const dayKey = dayKeyFromTs(now)
+    const used = selected.missionControl?.rerollDayKey === dayKey ? (selected.missionControl?.rerollsUsed ?? 0) : 0
+    await saveMissionSuggestion()
+    await updateGoal(selected.id, {
+      missionControl: {
+        ...(selected.missionControl ?? {}),
+        rerollDayKey: dayKey,
+        rerollsUsed: Math.min(MISSION_REROLL_LIMIT_PER_DAY, used + 1),
+        lastRerollAt: now,
+      },
+    })
+    setMissionSuggestionSalt((value) => value + 1)
+    setMissionDetailsOpen(false)
+    await reload()
+  }
+
+  const acceptMission = async () => {
+    if (!selected || !missionTargetKr || activeMission || !nextMissionTemplate || !nextMissionEffect) return
+    const now = Date.now()
     await updateGoal(selected.id, {
       activeMission: {
         id: `mission-${now}`,
         goalId: selected.id,
         krKey: missionTargetKr.kr.id,
-        title: nextMissionTitle,
+        templateId: nextMissionTemplate.id,
+        title: nextMissionTemplate.title,
+        why: nextMissionTemplate.why,
+        timeBandMinutes: nextMissionTemplate.timeBandMinutes,
+        effectProfile: nextMissionTemplate.effectProfile,
+        ifThenPlan: nextMissionTemplate.ifThenPlan,
         durationDays: nextMissionDuration,
         startedAt: now,
         endsAt: now + nextMissionDuration * 24 * 60 * 60 * 1000,
-        expectedMin: missionRange.min,
-        expectedMax: missionRange.max,
-        expectedDefault: missionRange.expected,
+        expectedMin: nextMissionEffect.min,
+        expectedMax: nextMissionEffect.max,
+        expectedDefault: nextMissionEffect.expected,
+      },
+      missionControl: {
+        ...(selected.missionControl ?? {}),
+        lastSuggestions: [
+          { krKey: missionTargetKr.kr.id, templateId: nextMissionTemplate.id, ts: now },
+          ...((selected.missionControl?.lastSuggestions ?? []).filter((item) => !(item.krKey === missionTargetKr.kr.id && item.templateId === nextMissionTemplate.id))),
+        ].slice(0, 20),
       },
     })
+    setMissionDetailsOpen(false)
+    await reload()
+  }
+
+  const replaceMission = async () => {
+    if (!selected || !activeMission) return
+    if (missionProgressLabel(activeMission.startedAt, activeMission.durationDays) !== 'День 1/3') return
+    const skippedItem = {
+      id: `mission-skip-${Date.now()}`,
+      goalId: selected.id,
+      krKey: activeMission.krKey,
+      templateId: activeMission.templateId,
+      title: `${activeMission.title} (пропущена)`,
+      durationDays: activeMission.durationDays,
+      completedAt: Date.now(),
+      coresAwarded: 0,
+    }
+    await updateGoal(selected.id, {
+      activeMission: undefined,
+      missionHistory: [skippedItem, ...(selected.missionHistory ?? [])].slice(0, 10),
+    })
+    setMissionSuggestionSalt((value) => value + 1)
     await reload()
   }
 
@@ -802,6 +877,7 @@ export function GoalsPage() {
       id: `fruit-${Date.now()}`,
       goalId: selected.id,
       krKey: activeMission.krKey,
+      templateId: activeMission.templateId,
       title: activeMission.title,
       durationDays: activeMission.durationDays,
       completedAt: Date.now(),
@@ -957,23 +1033,52 @@ export function GoalsPage() {
                     </select>
                   </label>
                   <p><strong>Миссия:</strong> {nextMissionTitle}</p>
+                  <div className="goals-mission-chips">
+                    <span className="chip">⏱ {nextMissionTemplate?.timeBandMinutes ?? 15} мин</span>
+                    {nextMissionEffect ? <span className="chip">Ядра: +{nextMissionEffect.min}…{nextMissionEffect.max} (обычно +{nextMissionEffect.expected})</span> : null}
+                  </div>
+                  <p className="goals-pane__hint">{nextMissionTemplate?.why ?? 'Чтобы усилить выбранную ветвь.'}</p>
+                  {nextMissionTemplate?.ifThenPlan ? (
+                    <details open={missionDetailsOpen} onToggle={(event) => setMissionDetailsOpen((event.target as HTMLDetailsElement).open)}>
+                      <summary>Как сделать</summary>
+                      <p>{nextMissionTemplate.ifThenPlan}</p>
+                    </details>
+                  ) : null}
                   <button type="button" onClick={acceptMission} disabled={!missionTargetKr}>Принять миссию</button>
+                  <button type="button" className="ghost-button" onClick={() => { void rerollMission() }} disabled={!canReroll}>
+                    Другая миссия
+                  </button>
+                  <p className="goals-pane__hint">Reroll: {Math.max(0, MISSION_REROLL_LIMIT_PER_DAY - rerollsUsedToday)}/{MISSION_REROLL_LIMIT_PER_DAY} сегодня{rerollCooldownLeftMs > 0 ? ` · пауза ${Math.ceil(rerollCooldownLeftMs / 1000)}с` : ''}</p>
                 </div>
               ) : (
                 <div className="goals-druid-mission">
                   <h3>Активная миссия</h3>
                   <p><strong>{activeMission.title}</strong></p>
+                  <p className="goals-pane__hint">{activeMission.why ?? 'Чтобы усилить выбранную ветвь.'}</p>
+                  <div className="goals-mission-chips">
+                    <span className="chip">⏱ {activeMission.timeBandMinutes ?? 15} мин</span>
+                    <span className="chip">Ядра: +{activeMission.expectedMin}…{activeMission.expectedMax} (обычно +{activeMission.expectedDefault})</span>
+                  </div>
                   <p>Прогресс по дням: {missionProgress}</p>
+                  {activeMission.ifThenPlan ? (
+                    <details>
+                      <summary>Как сделать</summary>
+                      <p>{activeMission.ifThenPlan}</p>
+                    </details>
+                  ) : null}
+                  {missionProgress === 'День 1/3' ? (
+                    <button type="button" className="ghost-button" onClick={() => { void replaceMission() }}>Заменить миссию</button>
+                  ) : null}
                   <button ref={missionDoneButtonRef} type="button" onClick={openMissionConfirm}>Засчитать выполнение</button>
                 </div>
               )}
 
               <div className="goals-druid-mission">
                 <h3>Последние плоды</h3>
-                {missionHistory.length === 0 ? <p className="goals-pane__hint">Плодов пока нет.</p> : null}
-                {missionHistory.length > 0 ? (
+                {missionHistory.filter((item) => item.coresAwarded > 0).length === 0 ? <p className="goals-pane__hint">Плодов пока нет.</p> : null}
+                {missionHistory.filter((item) => item.coresAwarded > 0).length > 0 ? (
                   <ul>
-                    {missionHistory.map((item) => (
+                    {missionHistory.filter((item) => item.coresAwarded > 0).map((item) => (
                       <li key={item.id}>
                         {item.title} · {item.durationDays} дн. · +{item.coresAwarded} ядер
                       </li>

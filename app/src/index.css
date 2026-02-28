@@ -2434,6 +2434,26 @@ button.danger { background: color-mix(in srgb, #e45959 30%, var(--panel) 70%); b
   margin: 0;
 }
 
+
+.goals-mission-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.goals-tree-state details,
+.goals-druid-mission details {
+  padding: 8px 10px;
+  border: 1px dashed var(--stroke-subtle);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface-2) 80%, var(--accent-weak) 20%);
+}
+
+.goals-tree-state details summary,
+.goals-druid-mission details summary {
+  cursor: pointer;
+}
+
 .goals-tree-state__placeholder {
   border: 1px dashed var(--line);
   border-radius: 10px;
