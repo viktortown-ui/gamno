@@ -21,6 +21,7 @@ export interface YggdrasilBranch {
   isTopPriority?: boolean
   isWeak?: boolean
   missionEffectCores: { min: number; max: number }
+  missionEffectExpected?: number
   missionDayLabel?: string
   missions: YggdrasilMissionLeaf[]
 }
@@ -43,6 +44,7 @@ interface TreeHierarchyNode {
   isTopPriority?: boolean
   isWeak?: boolean
   missionEffectCores?: { min: number; max: number }
+  missionEffectExpected?: number
   missionDayLabel?: string
   children?: TreeHierarchyNode[]
 }
@@ -191,6 +193,7 @@ export function GoalYggdrasilTree({ objective, branches, selectedBranchId, onSel
         isTopPriority: branch.isTopPriority,
         isWeak: branch.isWeak,
         missionEffectCores: branch.missionEffectCores,
+        missionEffectExpected: branch.missionEffectExpected,
         missionDayLabel: branch.missionDayLabel,
       })),
     })
@@ -454,10 +457,10 @@ export function GoalYggdrasilTree({ objective, branches, selectedBranchId, onSel
                       </g>
                       <circle className="goal-yggdrasil__node-hit" r="22" onClick={() => onSelectBranch(branch.id)} />
                       <circle
-                        className={`goal-yggdrasil__priority-halo ${branch.isTopPriority ? 'goal-yggdrasil__priority-halo--visible' : ''}`}
+                        className={`goal-yggdrasil__priority-halo goal-yggdrasil__priority-halo--${branch.priorityBand}`}
                         r="24"
                       />
-                      <circle className={`goal-yggdrasil__node-halo goal-yggdrasil__node-halo--${branch.strength}`} r="17" />
+                      <circle className={`goal-yggdrasil__node-halo goal-yggdrasil__node-halo--${branch.strength} goal-yggdrasil__node-halo--priority-${branch.priorityBand}`} r="17" />
                       <path
                         d="M-2,-11 C7,-10 13,-3 10,6 C7,14 -5,14 -11,8 C-15,3 -12,-6 -2,-11 Z"
                         className={`goal-yggdrasil__node-core goal-yggdrasil__node-core--${branch.strength} ${isSelected ? 'goal-yggdrasil__node-core--selected' : ''}`}
@@ -473,10 +476,12 @@ export function GoalYggdrasilTree({ objective, branches, selectedBranchId, onSel
                           <path d="M-2,-5 L1,-1 L-1,1 L2,5" />
                         </g>
                       ) : null}
+                      {branch.isWeak ? <path d="M-16,-5 L-7,-10 L-10,-2 L-3,3" className="goal-yggdrasil__weak-crack" /> : null}
                       {showEffectHint && branch.missionEffectCores ? (
                         <g className="goal-yggdrasil__effect-hint" transform="translate(26, 14)">
-                          <rect x="0" y="-15" width="146" height="24" rx="8" />
-                          <text x="8" y="1">Если выполнить миссию: +{branch.missionEffectCores.min}…{branch.missionEffectCores.max} ядер</text>
+                          <rect x="0" y="-21" width="226" height="32" rx="8" />
+                          <text x="8" y="-2">Если выполнить миссию: +{branch.missionEffectCores.min}…{branch.missionEffectCores.max} ядер</text>
+                          <text x="8" y="10" className="goal-yggdrasil__effect-hint-sub">обычно +{branch.missionEffectExpected ?? Math.round((branch.missionEffectCores.min + branch.missionEffectCores.max) / 2)}</text>
                         </g>
                       ) : null}
                     </g>

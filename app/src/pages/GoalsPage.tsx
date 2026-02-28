@@ -164,7 +164,7 @@ const missionDurationOptions: Record<1 | 3, { min: number; max: number; expected
 function missionProgressLabel(startedAt: number, durationDays: 1 | 3): string {
   const passedDays = Math.max(1, Math.ceil((Date.now() - startedAt) / (24 * 60 * 60 * 1000) + 0.01))
   const capped = Math.min(durationDays, passedDays)
-  return `${capped}/${durationDays}`
+  return `день ${capped}/${durationDays}`
 }
 
 function clamp01(value: number): number {
@@ -682,7 +682,8 @@ export function GoalsPage() {
         isTopPriority: row.kr.id === topPriorityBranchId,
         isWeak: row.kr.id === weakestBranchId,
         missionEffectCores: { min: missionEffectMin, max: missionEffectMax },
-        missionDayLabel: isActiveMissionBranch && missionProgress ? `день ${missionProgress}` : undefined,
+        missionEffectExpected: activeMissionForBranch?.expectedDefault ?? Math.round((missionEffectMin + missionEffectMax) / 2),
+        missionDayLabel: isActiveMissionBranch && missionProgress ? missionProgress : undefined,
         missions: isActiveMissionBranch && activeMissionForBranch
           ? [{ id: activeMissionForBranch.id, title: activeMissionForBranch.title, done: false }]
           : [],
@@ -903,7 +904,7 @@ export function GoalsPage() {
             </div>
           )}
 
-          <p className="goals-stage-legend">Толще ветвь = выше приоритет. Трещина = слабая. Плод = активная миссия.</p>
+          <p className="goals-stage-legend">Толще = приоритет · Трещина = слабая · Плод = активная миссия</p>
 
           <section className="goals-stage-krs">
             <h3>Ключевые ветви</h3>
@@ -942,7 +943,7 @@ export function GoalsPage() {
                 <DruidGauge label="Шторм" value01={stormStatus.value01} stateLabel={stormStatus.label} stateKind={stormStatus.stateKind} />
                 <DruidGauge label="Импульс" value01={impulseStatus.value01} stateLabel={impulseStatus.label} stateKind={impulseStatus.stateKind} />
               </div>
-              <p><strong>Слабая ветвь:</strong> {weakestKr ? `🌩 ${METRICS.find((item) => item.id === weakestKr.kr.metricId)?.labelRu ?? weakestKr.kr.metricId}` : 'Выберите ветвь'}</p>
+              <p><strong>Слабая ветвь:</strong> {weakestKr ? `🕸 Трещина: ${METRICS.find((item) => item.id === weakestKr.kr.metricId)?.labelRu ?? weakestKr.kr.metricId}` : 'Выберите ветвь'}</p>
               <p className="goals-pane__hint">{selected.isManualTuning ? 'Ручная настройка активна: Друид опирается на ваш профиль.' : selectedPreset.druidHint}</p>
               <p><strong>Выбранная ветвь:</strong> {selectedKrMetricLabel ?? 'Выберите ветвь'}</p>
               {!activeMission ? (
@@ -974,7 +975,7 @@ export function GoalsPage() {
                   <ul>
                     {missionHistory.map((item) => (
                       <li key={item.id}>
-                        {item.title} · {item.durationDays}/{item.durationDays} · +{item.coresAwarded} ядер
+                        {item.title} · {item.durationDays} дн. · +{item.coresAwarded} ядер
                       </li>
                     ))}
                   </ul>

@@ -2683,29 +2683,48 @@ button.danger { background: color-mix(in srgb, #e45959 30%, var(--panel) 70%); b
 
 .goal-yggdrasil__priority-halo {
   fill: none;
-  stroke: rgba(255, 229, 155, 0);
-  stroke-width: 1.4;
-  opacity: 0;
-  transition: opacity 140ms ease;
+  transition: stroke 140ms ease, opacity 140ms ease;
 }
 
-.goal-yggdrasil__priority-halo--visible {
-  stroke: rgba(255, 229, 155, 0.76);
-  opacity: 0.9;
+.goal-yggdrasil__priority-halo--low {
+  stroke: rgba(175, 207, 255, 0.42);
+  stroke-width: 1.1;
+  opacity: 0.62;
+}
+
+.goal-yggdrasil__priority-halo--medium {
+  stroke: rgba(186, 223, 255, 0.68);
+  stroke-width: 1.7;
+  opacity: 0.84;
+}
+
+.goal-yggdrasil__priority-halo--high {
+  stroke: rgba(255, 229, 155, 0.92);
+  stroke-width: 2.4;
+  opacity: 1;
 }
 
 .goal-yggdrasil__weak-mark circle {
-  fill: rgba(255, 141, 141, 0.18);
-  stroke: rgba(255, 166, 166, 0.92);
-  stroke-width: 1;
+  fill: rgba(255, 107, 107, 0.24);
+  stroke: rgba(255, 126, 126, 0.98);
+  stroke-width: 1.2;
 }
 
 .goal-yggdrasil__weak-mark path {
   fill: none;
-  stroke: rgba(255, 219, 219, 0.9);
-  stroke-width: 1.3;
+  stroke: rgba(255, 233, 233, 0.98);
+  stroke-width: 1.5;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+.goal-yggdrasil__weak-crack {
+  fill: none;
+  stroke: rgba(255, 114, 114, 0.94);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 0 4px rgba(255, 91, 91, 0.75));
 }
 
 .goal-yggdrasil__effect-hint rect {
@@ -2720,6 +2739,12 @@ button.danger { background: color-mix(in srgb, #e45959 30%, var(--panel) 70%); b
   font-weight: 600;
 }
 
+.goal-yggdrasil__effect-hint-sub {
+  fill: rgba(205, 223, 255, 0.88);
+  font-size: 9px;
+  font-weight: 500;
+}
+
 .goal-yggdrasil__mission-day {
   font-size: 10px;
   fill: color-mix(in srgb, var(--warning, #ffc857) 52%, #fff 48%);
@@ -2727,10 +2752,8 @@ button.danger { background: color-mix(in srgb, #e45959 30%, var(--panel) 70%); b
 }
 
 .goals-stage-legend {
-  margin: 10px 0 0;
-  padding: 10px 12px;
-  border-radius: var(--radius-inner);
-  background: var(--surface-2);
+  margin: 8px 0 0;
+  padding: 2px 0;
   font-size: 12px;
   color: var(--text-muted);
 }
@@ -2933,29 +2956,48 @@ button.danger { background: color-mix(in srgb, #e45959 30%, var(--panel) 70%); b
 
 .goal-yggdrasil__priority-halo {
   fill: none;
-  stroke: rgba(255, 229, 155, 0);
-  stroke-width: 1.4;
-  opacity: 0;
-  transition: opacity 140ms ease;
+  transition: stroke 140ms ease, opacity 140ms ease;
 }
 
-.goal-yggdrasil__priority-halo--visible {
-  stroke: rgba(255, 229, 155, 0.76);
-  opacity: 0.9;
+.goal-yggdrasil__priority-halo--low {
+  stroke: rgba(175, 207, 255, 0.42);
+  stroke-width: 1.1;
+  opacity: 0.62;
+}
+
+.goal-yggdrasil__priority-halo--medium {
+  stroke: rgba(186, 223, 255, 0.68);
+  stroke-width: 1.7;
+  opacity: 0.84;
+}
+
+.goal-yggdrasil__priority-halo--high {
+  stroke: rgba(255, 229, 155, 0.92);
+  stroke-width: 2.4;
+  opacity: 1;
 }
 
 .goal-yggdrasil__weak-mark circle {
-  fill: rgba(255, 141, 141, 0.18);
-  stroke: rgba(255, 166, 166, 0.92);
-  stroke-width: 1;
+  fill: rgba(255, 107, 107, 0.24);
+  stroke: rgba(255, 126, 126, 0.98);
+  stroke-width: 1.2;
 }
 
 .goal-yggdrasil__weak-mark path {
   fill: none;
-  stroke: rgba(255, 219, 219, 0.9);
-  stroke-width: 1.3;
+  stroke: rgba(255, 233, 233, 0.98);
+  stroke-width: 1.5;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+.goal-yggdrasil__weak-crack {
+  fill: none;
+  stroke: rgba(255, 114, 114, 0.94);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 0 4px rgba(255, 91, 91, 0.75));
 }
 
 .goal-yggdrasil__effect-hint rect {
@@ -2970,6 +3012,12 @@ button.danger { background: color-mix(in srgb, #e45959 30%, var(--panel) 70%); b
   font-weight: 600;
 }
 
+.goal-yggdrasil__effect-hint-sub {
+  fill: rgba(205, 223, 255, 0.88);
+  font-size: 9px;
+  font-weight: 500;
+}
+
 .goal-yggdrasil__mission-day {
   font-size: 10px;
   fill: color-mix(in srgb, var(--warning, #ffc857) 52%, #fff 48%);
@@ -2977,10 +3025,8 @@ button.danger { background: color-mix(in srgb, #e45959 30%, var(--panel) 70%); b
 }
 
 .goals-stage-legend {
-  margin: 10px 0 0;
-  padding: 10px 12px;
-  border-radius: var(--radius-inner);
-  background: var(--surface-2);
+  margin: 8px 0 0;
+  padding: 2px 0;
   font-size: 12px;
   color: var(--text-muted);
 }
@@ -3295,6 +3341,21 @@ button.danger { background: color-mix(in srgb, #e45959 30%, var(--panel) 70%); b
   stroke: rgba(143, 242, 203, 0.7);
 }
 
+.goal-yggdrasil__node-halo--priority-low {
+  opacity: 0.55;
+}
+
+.goal-yggdrasil__node-halo--priority-medium {
+  opacity: 0.78;
+  stroke-width: 1.5;
+}
+
+.goal-yggdrasil__node-halo--priority-high {
+  opacity: 1;
+  stroke-width: 2.1;
+  filter: drop-shadow(0 0 6px rgba(255, 226, 154, 0.55));
+}
+
 .goal-yggdrasil__leaf-cluster {
   filter: url(#leafGlow);
   pointer-events: none;
@@ -3373,29 +3434,48 @@ button.danger { background: color-mix(in srgb, #e45959 30%, var(--panel) 70%); b
 
 .goal-yggdrasil__priority-halo {
   fill: none;
-  stroke: rgba(255, 229, 155, 0);
-  stroke-width: 1.4;
-  opacity: 0;
-  transition: opacity 140ms ease;
+  transition: stroke 140ms ease, opacity 140ms ease;
 }
 
-.goal-yggdrasil__priority-halo--visible {
-  stroke: rgba(255, 229, 155, 0.76);
-  opacity: 0.9;
+.goal-yggdrasil__priority-halo--low {
+  stroke: rgba(175, 207, 255, 0.42);
+  stroke-width: 1.1;
+  opacity: 0.62;
+}
+
+.goal-yggdrasil__priority-halo--medium {
+  stroke: rgba(186, 223, 255, 0.68);
+  stroke-width: 1.7;
+  opacity: 0.84;
+}
+
+.goal-yggdrasil__priority-halo--high {
+  stroke: rgba(255, 229, 155, 0.92);
+  stroke-width: 2.4;
+  opacity: 1;
 }
 
 .goal-yggdrasil__weak-mark circle {
-  fill: rgba(255, 141, 141, 0.18);
-  stroke: rgba(255, 166, 166, 0.92);
-  stroke-width: 1;
+  fill: rgba(255, 107, 107, 0.24);
+  stroke: rgba(255, 126, 126, 0.98);
+  stroke-width: 1.2;
 }
 
 .goal-yggdrasil__weak-mark path {
   fill: none;
-  stroke: rgba(255, 219, 219, 0.9);
-  stroke-width: 1.3;
+  stroke: rgba(255, 233, 233, 0.98);
+  stroke-width: 1.5;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+.goal-yggdrasil__weak-crack {
+  fill: none;
+  stroke: rgba(255, 114, 114, 0.94);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 0 4px rgba(255, 91, 91, 0.75));
 }
 
 .goal-yggdrasil__effect-hint rect {
@@ -3410,6 +3490,12 @@ button.danger { background: color-mix(in srgb, #e45959 30%, var(--panel) 70%); b
   font-weight: 600;
 }
 
+.goal-yggdrasil__effect-hint-sub {
+  fill: rgba(205, 223, 255, 0.88);
+  font-size: 9px;
+  font-weight: 500;
+}
+
 .goal-yggdrasil__mission-day {
   font-size: 10px;
   fill: color-mix(in srgb, var(--warning, #ffc857) 52%, #fff 48%);
@@ -3417,10 +3503,8 @@ button.danger { background: color-mix(in srgb, #e45959 30%, var(--panel) 70%); b
 }
 
 .goals-stage-legend {
-  margin: 10px 0 0;
-  padding: 10px 12px;
-  border-radius: var(--radius-inner);
-  background: var(--surface-2);
+  margin: 8px 0 0;
+  padding: 2px 0;
   font-size: 12px;
   color: var(--text-muted);
 }
