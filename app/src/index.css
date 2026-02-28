@@ -3864,3 +3864,40 @@ button.danger { background: color-mix(in srgb, #e45959 30%, var(--panel) 70%); b
   display: grid;
   gap: 8px;
 }
+
+.goals-inline-warning,
+.goals-inline-depends,
+.goals-inline-chip-wrap {
+  margin: 8px 0;
+}
+
+.goals-inline-warning {
+  display: grid;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in oklab, #f6b26b 60%, var(--border));
+  border-radius: 10px;
+  background: color-mix(in oklab, #f6b26b 10%, var(--panel));
+}
+
+.goals-inline-chip-button {
+  cursor: pointer;
+}
+
+.goals-inline-chip-list {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
+.goals-inline-depends {
+  display: grid;
+  gap: 6px;
+}
+
+.goals-inline-depends__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}

@@ -3,62 +3,63 @@ import type { GoalModePresetId } from '../../core/models/goal'
 
 export type MissionEffectProfile = 'small' | 'medium' | 'large'
 export type MissionTimeBand = 5 | 15 | 30
+export type MissionTag = 'energy' | 'sleep' | 'focus' | 'money' | 'social' | 'stress'
 
 export interface MissionTemplate {
   id: string
   title: string
   why: string
   timeBandMinutes: MissionTimeBand
-  tags?: string[]
+  tags?: MissionTag[]
   effectProfile: MissionEffectProfile
   ifThenPlan?: string
 }
 
 const metricMissionTemplates: Record<MetricId, MissionTemplate[]> = {
   energy: [
-    { id: 'energy-light-reset', title: 'Свет + вода перед стартом', why: 'Чтобы усилить ветвь Энергия, потому что утренний ритм быстрее поднимает тонус.', timeBandMinutes: 5, effectProfile: 'small', ifThenPlan: 'Если тянет залипнуть в ленте, то сначала выпей воду и выйди на свет на 5 минут.' },
-    { id: 'energy-walk', title: '15 минут прогулки без экрана', why: 'Чтобы усилить ветвь Энергия, потому что движение снимает вялость лучше кофе.', timeBandMinutes: 15, effectProfile: 'medium' },
-    { id: 'energy-deep-reset', title: 'Глубокий reset: движение + дыхание', why: 'Чтобы усилить ветвь Энергия, потому что длинный reset снижает усталость до конца дня.', timeBandMinutes: 30, effectProfile: 'large', ifThenPlan: 'Если чувствуешь спад после обеда, то сделай 20 минут ходьбы и 10 минут спокойного дыхания.' },
+    { id: 'energy-light-reset', title: 'Свет + вода перед стартом', why: 'Чтобы усилить ветвь Энергия, потому что утренний ритм быстрее поднимает тонус.', timeBandMinutes: 5, tags: ['energy'], effectProfile: 'small', ifThenPlan: 'Если тянет залипнуть в ленте, то сначала выпей воду и выйди на свет на 5 минут.' },
+    { id: 'energy-walk', title: '15 минут прогулки без экрана', why: 'Чтобы усилить ветвь Энергия, потому что движение снимает вялость лучше кофе.', timeBandMinutes: 15, tags: ['energy', 'stress'], effectProfile: 'medium' },
+    { id: 'energy-deep-reset', title: 'Глубокий reset: движение + дыхание', why: 'Чтобы усилить ветвь Энергия, потому что длинный reset снижает усталость до конца дня.', timeBandMinutes: 30, tags: ['energy', 'stress'], effectProfile: 'large', ifThenPlan: 'Если чувствуешь спад после обеда, то сделай 20 минут ходьбы и 10 минут спокойного дыхания.' },
   ],
   sleepHours: [
-    { id: 'sleep-cut-caffeine', title: 'Стоп-кофеин по таймеру', why: 'Чтобы усилить ветвь Сон, потому что вечерний стимул чаще всего срывает засыпание.', timeBandMinutes: 5, effectProfile: 'small' },
-    { id: 'sleep-evening-ritual', title: 'Вечерний ритуал засыпания', why: 'Чтобы усилить ветвь Сон, потому что стабильный ритуал ускоряет засыпание.', timeBandMinutes: 15, effectProfile: 'medium', ifThenPlan: 'Если в 22:30 ещё работаешь, то закрой ноутбук и включи 15-минутный ритуал без экрана.' },
-    { id: 'sleep-room-reset', title: 'Подготовить комнату ко сну', why: 'Чтобы усилить ветвь Сон, потому что тишина и прохлада повышают качество ночи.', timeBandMinutes: 30, effectProfile: 'large' },
+    { id: 'sleep-cut-caffeine', title: 'Стоп-кофеин по таймеру', why: 'Чтобы усилить ветвь Сон, потому что вечерний стимул чаще всего срывает засыпание.', timeBandMinutes: 5, tags: ['sleep'], effectProfile: 'small' },
+    { id: 'sleep-evening-ritual', title: 'Вечерний ритуал засыпания', why: 'Чтобы усилить ветвь Сон, потому что стабильный ритуал ускоряет засыпание.', timeBandMinutes: 15, tags: ['sleep'], effectProfile: 'medium', ifThenPlan: 'Если в 22:30 ещё работаешь, то закрой ноутбук и включи 15-минутный ритуал без экрана.' },
+    { id: 'sleep-room-reset', title: 'Подготовить комнату ко сну', why: 'Чтобы усилить ветвь Сон, потому что тишина и прохлада повышают качество ночи.', timeBandMinutes: 30, tags: ['sleep'], effectProfile: 'large' },
   ],
   stress: [
-    { id: 'stress-breath-5', title: '5 минут дыхания 4-6', why: 'Чтобы усилить ветвь Стресс, потому что дыхание быстро сбивает перегруз.', timeBandMinutes: 5, effectProfile: 'small' },
-    { id: 'stress-boundary', title: 'Одна граница против шума', why: 'Чтобы усилить ветвь Стресс, потому что один стоп-фактор сразу снижает давление.', timeBandMinutes: 15, effectProfile: 'medium' },
-    { id: 'stress-unload', title: 'Полный разгрузочный слот', why: 'Чтобы усилить ветвь Стресс, потому что длинная пауза возвращает контроль.', timeBandMinutes: 30, effectProfile: 'large', ifThenPlan: 'Если начинается внутренний шторм, то отмени одну несрочную задачу и сделай 30-минутный разгрузочный слот.' },
+    { id: 'stress-breath-5', title: '5 минут дыхания 4-6', why: 'Чтобы усилить ветвь Стресс, потому что дыхание быстро сбивает перегруз.', timeBandMinutes: 5, tags: ['stress'], effectProfile: 'small' },
+    { id: 'stress-boundary', title: 'Одна граница против шума', why: 'Чтобы усилить ветвь Стресс, потому что один стоп-фактор сразу снижает давление.', timeBandMinutes: 15, tags: ['stress', 'focus'], effectProfile: 'medium' },
+    { id: 'stress-unload', title: 'Полный разгрузочный слот', why: 'Чтобы усилить ветвь Стресс, потому что длинная пауза возвращает контроль.', timeBandMinutes: 30, tags: ['stress'], effectProfile: 'large', ifThenPlan: 'Если начинается внутренний шторм, то отмени одну несрочную задачу и сделай 30-минутный разгрузочный слот.' },
   ],
   focus: [
-    { id: 'focus-single-task', title: 'Один фокус-блок без отвлечений', why: 'Чтобы усилить ветвь Фокус, потому что один чистый блок даёт ощутимый прогресс.', timeBandMinutes: 15, effectProfile: 'medium' },
-    { id: 'focus-clarify-next', title: 'Сформулировать следующий шаг', why: 'Чтобы усилить ветвь Фокус, потому что ясный шаг убирает прокрастинацию.', timeBandMinutes: 5, effectProfile: 'small' },
-    { id: 'focus-two-cycles', title: 'Два цикла глубокого внимания', why: 'Чтобы усилить ветвь Фокус, потому что серия циклов закрепляет концентрацию.', timeBandMinutes: 30, effectProfile: 'large' },
+    { id: 'focus-single-task', title: 'Один фокус-блок без отвлечений', why: 'Чтобы усилить ветвь Фокус, потому что один чистый блок даёт ощутимый прогресс.', timeBandMinutes: 15, tags: ['focus'], effectProfile: 'medium' },
+    { id: 'focus-clarify-next', title: 'Сформулировать следующий шаг', why: 'Чтобы усилить ветвь Фокус, потому что ясный шаг убирает прокрастинацию.', timeBandMinutes: 5, tags: ['focus'], effectProfile: 'small' },
+    { id: 'focus-two-cycles', title: 'Два цикла глубокого внимания', why: 'Чтобы усилить ветвь Фокус, потому что серия циклов закрепляет концентрацию.', timeBandMinutes: 30, tags: ['focus', 'stress'], effectProfile: 'large' },
   ],
   productivity: [
-    { id: 'prod-top-1', title: 'Закрыть задачу №1 дня', why: 'Чтобы усилить ветвь Продуктивность, потому что главный результат снижает хаос.', timeBandMinutes: 30, effectProfile: 'large' },
-    { id: 'prod-clean-backlog', title: 'Разобрать хвост из 3 задач', why: 'Чтобы усилить ветвь Продуктивность, потому что чистый хвост освобождает внимание.', timeBandMinutes: 15, effectProfile: 'medium' },
-    { id: 'prod-plan-5', title: 'План на день в 3 шага', why: 'Чтобы усилить ветвь Продуктивность, потому что короткий план повышает завершения.', timeBandMinutes: 5, effectProfile: 'small', ifThenPlan: 'Если не знаешь с чего начать, то сначала запиши три шага и только потом открывай чат.' },
+    { id: 'prod-top-1', title: 'Закрыть задачу №1 дня', why: 'Чтобы усилить ветвь Продуктивность, потому что главный результат снижает хаос.', timeBandMinutes: 30, tags: ['focus', 'energy', 'stress'], effectProfile: 'large' },
+    { id: 'prod-clean-backlog', title: 'Разобрать хвост из 3 задач', why: 'Чтобы усилить ветвь Продуктивность, потому что чистый хвост освобождает внимание.', timeBandMinutes: 15, tags: ['focus'], effectProfile: 'medium' },
+    { id: 'prod-plan-5', title: 'План на день в 3 шага', why: 'Чтобы усилить ветвь Продуктивность, потому что короткий план повышает завершения.', timeBandMinutes: 5, tags: ['focus'], effectProfile: 'small', ifThenPlan: 'Если не знаешь с чего начать, то сначала запиши три шага и только потом открывай чат.' },
   ],
   mood: [
-    { id: 'mood-gratitude', title: 'Три хорошие вещи дня', why: 'Чтобы усилить ветвь Настроение, потому что фиксация позитива поднимает базовый фон.', timeBandMinutes: 5, effectProfile: 'small' },
-    { id: 'mood-light-walk', title: 'Прогулка на свету', why: 'Чтобы усилить ветвь Настроение, потому что свет и движение быстро стабилизируют фон.', timeBandMinutes: 15, effectProfile: 'medium' },
-    { id: 'mood-recovery-hour', title: 'Большой слот восстановления', why: 'Чтобы усилить ветвь Настроение, потому что глубокий отдых снижает эмоциональный шум.', timeBandMinutes: 30, effectProfile: 'large' },
+    { id: 'mood-gratitude', title: 'Три хорошие вещи дня', why: 'Чтобы усилить ветвь Настроение, потому что фиксация позитива поднимает базовый фон.', timeBandMinutes: 5, tags: ['social'], effectProfile: 'small' },
+    { id: 'mood-light-walk', title: 'Прогулка на свету', why: 'Чтобы усилить ветвь Настроение, потому что свет и движение быстро стабилизируют фон.', timeBandMinutes: 15, tags: ['energy', 'stress'], effectProfile: 'medium' },
+    { id: 'mood-recovery-hour', title: 'Большой слот восстановления', why: 'Чтобы усилить ветвь Настроение, потому что глубокий отдых снижает эмоциональный шум.', timeBandMinutes: 30, tags: ['stress', 'sleep'], effectProfile: 'large' },
   ],
   social: [
-    { id: 'social-support-msg', title: 'Сообщение поддержки', why: 'Чтобы усилить ветвь Социальность, потому что короткий контакт возвращает опору.', timeBandMinutes: 5, effectProfile: 'small' },
-    { id: 'social-live-call', title: 'Короткий живой звонок', why: 'Чтобы усилить ветвь Социальность, потому что голосовой контакт укрепляет связь.', timeBandMinutes: 15, effectProfile: 'medium' },
-    { id: 'social-meet-plan', title: 'Запланировать личную встречу', why: 'Чтобы усилить ветвь Социальность, потому что офлайн-связь держит ресурс надолго.', timeBandMinutes: 30, effectProfile: 'large' },
+    { id: 'social-support-msg', title: 'Сообщение поддержки', why: 'Чтобы усилить ветвь Социальность, потому что короткий контакт возвращает опору.', timeBandMinutes: 5, tags: ['social'], effectProfile: 'small' },
+    { id: 'social-live-call', title: 'Короткий живой звонок', why: 'Чтобы усилить ветвь Социальность, потому что голосовой контакт укрепляет связь.', timeBandMinutes: 15, tags: ['social'], effectProfile: 'medium' },
+    { id: 'social-meet-plan', title: 'Запланировать личную встречу', why: 'Чтобы усилить ветвь Социальность, потому что офлайн-связь держит ресурс надолго.', timeBandMinutes: 30, tags: ['social'], effectProfile: 'large' },
   ],
   health: [
-    { id: 'health-mobility', title: 'Мягкая мобилизация тела', why: 'Чтобы усилить ветвь Здоровье, потому что микро-движение снимает зажимы.', timeBandMinutes: 15, effectProfile: 'medium' },
-    { id: 'health-water', title: 'Контроль воды на день', why: 'Чтобы усилить ветвь Здоровье, потому что гидратация поддерживает ясность и выносливость.', timeBandMinutes: 5, effectProfile: 'small' },
-    { id: 'health-training-lite', title: 'Полу-час активности', why: 'Чтобы усилить ветвь Здоровье, потому что длинная активность улучшает самочувствие.', timeBandMinutes: 30, effectProfile: 'large' },
+    { id: 'health-mobility', title: 'Мягкая мобилизация тела', why: 'Чтобы усилить ветвь Здоровье, потому что микро-движение снимает зажимы.', timeBandMinutes: 15, tags: ['energy'], effectProfile: 'medium' },
+    { id: 'health-water', title: 'Контроль воды на день', why: 'Чтобы усилить ветвь Здоровье, потому что гидратация поддерживает ясность и выносливость.', timeBandMinutes: 5, tags: ['energy'], effectProfile: 'small' },
+    { id: 'health-training-lite', title: 'Полу-час активности', why: 'Чтобы усилить ветвь Здоровье, потому что длинная активность улучшает самочувствие.', timeBandMinutes: 30, tags: ['energy', 'stress'], effectProfile: 'large' },
   ],
   cashFlow: [
-    { id: 'cashflow-check', title: 'Проверить денежный поток', why: 'Чтобы усилить ветвь Cashflow, потому что ежедневный контроль уменьшает утечки.', timeBandMinutes: 5, effectProfile: 'small' },
-    { id: 'cashflow-one-action', title: 'Одно действие на доход', why: 'Чтобы усилить ветвь Cashflow, потому что регулярный шаг ускоряет рост потока.', timeBandMinutes: 15, effectProfile: 'medium' },
-    { id: 'cashflow-deep-review', title: 'Разбор расходов и обязательств', why: 'Чтобы усилить ветвь Cashflow, потому что глубокий разбор снижает финансовый шум.', timeBandMinutes: 30, effectProfile: 'large' },
+    { id: 'cashflow-check', title: 'Проверить денежный поток', why: 'Чтобы усилить ветвь Cashflow, потому что ежедневный контроль уменьшает утечки.', timeBandMinutes: 5, tags: ['money'], effectProfile: 'small' },
+    { id: 'cashflow-one-action', title: 'Одно действие на доход', why: 'Чтобы усилить ветвь Cashflow, потому что регулярный шаг ускоряет рост потока.', timeBandMinutes: 15, tags: ['money', 'focus'], effectProfile: 'medium' },
+    { id: 'cashflow-deep-review', title: 'Разбор расходов и обязательств', why: 'Чтобы усилить ветвь Cashflow, потому что глубокий разбор снижает финансовый шум.', timeBandMinutes: 30, tags: ['money', 'stress'], effectProfile: 'large' },
   ],
 }
 
@@ -97,6 +98,7 @@ export function buildMissionSuggestion(options: {
   presetId: GoalModePresetId
   durationDays: 1 | 3
   excludedTemplateIds: string[]
+  avoidTags?: MissionTag[]
   salt: number
 }): MissionTemplate {
   const pool = metricMissionTemplates[options.metricId] ?? []
@@ -114,10 +116,12 @@ export function buildMissionSuggestion(options: {
   const excluded = new Set(options.excludedTemplateIds)
   const durationOrder = durationBandPreference[options.durationDays]
   const presetOrder = presetPreferredBands[options.presetId]
+  const avoidTags = new Set(options.avoidTags ?? [])
   const score = (template: MissionTemplate) => {
     const durationRank = durationOrder.indexOf(template.timeBandMinutes)
     const presetRank = presetOrder.indexOf(template.timeBandMinutes)
-    return (durationRank < 0 ? 9 : durationRank) + (presetRank < 0 ? 9 : presetRank)
+    const conflictPenalty = (template.tags ?? []).reduce((acc, tag) => acc + (avoidTags.has(tag) ? 20 : 0), 0)
+    return (durationRank < 0 ? 9 : durationRank) + (presetRank < 0 ? 9 : presetRank) + conflictPenalty
   }
 
   const ranked = [...pool].sort((a, b) => score(a) - score(b))
