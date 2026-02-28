@@ -3073,14 +3073,14 @@ button.danger { background: color-mix(in srgb, #e45959 30%, var(--panel) 70%); b
 
 .goal-yggdrasil__floating-controls {
   position: absolute;
-  top: 14px;
-  right: 14px;
+  top: 18px;
+  right: 18px;
   z-index: 3;
   display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  max-width: min(95%, 360px);
+  gap: 6px;
+  flex-direction: column;
+  align-items: flex-end;
+  max-width: min(40%, 220px);
 }
 
 .goal-yggdrasil__floating-controls .filter-button {
@@ -3090,6 +3090,7 @@ button.danger { background: color-mix(in srgb, #e45959 30%, var(--panel) 70%); b
   backdrop-filter: blur(3px);
   border: 1px solid color-mix(in srgb, #d8e7ff 20%, transparent 80%);
   background: color-mix(in srgb, var(--surface-1) 65%, rgba(6, 12, 26, 0.35) 35%);
+  min-width: 126px;
 }
 
 .goal-yggdrasil__trunk {
@@ -3136,10 +3137,49 @@ button.danger { background: color-mix(in srgb, #e45959 30%, var(--panel) 70%); b
 }
 
 .goal-yggdrasil__node-core {
-  stroke: rgba(255, 255, 255, 0.7);
-  stroke-width: 1.8;
+  stroke: rgba(255, 255, 255, 0.76);
+  stroke-width: 2.1;
   transition: transform 120ms ease, stroke-width 120ms ease, fill-opacity 120ms ease;
   transform-origin: center;
+}
+
+.goal-yggdrasil__node-halo {
+  fill: none;
+  stroke-width: 1.1;
+  opacity: 0.82;
+}
+
+.goal-yggdrasil__node-halo--weak {
+  stroke: rgba(255, 168, 168, 0.68);
+}
+
+.goal-yggdrasil__node-halo--normal {
+  stroke: rgba(155, 196, 255, 0.68);
+}
+
+.goal-yggdrasil__node-halo--strong {
+  stroke: rgba(143, 242, 203, 0.7);
+}
+
+.goal-yggdrasil__leaf-cluster {
+  filter: url(#leafGlow);
+  pointer-events: none;
+}
+
+.goal-yggdrasil__leaf-particle {
+  fill-opacity: 0.84;
+}
+
+.goal-yggdrasil__leaf-cluster--weak .goal-yggdrasil__leaf-particle {
+  fill: url(#leafWeak);
+}
+
+.goal-yggdrasil__leaf-cluster--normal .goal-yggdrasil__leaf-particle {
+  fill: url(#leafNormal);
+}
+
+.goal-yggdrasil__leaf-cluster--strong .goal-yggdrasil__leaf-particle {
+  fill: url(#leafStrong);
 }
 
 .goal-yggdrasil__node-core--weak {
@@ -3279,15 +3319,18 @@ button.danger { background: color-mix(in srgb, #e45959 30%, var(--panel) 70%); b
 
 @media (max-width: 860px) {
   .goal-yggdrasil__floating-controls {
-    flex-direction: column;
-    align-items: flex-end;
-    max-width: 180px;
+    top: 12px;
+    right: 12px;
+    max-width: 92px;
   }
 
   .goal-yggdrasil__floating-controls .filter-button {
-    width: 100%;
-    padding: 5px 8px;
-    font-size: 11px;
+    width: 36px;
+    min-width: 36px;
+    height: 36px;
+    padding: 0;
+    font-size: 16px;
+    line-height: 1;
   }
 
   .goal-yggdrasil__scene {

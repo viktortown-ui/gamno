@@ -99,6 +99,7 @@ export function GoalsPage() {
   const [seedTitle, setSeedTitle] = useState('')
   const [seedHorizon, setSeedHorizon] = useState<7 | 14 | 30>(14)
   const [duplicateCandidate, setDuplicateCandidate] = useState<GoalRecord | null>(null)
+  const [isForgeOpen, setIsForgeOpen] = useState(false)
   const seedButtonRef = useRef<HTMLButtonElement | null>(null)
   const seedDialogRef = useRef<HTMLDivElement | null>(null)
 
@@ -632,8 +633,8 @@ export function GoalsPage() {
       </div>
 
       {editor ? (
-        <details className="graph-accordion">
-          <summary>Кузница (для продвинутых)</summary>
+        <details className="graph-accordion" open={isForgeOpen}>
+          <summary onClick={(event) => { event.preventDefault(); setIsForgeOpen((value) => !value) }}>Кузница (для продвинутых)</summary>
           <article className="summary-card panel">
             <h3>Настройка цели</h3>
             <label>Название<input value={editor.title} onChange={(e) => setEditor({ ...editor, title: e.target.value })} /></label>
