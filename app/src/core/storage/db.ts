@@ -26,7 +26,7 @@ export interface OracleScenarioRecord extends OracleScenario {
   id?: number
 }
 
-export const schemaVersion = 19
+export const schemaVersion = 20
 
 class ConcoreDb extends Dexie {
   checkins!: EntityTable<CheckinRecord, 'id'>
@@ -87,7 +87,7 @@ class ConcoreDb extends Dexie {
       learnedMatrices: '&key,metricSetHash,computedAt,trainedOnDays,lags',
       forecastRuns: '++id,ts,modelType',
       regimeSnapshots: '++id,ts,dayKey,regimeId,sirenLevel',
-      goals: '++id,createdAt,updatedAt,status',
+      goals: '++id,createdAt,updatedAt,status,groveId,parentGoalId,trashedAt',
       goalEvents: '++id,ts,goalId',
       multiverseScenarios: '++id,updatedAt,nameRu',
       multiverseRuns: '++id,ts',
@@ -116,7 +116,7 @@ class ConcoreDb extends Dexie {
       learnedMatrices: '&key,metricSetHash,computedAt,trainedOnDays,lags',
       forecastRuns: '++id,ts,modelType',
       regimeSnapshots: '++id,ts,dayKey,regimeId,sirenLevel',
-      goals: '++id,createdAt,updatedAt,status',
+      goals: '++id,createdAt,updatedAt,status,groveId,parentGoalId,trashedAt',
       goalEvents: '++id,ts,goalId',
       multiverseScenarios: '++id,updatedAt,nameRu',
       multiverseRuns: '++id,ts',

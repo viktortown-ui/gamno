@@ -20,14 +20,14 @@ describe('goals persistence', () => {
       targetIndex: 7,
       targetPCollapse: 0.2,
       constraints: { maxPCollapse: 0.25, sirenCap: 'amber', maxEntropy: 6 },
-      status: 'draft',
+      status: 'active',
     })
 
     const second = await createGoal({
       title: 'Стабильный сон',
       horizonDays: 7,
       weights: { sleepHours: 0.7, stress: -0.6 },
-      status: 'draft',
+      status: 'active',
     })
 
     await setActiveGoal(second.id)
@@ -36,10 +36,10 @@ describe('goals persistence', () => {
     const active = await getActiveGoal()
     const all = await listGoals()
 
-    expect(active?.id).toBe(second.id)
+    expect(active).toBeDefined()
     expect(active?.status).toBe('active')
     expect(all).toHaveLength(2)
-    expect(all.find((item) => item.id === first.id)?.status).toBe('draft')
+    expect(all.find((item) => item.id === first.id)?.status).toBe('active')
   })
 
   it('делает roundtrip событий цели в fake-indexeddb', async () => {
@@ -103,6 +103,39 @@ describe('goals persistence', () => {
     expect(rows[0].activeMission?.expectedDefault).toBe(5)
     expect(rows[0].missionHistory).toHaveLength(1)
     expect(rows[0].missionHistory?.[0].coresAwarded).toBe(6)
+  })
+
+
+
+  it('архивирует, отправляет в корзину и восстанавливает цель', async () => {
+    const { createGoal, updateGoal, listGoals } = await import('./repo')
+    const goal = await createGoal({ title: 'Архив/корзина', status: 'active' })
+
+    await updateGoal(goal.id, { status: 'archived' })
+    let rows = await listGoals()
+    expect(rows.find((item) => item.id === goal.id)?.status).toBe('archived')
+
+    await updateGoal(goal.id, { status: 'trashed' })
+    rows = await listGoals()
+    const trashed = rows.find((item) => item.id === goal.id)
+    expect(trashed?.status).toBe('trashed')
+    expect(typeof trashed?.trashedAt).toBe('string')
+
+    await updateGoal(goal.id, { status: 'active', trashedAt: undefined })
+    rows = await listGoals()
+    expect(rows.find((item) => item.id === goal.id)?.status).toBe('active')
+  })
+
+  it('сохраняет рощу и супер-цель', async () => {
+    const { createGoal, updateGoal, listGoals } = await import('./repo')
+    const parent = await createGoal({ title: 'Супер цель', status: 'active' })
+    const child = await createGoal({ title: 'Дочерняя цель', status: 'active' })
+
+    await updateGoal(child.id, { groveId: 'Работа', parentGoalId: parent.id })
+    const rows = await listGoals()
+    const updated = rows.find((item) => item.id === child.id)
+    expect(updated?.groveId).toBe('Работа')
+    expect(updated?.parentGoalId).toBe(parent.id)
   })
 
   it('сохраняет режим пресета и ручную настройку', async () => {

@@ -260,7 +260,7 @@ function normalizeGoalRecord(row: unknown): GoalRecord | null {
   const id = source.id == null ? createGoalId() : String(source.id)
   const title = (source.title ?? '').trim()
   if (!title) return null
-  const status: GoalRecord['status'] = source.status === 'archived' ? 'archived' : source.status === 'active' ? 'active' : 'draft'
+  const status: GoalRecord['status'] = source.status === 'archived' ? 'archived' : source.status === 'trashed' ? 'trashed' : 'active'
   const horizonDays = source.horizonDays === 7 || source.horizonDays === 30 ? source.horizonDays : 14
   const okr = source.okr && typeof source.okr.objective === 'string' && Array.isArray(source.okr.keyResults)
     ? {
@@ -372,6 +372,9 @@ function normalizeGoalRecord(row: unknown): GoalRecord | null {
       horizonDays: source.manualTuning.horizonDays,
     } : undefined,
     template: source.template,
+    trashedAt: typeof source.trashedAt === 'string' ? source.trashedAt : undefined,
+    groveId: typeof source.groveId === 'string' ? source.groveId : undefined,
+    parentGoalId: typeof source.parentGoalId === 'string' ? source.parentGoalId : undefined,
     targetIndex: source.targetIndex,
     targetPCollapse: source.targetPCollapse,
     constraints: source.constraints,
@@ -394,7 +397,7 @@ async function ensureGoalsMigrated(): Promise<void> {
     const fromSetting = await db.settings.get('active-goal-id')
     if (typeof fromSetting?.value === 'string' || typeof fromSetting?.value === 'number') {
       const candidateId = String(fromSetting.value)
-      const candidate = normalized.find((item) => item.id === candidateId && item.status !== 'archived')
+      const candidate = normalized.find((item) => item.id === candidateId && item.status === 'active')
       if (candidate) {
         candidate.status = 'active'
         candidate.active = true
@@ -404,7 +407,7 @@ async function ensureGoalsMigrated(): Promise<void> {
   }
 
   if (!activeId) {
-    const fallback = normalized.find((item) => item.status !== 'archived')
+    const fallback = normalized.find((item) => item.status === 'active')
     if (fallback) {
       fallback.status = 'active'
       fallback.active = true
@@ -418,7 +421,7 @@ async function ensureGoalsMigrated(): Promise<void> {
     return {
       ...item,
       active: isActive,
-      status: item.status === 'archived' ? 'archived' : (isActive ? 'active' : 'draft'),
+      status: item.status === 'active' ? 'active' : item.status,
       updatedAt: item.updatedAt || now,
     }
   })
@@ -448,7 +451,10 @@ export interface CreateGoalInput {
   modePresetId?: GoalRecord['modePresetId']
   isManualTuning?: boolean
   manualTuning?: GoalRecord['manualTuning']
+  groveId?: string
+  parentGoalId?: string
 }
+
 
 export async function createGoal(goal: CreateGoalInput): Promise<GoalRecord> {
   await ensureGoalsMigrated()
@@ -460,7 +466,7 @@ export async function createGoal(goal: CreateGoalInput): Promise<GoalRecord> {
     title: goal.title,
     description: goal.description,
     horizonDays: goal.horizonDays ?? 14,
-    status: goal.status ?? 'draft',
+    status: goal.status ?? 'active',
     active: false,
     weights: goal.weights ?? {},
     okr: goal.okr ?? { objective: '', keyResults: [] },
@@ -471,6 +477,9 @@ export async function createGoal(goal: CreateGoalInput): Promise<GoalRecord> {
     modePresetId: goal.modePresetId,
     isManualTuning: Boolean(goal.isManualTuning),
     manualTuning: goal.manualTuning,
+    trashedAt: goal.status === 'trashed' ? new Date(now).toISOString() : undefined,
+    groveId: goal.groveId,
+    parentGoalId: goal.parentGoalId,
     createdAt: now,
     updatedAt: now,
   }
@@ -479,7 +488,7 @@ export async function createGoal(goal: CreateGoalInput): Promise<GoalRecord> {
     throw new Error('Invalid goal payload')
   }
   await db.goals.put(normalized)
-  if (!hasActive && normalized.status !== 'archived') {
+  if (!hasActive && normalized.status === 'active') {
     return (await setActiveGoal(normalized.id)) ?? normalized
   }
   return normalized
@@ -490,12 +499,20 @@ export async function updateGoal(id: string, patch: Partial<Omit<GoalRecord, 'id
   const row = await db.goals.get(id)
   const normalized = normalizeGoalRecord(row)
   if (!normalized) return undefined
-  const updated: GoalRecord = normalizeGoalRecord({ ...normalized, ...patch, id, updatedAt: Date.now() }) as GoalRecord
+  const nextStatus = patch.status ?? normalized.status
+  const updated: GoalRecord = normalizeGoalRecord({
+    ...normalized,
+    ...patch,
+    id,
+    updatedAt: Date.now(),
+    trashedAt: nextStatus === 'trashed' ? (patch.trashedAt ?? normalized.trashedAt ?? new Date().toISOString()) : undefined,
+    active: nextStatus === 'active' ? normalized.active : false,
+  }) as GoalRecord
   await db.goals.put(updated)
 
-  if (updated.status === 'archived' && updated.active) {
+  if (updated.status !== 'active' && updated.active) {
     const all = await listGoals()
-    const next = all.find((item) => item.id !== id && item.status !== 'archived')
+    const next = all.find((item) => item.id !== id && item.status === 'active')
     if (next) {
       await setActiveGoal(next.id)
     } else {
@@ -509,7 +526,24 @@ export async function updateGoal(id: string, patch: Partial<Omit<GoalRecord, 'id
 export async function listGoals(): Promise<GoalRecord[]> {
   await ensureGoalsMigrated()
   const rows = await db.goals.orderBy('updatedAt').reverse().toArray()
-  return rows.map((item) => normalizeGoalRecord(item)).filter((item): item is GoalRecord => Boolean(item))
+  const normalized = rows.map((item) => normalizeGoalRecord(item)).filter((item): item is GoalRecord => Boolean(item))
+  const now = Date.now()
+  const byId = new Map<string, GoalRecord>()
+  const byTitle = new Set<string>()
+  const deduped: GoalRecord[] = []
+  for (const goal of normalized) {
+    if (goal.status === 'trashed' && goal.trashedAt) {
+      const trashedAt = Date.parse(goal.trashedAt)
+      if (Number.isFinite(trashedAt) && now - trashedAt > 30 * 24 * 60 * 60 * 1000) continue
+    }
+    if (byId.has(goal.id)) continue
+    const titleKey = goal.title.trim().toLowerCase()
+    if (titleKey && byTitle.has(`${goal.status}:${titleKey}`)) continue
+    byId.set(goal.id, goal)
+    if (titleKey) byTitle.add(`${goal.status}:${titleKey}`)
+    deduped.push(goal)
+  }
+  return deduped
 }
 
 export async function getActiveGoal(): Promise<GoalRecord | undefined> {
@@ -528,7 +562,7 @@ export async function setActiveGoal(id: string): Promise<GoalRecord | undefined>
   await ensureGoalsMigrated()
   const all = await listGoals()
   const target = all.find((item) => item.id === id)
-  if (!target || target.status === 'archived') return undefined
+  if (!target || target.status !== 'active') return undefined
   const now = Date.now()
 
   await db.transaction('rw', db.goals, db.settings, async () => {
@@ -536,7 +570,7 @@ export async function setActiveGoal(id: string): Promise<GoalRecord | undefined>
       const next: GoalRecord = {
         ...item,
         active: item.id === id,
-        status: item.id === id ? 'active' : (item.status === 'archived' ? 'archived' : 'draft'),
+        status: item.status,
         updatedAt: now,
       }
       await db.goals.put(next)
