@@ -24,7 +24,7 @@ import { RuneDial } from './goals/components/RuneDial'
 import { ForgePreview } from './goals/components/ForgePreview'
 import { AdvancedTuning } from './goals/components/AdvancedTuning'
 import { dayKeyFromTs } from '../core/utils/dayKey'
-import { buildMissionSuggestion, missionEffectRange } from './goals/missionPlanner'
+import { buildMissionSuggestion, missionEffectRange, type MissionTag } from './goals/missionPlanner'
 
 type GoalTemplateId = 'growth' | 'anti-storm' | 'energy-balance' | 'money'
 
@@ -234,6 +234,8 @@ export function GoalsPage() {
   const [missionDetailsOpen, setMissionDetailsOpen] = useState(false)
   const [missionConfirmOpen, setMissionConfirmOpen] = useState(false)
   const [missionAwardDraft, setMissionAwardDraft] = useState(5)
+  const [supportsExpanded, setSupportsExpanded] = useState(false)
+  const [hiddenConflictDayKeyByGoal, setHiddenConflictDayKeyByGoal] = useState<Record<string, string>>({})
   const seedButtonRef = useRef<HTMLButtonElement | null>(null)
   const seedDialogRef = useRef<HTMLDivElement | null>(null)
   const missionDoneButtonRef = useRef<HTMLButtonElement | null>(null)
@@ -317,7 +319,38 @@ export function GoalsPage() {
       .filter((goal) => !query || goal.title.toLowerCase().includes(query))
   }, [goals, linkSearch, selected?.id])
 
+  const supportsLinkedGoals = useMemo(() => {
+    const ids = new Set((selectedLinksByType.supports ?? []).map((item) => item.toGoalId))
+    return goals.filter((goal) => ids.has(goal.id))
+  }, [goals, selectedLinksByType.supports])
 
+  const conflictLinkedGoals = useMemo(() => {
+    const ids = new Set((selectedLinksByType.conflicts ?? []).map((item) => item.toGoalId))
+    return goals.filter((goal) => ids.has(goal.id) && goal.status === 'active')
+  }, [goals, selectedLinksByType.conflicts])
+
+  const dependsLinkedGoals = useMemo(() => {
+    const ids = new Set((selectedLinksByType.depends_on ?? []).map((item) => item.toGoalId))
+    return goals.filter((goal) => ids.has(goal.id))
+  }, [goals, selectedLinksByType.depends_on])
+
+  const conflictAvoidTags = useMemo(() => {
+    const tags = new Set<MissionTag>()
+    for (const goal of conflictLinkedGoals) {
+      const weights = goal.manualTuning?.weights ?? goal.weights
+      if ((weights.energy ?? 0) > 0) tags.add('energy')
+      if ((weights.sleepHours ?? 0) > 0) tags.add('sleep')
+      if ((weights.cashFlow ?? 0) > 0) tags.add('money')
+      if ((weights.focus ?? 0) > 0 || (weights.productivity ?? 0) > 0) tags.add('focus')
+      if ((weights.social ?? 0) > 0 || (weights.mood ?? 0) > 0) tags.add('social')
+      if ((weights.stress ?? 0) < 0) tags.add('stress')
+    }
+    return Array.from(tags)
+  }, [conflictLinkedGoals])
+
+  useEffect(() => {
+    setSupportsExpanded(false)
+  }, [selected?.id])
 
   const selectedPreset = useMemo(() => {
     const presetId = selected?.modePresetId ?? 'balance'
@@ -640,9 +673,10 @@ export function GoalsPage() {
       presetId: selected?.modePresetId ?? 'balance',
       durationDays: nextMissionDuration,
       excludedTemplateIds: missionRecentTemplateIds,
+      avoidTags: conflictAvoidTags,
       salt: missionSuggestionSalt + missionTargetKr.kr.id.length,
     })
-  }, [missionTargetKr, missionRecentTemplateIds, missionSuggestionSalt, nextMissionDuration, selected?.modePresetId])
+  }, [conflictAvoidTags, missionTargetKr, missionRecentTemplateIds, missionSuggestionSalt, nextMissionDuration, selected?.modePresetId])
 
   const nextMissionEffect = useMemo(() => {
     if (!nextMissionTemplate) return null
@@ -652,6 +686,7 @@ export function GoalsPage() {
   const nextMissionTitle = nextMissionTemplate?.title ?? (missionTargetKr ? `Ритуал по ветви «${selectedKrMetricLabel ?? missionTargetKr.kr.metricId}»` : 'Выберите ветвь на сцене, чтобы получить миссию.')
 
   const currentDayKey = dayKeyFromTs(Date.now())
+  const isConflictHiddenToday = selected ? hiddenConflictDayKeyByGoal[selected.id] === currentDayKey : false
   const rerollsUsedToday = selected?.missionControl?.rerollDayKey === currentDayKey ? (selected?.missionControl?.rerollsUsed ?? 0) : 0
   const lastRerollAt = selected?.missionControl?.lastRerollAt ?? 0
   const rerollCooldownLeftMs = Math.max(0, MISSION_REROLL_COOLDOWN_MS - (Date.now() - lastRerollAt))
@@ -1252,6 +1287,50 @@ export function GoalsPage() {
               <p><strong>Слабая ветвь:</strong> {weakestKr ? `🕸 Трещина: ${METRICS.find((item) => item.id === weakestKr.kr.metricId)?.labelRu ?? weakestKr.kr.metricId}` : 'Выберите ветвь'}</p>
               <p className="goals-pane__hint">{selected.isManualTuning ? 'Ручная настройка активна: Друид опирается на ваш профиль.' : selectedPreset.druidHint}</p>
               <p><strong>Выбранная ветвь:</strong> {selectedKrMetricLabel ?? 'Выберите ветвь'}</p>
+              {supportsLinkedGoals.length > 0 ? (
+                <div className="goals-inline-chip-wrap">
+                  <button type="button" className="chip goals-inline-chip-button" onClick={() => setSupportsExpanded((value) => !value)}>
+                    Поддержка: {supportsLinkedGoals.length}
+                  </button>
+                  {supportsExpanded ? (
+                    <ul className="goals-inline-chip-list">
+                      {supportsLinkedGoals.map((goal) => <li key={goal.id}>{goal.title}</li>)}
+                    </ul>
+                  ) : null}
+                </div>
+              ) : null}
+              {conflictLinkedGoals.length > 0 && !isConflictHiddenToday ? (
+                <div className="goals-inline-warning" role="status">
+                  <strong>Конфликт ресурсов.</strong>{' '}
+                  <span>Конфликтует с: {conflictLinkedGoals.map((goal) => goal.title).join(', ')}</span>
+                  <div className="settings-actions">
+                    <button type="button" onClick={() => { setSelectedGoalId(conflictLinkedGoals[0].id); setForestViewMode('forest') }}>Открыть</button>
+                    <button
+                      type="button"
+                      className="ghost-button"
+                      onClick={() => setHiddenConflictDayKeyByGoal((value) => ({ ...value, [selected.id]: currentDayKey }))}
+                    >
+                      Скрыть на сегодня
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+              {dependsLinkedGoals.length > 0 ? (
+                <div className="goals-inline-depends">
+                  {dependsLinkedGoals.map((goal) => (
+                    <div key={goal.id} className="goals-inline-depends__row">
+                      <span>
+                        <strong>{goal.title}:</strong>{' '}
+                        {goal.status === 'active' ? 'Зависимость активна' : 'Зависимость не активна'}
+                      </span>
+                      <div className="settings-actions">
+                        <button type="button" onClick={() => { setSelectedGoalId(goal.id); setForestViewMode('forest') }}>Открыть</button>
+                        {goal.status !== 'active' ? <button type="button" onClick={async () => { await restoreGoal(goal) }}>Восстановить</button> : null}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
               <section className="summary-card goals-roots-block">
                 <div className="settings-actions">
                   <h3>Корни</h3>
@@ -1290,6 +1369,7 @@ export function GoalsPage() {
                     {nextMissionEffect ? <span className="chip">Ядра: +{nextMissionEffect.min}…{nextMissionEffect.max} (обычно +{nextMissionEffect.expected})</span> : null}
                   </div>
                   <p className="goals-pane__hint">{nextMissionTemplate?.why ?? 'Чтобы усилить выбранную ветвь.'}</p>
+                  {conflictAvoidTags.length > 0 ? <p className="goals-pane__hint">Автопилот избегает теги конфликта: {conflictAvoidTags.join(', ')}.</p> : null}
                   {nextMissionTemplate?.ifThenPlan ? (
                     <details open={missionDetailsOpen} onToggle={(event) => setMissionDetailsOpen((event.target as HTMLDetailsElement).open)}>
                       <summary>Как сделать</summary>
