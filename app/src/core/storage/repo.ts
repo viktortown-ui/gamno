@@ -332,6 +332,13 @@ function normalizeGoalRecord(row: unknown): GoalRecord | null {
     okr,
     activeMission,
     missionHistory,
+    modePresetId: source.modePresetId,
+    isManualTuning: Boolean(source.isManualTuning),
+    manualTuning: source.manualTuning ? {
+      weights: source.manualTuning.weights ?? source.weights ?? {},
+      krDirections: source.manualTuning.krDirections,
+      horizonDays: source.manualTuning.horizonDays,
+    } : undefined,
     template: source.template,
     targetIndex: source.targetIndex,
     targetPCollapse: source.targetPCollapse,
@@ -406,6 +413,9 @@ export interface CreateGoalInput {
   targetIndex?: number
   targetPCollapse?: number
   constraints?: GoalRecord['constraints']
+  modePresetId?: GoalRecord['modePresetId']
+  isManualTuning?: boolean
+  manualTuning?: GoalRecord['manualTuning']
 }
 
 export async function createGoal(goal: CreateGoalInput): Promise<GoalRecord> {
@@ -426,6 +436,9 @@ export async function createGoal(goal: CreateGoalInput): Promise<GoalRecord> {
     targetIndex: goal.targetIndex,
     targetPCollapse: goal.targetPCollapse,
     constraints: goal.constraints,
+    modePresetId: goal.modePresetId,
+    isManualTuning: Boolean(goal.isManualTuning),
+    manualTuning: goal.manualTuning,
     createdAt: now,
     updatedAt: now,
   }

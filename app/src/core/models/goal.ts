@@ -1,6 +1,13 @@
 import type { MetricId } from '../metrics'
 
 export type GoalStatus = 'active' | 'draft' | 'archived'
+export type GoalModePresetId = 'balance' | 'recovery' | 'sprint' | 'finance' | 'social-shield'
+
+export interface GoalManualTuning {
+  weights: Record<string, number>
+  krDirections?: Record<string, 'up' | 'down'>
+  horizonDays?: 7 | 14 | 30
+}
 
 export interface GoalKeyResult {
   id: string
@@ -50,6 +57,9 @@ export interface GoalRecord {
   }
   activeMission?: GoalActiveMission
   missionHistory?: GoalMissionHistoryItem[]
+  modePresetId?: GoalModePresetId
+  isManualTuning?: boolean
+  manualTuning?: GoalManualTuning
   template?: 'growth' | 'anti-storm' | 'energy-balance' | 'money'
   targetIndex?: number
   targetPCollapse?: number

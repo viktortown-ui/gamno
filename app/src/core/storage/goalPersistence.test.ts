@@ -104,4 +104,33 @@ describe('goals persistence', () => {
     expect(rows[0].missionHistory).toHaveLength(1)
     expect(rows[0].missionHistory?.[0].coresAwarded).toBe(6)
   })
+
+  it('сохраняет режим пресета и ручную настройку', async () => {
+    const { createGoal, updateGoal, listGoals } = await import('./repo')
+
+    const goal = await createGoal({
+      title: 'Режимы цели',
+      horizonDays: 14,
+      status: 'active',
+      modePresetId: 'recovery',
+      isManualTuning: false,
+      weights: { sleepHours: 0.9, energy: 0.8, stress: -0.9 },
+      okr: { objective: 'Восстановление', keyResults: [] },
+    })
+
+    await updateGoal(goal.id, {
+      isManualTuning: true,
+      modePresetId: undefined,
+      manualTuning: {
+        weights: { focus: 0.7, productivity: 0.6, stress: -0.4 },
+        horizonDays: 7,
+      },
+    })
+
+    const rows = await listGoals()
+    expect(rows[0].isManualTuning).toBe(true)
+    expect(rows[0].modePresetId).toBeUndefined()
+    expect(rows[0].manualTuning?.weights.focus).toBe(0.7)
+    expect(rows[0].manualTuning?.horizonDays).toBe(7)
+  })
 })

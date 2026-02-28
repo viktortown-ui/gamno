@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { METRICS, type MetricId } from '../core/metrics'
-import type { GoalKeyResult, GoalRecord } from '../core/models/goal'
+import type { GoalKeyResult, GoalModePresetId, GoalRecord } from '../core/models/goal'
 import {
   addGoalEvent,
   createGoal,
@@ -49,6 +49,69 @@ const templates: Record<GoalTemplateId, { title: string; description: string; we
   },
 }
 
+
+const modePresets: Array<{
+  id: GoalModePresetId
+  title: string
+  summary: string
+  druidHint: string
+  objective: string
+  weights: GoalRecord['weights']
+  keyMetrics: MetricId[]
+}> = [
+  {
+    id: 'balance',
+    title: 'Баланс',
+    summary: 'Ровный ритм без перекосов по ресурсам.',
+    druidHint: 'Вы выбрали режим Баланс — держим устойчивый темп.',
+    objective: 'Держу курс без резких перекосов.',
+    weights: { energy: 0.6, sleepHours: 0.6, stress: -0.6, focus: 0.4, productivity: 0.4 },
+    keyMetrics: ['energy', 'sleepHours', 'stress'],
+  },
+  {
+    id: 'recovery',
+    title: 'Восстановление',
+    summary: 'Сон, энергия и стресс — приоритет стабилизации.',
+    druidHint: 'Вы выбрали режим Восстановление — укрепляем базовый ресурс.',
+    objective: 'Восстанавливаю энергию и снижаю турбулентность.',
+    weights: { sleepHours: 0.9, energy: 0.9, stress: -0.9, health: 0.5 },
+    keyMetrics: ['sleepHours', 'energy', 'stress'],
+  },
+  {
+    id: 'sprint',
+    title: 'Спринт',
+    summary: 'Фокус и продуктивность с ограничением шторма.',
+    druidHint: 'Вы выбрали режим Спринт — ускоряемся, но шторм держим под контролем.',
+    objective: 'Выполняю спринт без срыва в перегрев.',
+    weights: { focus: 0.95, productivity: 0.9, stress: -0.65, energy: 0.5 },
+    keyMetrics: ['focus', 'productivity', 'stress'],
+  },
+  {
+    id: 'finance',
+    title: 'Финансы',
+    summary: 'Денежный поток и обязательства без хаоса.',
+    druidHint: 'Вы выбрали режим Финансы — усиливаем денежный контур.',
+    objective: 'Стабилизирую денежный поток и обязательства.',
+    weights: { cashFlow: 0.95, productivity: 0.45, stress: -0.5, focus: 0.35 },
+    keyMetrics: ['cashFlow', 'productivity', 'stress'],
+  },
+  {
+    id: 'social-shield',
+    title: 'Социальный щит',
+    summary: 'Настроение и социальность как защита от просадки.',
+    druidHint: 'Вы выбрали режим Социальный щит — укрепляем настроение и контакт.',
+    objective: 'Поддерживаю настроение и опору на окружение.',
+    weights: { mood: 0.85, social: 0.85, stress: -0.55, energy: 0.35 },
+    keyMetrics: ['mood', 'social', 'stress'],
+  },
+]
+
+const modePresetsMap = Object.fromEntries(modePresets.map((preset) => [preset.id, preset])) as Record<GoalModePresetId, (typeof modePresets)[number]>
+
+function buildPresetKrs(presetId: GoalModePresetId): GoalKeyResult[] {
+  const preset = modePresetsMap[presetId]
+  return preset.keyMetrics.map((metricId, index) => createKrFromMetric(metricId, (preset.weights[metricId] ?? 0) >= 0 ? 'up' : 'down', index, `Ключевая ветвь режима «${preset.title}».`))
+}
 
 
 const missionTemplatesByMetric: Record<MetricId, string[]> = {
@@ -125,6 +188,7 @@ export function GoalsPage() {
   const [seedHorizon, setSeedHorizon] = useState<7 | 14 | 30>(14)
   const [duplicateCandidate, setDuplicateCandidate] = useState<GoalRecord | null>(null)
   const [isForgeOpen, setIsForgeOpen] = useState(false)
+  const [showDebugNumbers, setShowDebugNumbers] = useState(false)
   const [nextMissionDuration, setNextMissionDuration] = useState<1 | 3>(3)
   const [missionConfirmOpen, setMissionConfirmOpen] = useState(false)
   const [missionAwardDraft, setMissionAwardDraft] = useState(5)
@@ -190,6 +254,55 @@ export function GoalsPage() {
 
   const selected = useMemo(() => goals.find((item) => item.id === selectedGoalId) ?? null, [goals, selectedGoalId])
 
+  const selectedPreset = useMemo(() => {
+    const presetId = selected?.modePresetId ?? 'balance'
+    return modePresetsMap[presetId]
+  }, [selected?.modePresetId])
+
+  const selectedWeights = useMemo(() => {
+    if (!selected) return {}
+    if (selected.isManualTuning) {
+      return selected.manualTuning?.weights ?? selected.weights
+    }
+    return selectedPreset.weights
+  }, [selected, selectedPreset])
+
+  const applyModePreset = async (presetId: GoalModePresetId) => {
+    if (!selected) return
+    const preset = modePresetsMap[presetId]
+    await updateGoal(selected.id, {
+      modePresetId: presetId,
+      isManualTuning: false,
+      weights: preset.weights,
+      okr: {
+        ...selected.okr,
+        objective: preset.objective,
+        keyResults: buildPresetKrs(presetId),
+      },
+      activeMission: undefined,
+    })
+    await reload()
+  }
+
+  const toggleManualTuning = async () => {
+    if (!selected) return
+    if (selected.isManualTuning) {
+      const fallbackPresetId = selected.modePresetId ?? 'balance'
+      await updateGoal(selected.id, { isManualTuning: false, modePresetId: fallbackPresetId })
+    } else {
+      await updateGoal(selected.id, {
+        isManualTuning: true,
+        modePresetId: undefined,
+        manualTuning: {
+          weights: selected.manualTuning?.weights ?? selected.weights,
+          horizonDays: selected.manualTuning?.horizonDays ?? selected.horizonDays,
+          krDirections: selected.manualTuning?.krDirections,
+        },
+      })
+    }
+    await reload()
+  }
+
   const scoring = useMemo(() => {
     if (!selected || !goalState) return null
     return evaluateGoalScore(selected, goalState)
@@ -199,7 +312,7 @@ export function GoalsPage() {
     if (!scoring) return null
     if (scoring.goalGap <= -5) return { label: 'Растёт', toneClass: 'status-badge--low' }
     if (scoring.goalGap <= 2) return { label: 'Штормит', toneClass: 'status-badge--mid' }
-    return { label: 'Сохнет', toneClass: 'status-badge--high' }
+    return { label: 'Стоит', toneClass: 'status-badge--high' }
   }, [scoring])
 
   useEffect(() => {
@@ -303,6 +416,9 @@ export function GoalsPage() {
       template: seedTemplate,
       weights: tpl.weights,
       okr: { objective: tpl.objective, keyResults },
+      modePresetId: 'balance',
+      isManualTuning: false,
+      manualTuning: { weights: tpl.weights, horizonDays: seedHorizon },
     })
 
     await setActiveGoal(created.id)
@@ -314,8 +430,11 @@ export function GoalsPage() {
 
   const selectedKrs = useMemo(() => {
     if (!selected) return []
-    return ensureGoalKeyResults(selected, goalState)
-  }, [selected, goalState])
+    if (selected.isManualTuning) {
+      return ensureGoalKeyResults(selected, goalState)
+    }
+    return buildPresetKrs(selectedPreset.id)
+  }, [selected, goalState, selectedPreset.id])
 
   useEffect(() => {
     if (selectedKrs.length === 0) {
@@ -425,7 +544,7 @@ export function GoalsPage() {
   const yggdrasilBranches = useMemo(() => {
     return krProgressRows.map((row, index) => {
       const label = METRICS.find((item) => item.id === row.kr.metricId)?.labelRu ?? row.kr.metricId
-      const weight = selected?.weights[row.kr.metricId] ?? 0
+      const weight = selectedWeights[row.kr.metricId] ?? 0
       const runeLevel = Math.max(1, Math.min(5, Math.round(Math.abs(weight) * 5)))
       const rune = (['I', 'II', 'III', 'IV', 'V'][runeLevel - 1] ?? 'I') as 'I' | 'II' | 'III' | 'IV' | 'V'
       const strength: BranchStrength = row.progress < 0.34 ? 'weak' : row.progress < 0.67 ? 'normal' : 'strong'
@@ -441,7 +560,7 @@ export function GoalsPage() {
         index,
       }
     })
-  }, [krProgressRows, selected])
+  }, [krProgressRows, selected, selectedWeights])
 
   const editorKeyResults = useMemo(() => {
     if (!editor) return []
@@ -585,7 +704,7 @@ export function GoalsPage() {
             type="button"
             onClick={() => {
             if (!selected) return
-            const focus = Object.entries(selected.weights)
+            const focus = Object.entries(selectedWeights)
               .sort((a, b) => Math.abs((b[1] ?? 0)) - Math.abs((a[1] ?? 0)))
               .slice(0, 3)
             const impulses = Object.fromEntries(focus.map(([metricId, w]) => [metricId, (w ?? 0) > 0 ? 0.5 : -0.5]))
@@ -603,6 +722,30 @@ export function GoalsPage() {
           </button>
         </div>
       </div>
+
+      {selected ? (
+        <article className="panel goals-mode-panel">
+          <p><strong>Режим:</strong> {selected.isManualTuning ? 'Ручная настройка' : selectedPreset.title}</p>
+          <div className="goals-mode-grid">
+            {modePresets.map((preset) => (
+              <button
+                key={preset.id}
+                type="button"
+                className={!selected.isManualTuning && (selected.modePresetId ?? 'balance') === preset.id ? 'filter-button filter-button--active' : 'filter-button'}
+                onClick={async () => { await applyModePreset(preset.id) }}
+              >
+                <strong>{preset.title}</strong>
+                <span>{preset.summary}</span>
+              </button>
+            ))}
+          </div>
+          <div className="settings-actions">
+            <button type="button" onClick={async () => { await toggleManualTuning() }}>
+              {selected.isManualTuning ? 'Вернуться к пресету' : 'Настроить вручную'}
+            </button>
+          </div>
+        </article>
+      ) : null}
 
       <div className="goals-aaa-grid">
         <article className="panel goals-pane goals-pane--forest goals-forest">
@@ -683,6 +826,7 @@ export function GoalsPage() {
                 <DruidGauge label="Импульс" value01={impulseStatus.value01} stateLabel={impulseStatus.label} stateKind={impulseStatus.stateKind} />
               </div>
               <p><strong>Слабая ветвь:</strong> {weakestKr ? (METRICS.find((item) => item.id === weakestKr.kr.metricId)?.labelRu ?? weakestKr.kr.metricId) : 'Выберите ветвь'}</p>
+              <p className="goals-pane__hint">{selected.isManualTuning ? 'Ручная настройка активна: Друид опирается на ваш профиль.' : selectedPreset.druidHint}</p>
               <p><strong>Выбранная ветвь:</strong> {selectedKrMetricLabel ?? 'Выберите ветвь'}</p>
               {!activeMission ? (
                 <div className="goals-tree-state__top-layer">
@@ -695,7 +839,6 @@ export function GoalsPage() {
                     </select>
                   </label>
                   <p><strong>Миссия:</strong> {nextMissionTitle}</p>
-                  <p><strong>Эффект:</strong> +{missionDurationOptions[nextMissionDuration].min}…{missionDurationOptions[nextMissionDuration].max} ядер (обычно +{missionDurationOptions[nextMissionDuration].expected})</p>
                   <button type="button" onClick={acceptMission} disabled={!missionTargetKr}>Принять миссию</button>
                 </div>
               ) : (
@@ -703,7 +846,6 @@ export function GoalsPage() {
                   <h3>Активная миссия</h3>
                   <p><strong>{activeMission.title}</strong></p>
                   <p>Прогресс по дням: {missionProgress}</p>
-                  <p>Диапазон эффекта: +{activeMission.expectedMin}…{activeMission.expectedMax} ядер (обычно +{activeMission.expectedDefault})</p>
                   <button ref={missionDoneButtonRef} type="button" onClick={openMissionConfirm}>Засчитать выполнение</button>
                 </div>
               )}
@@ -737,6 +879,7 @@ export function GoalsPage() {
           <summary onClick={(event) => { event.preventDefault(); setIsForgeOpen((value) => !value) }}>Кузница (для продвинутых)</summary>
           <article className="summary-card panel">
             <h3>Настройка цели</h3>
+            {!editor.isManualTuning ? <p className="goals-pane__hint">Выбран пресет «{selectedPreset.title}». Для ручной настройки включите режим выше.</p> : null}
             <label>Название<input value={editor.title} onChange={(e) => setEditor({ ...editor, title: e.target.value })} /></label>
             <label>Objective<input value={editor.okr.objective} onChange={(e) => setEditor({ ...editor, okr: { ...editor.okr, objective: e.target.value } })} /></label>
             <label>Описание<textarea value={editor.description ?? ''} onChange={(e) => setEditor({ ...editor, description: e.target.value })} /></label>
@@ -747,43 +890,70 @@ export function GoalsPage() {
               </select>
             </label>
 
-            <h4>Веса метрик</h4>
-            {METRICS.map((metric) => (
-              <label key={metric.id}>{metric.labelRu}
-                <input type="range" min={-1} max={1} step={0.1} value={editor.weights[metric.id] ?? 0} onChange={(e) => setEditor({ ...editor, weights: { ...editor.weights, [metric.id]: Number(e.target.value) } })} />
-              </label>
-            ))}
-
-            <h4>KR и прогресс</h4>
-            {editorKeyResults.map((kr, index) => (
-              <div key={kr.id} className="panel" style={{ marginBottom: 8 }}>
-                <strong>KR{index + 1}: {METRICS.find((item) => item.id === kr.metricId)?.labelRu ?? kr.metricId}</strong>
-                <label>
-                  Направление
-                  <select value={kr.direction} onChange={(e) => updateEditorKr(kr.id, { direction: e.target.value as 'up' | 'down' })}>
-                    <option value="up">Вверх</option>
-                    <option value="down">Вниз</option>
-                  </select>
-                </label>
-                <label>
-                  Цель (опционально)
-                  <input type="number" value={kr.target ?? ''} onChange={(e) => updateEditorKr(kr.id, { target: e.target.value ? Number(e.target.value) : undefined })} />
-                </label>
-                <label>
-                  Режим прогресса
-                  <select value={kr.progressMode ?? 'auto'} onChange={(e) => updateEditorKr(kr.id, { progressMode: e.target.value as 'auto' | 'manual' })}>
-                    <option value="auto">Авто</option>
-                    <option value="manual">Ручной</option>
-                  </select>
-                </label>
-                {(kr.progressMode ?? 'auto') === 'manual' ? (
-                  <label>
-                    Progress (0..1)
-                    <input type="number" min={0} max={1} step={0.1} value={kr.progress ?? 0} onChange={(e) => updateEditorKr(kr.id, { progress: clamp01(Number(e.target.value || 0)) })} />
+            {editor.isManualTuning ? (
+              <>
+                <h4>Веса метрик</h4>
+                {METRICS.map((metric) => (
+                  <label key={metric.id}>{metric.labelRu}
+                    <input
+                      type="range"
+                      min={-1}
+                      max={1}
+                      step={0.1}
+                      value={editor.weights[metric.id] ?? 0}
+                      onChange={(e) => setEditor({
+                        ...editor,
+                        weights: { ...editor.weights, [metric.id]: Number(e.target.value) },
+                        manualTuning: {
+                          weights: { ...(editor.manualTuning?.weights ?? editor.weights), [metric.id]: Number(e.target.value) },
+                          horizonDays: editor.manualTuning?.horizonDays ?? editor.horizonDays,
+                          krDirections: editor.manualTuning?.krDirections,
+                        },
+                      })}
+                    />
                   </label>
-                ) : null}
-              </div>
-            ))}
+                ))}
+
+                <h4>KR и прогресс</h4>
+                {editorKeyResults.map((kr, index) => (
+                  <div key={kr.id} className="panel" style={{ marginBottom: 8 }}>
+                    <strong>KR{index + 1}: {METRICS.find((item) => item.id === kr.metricId)?.labelRu ?? kr.metricId}</strong>
+                    <label>
+                      Направление
+                      <select value={kr.direction} onChange={(e) => updateEditorKr(kr.id, { direction: e.target.value as 'up' | 'down' })}>
+                        <option value="up">Вверх</option>
+                        <option value="down">Вниз</option>
+                      </select>
+                    </label>
+                    <label>
+                      Режим прогресса
+                      <select value={kr.progressMode ?? 'auto'} onChange={(e) => updateEditorKr(kr.id, { progressMode: e.target.value as 'auto' | 'manual' })}>
+                        <option value="auto">Авто</option>
+                        <option value="manual">Ручной</option>
+                      </select>
+                    </label>
+                    {showDebugNumbers ? (
+                      <>
+                        <label>
+                          Цель (debug)
+                          <input type="number" value={kr.target ?? ''} onChange={(e) => updateEditorKr(kr.id, { target: e.target.value ? Number(e.target.value) : undefined })} />
+                        </label>
+                        {(kr.progressMode ?? 'auto') === 'manual' ? (
+                          <label>
+                            Progress (0..1) debug
+                            <input type="number" min={0} max={1} step={0.1} value={kr.progress ?? 0} onChange={(e) => updateEditorKr(kr.id, { progress: clamp01(Number(e.target.value || 0)) })} />
+                          </label>
+                        ) : null}
+                      </>
+                    ) : null}
+                  </div>
+                ))}
+                <label className="goals-debug-toggle">
+                  <input type="checkbox" checked={showDebugNumbers} onChange={(e) => setShowDebugNumbers(e.target.checked)} />
+                  Показать числа (debug)
+                </label>
+              </>
+            ) : null}
 
             {scoring ? (
               <div>

@@ -3380,3 +3380,33 @@ button.danger { background: color-mix(in srgb, #e45959 30%, var(--panel) 70%); b
     transition: none;
   }
 }
+
+.goals-mode-panel {
+  margin-bottom: var(--space-3);
+}
+
+.goals-mode-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.goals-mode-grid .filter-button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.goals-mode-grid .filter-button span {
+  font-size: 0.82rem;
+  color: var(--muted);
+  text-align: left;
+}
+
+.goals-debug-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
