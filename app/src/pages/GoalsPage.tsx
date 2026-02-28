@@ -114,6 +114,15 @@ const modePresets: Array<{
 
 const modePresetsMap = Object.fromEntries(modePresets.map((preset) => [preset.id, preset])) as Record<GoalModePresetId, (typeof modePresets)[number]>
 
+type ForestTab = 'active' | 'archived' | 'trashed'
+type ForestSort = 'recent' | 'progress' | 'preset'
+
+const forestTabLabels: Record<ForestTab, string> = {
+  active: 'Активные',
+  archived: 'Архив',
+  trashed: 'Корзина',
+}
+
 function buildPresetKrs(presetId: GoalModePresetId): GoalKeyResult[] {
   const preset = modePresetsMap[presetId]
   return preset.keyMetrics.map((metricId, index) => createKrFromMetric(metricId, (preset.weights[metricId] ?? 0) >= 0 ? 'up' : 'down', index, `Ключевая ветвь режима «${preset.title}».`))
@@ -203,6 +212,9 @@ export function GoalsPage() {
   const [seedTitle, setSeedTitle] = useState('')
   const [seedHorizon, setSeedHorizon] = useState<7 | 14 | 30>(14)
   const [duplicateCandidate, setDuplicateCandidate] = useState<GoalRecord | null>(null)
+  const [forestTab, setForestTab] = useState<ForestTab>('active')
+  const [forestSearch, setForestSearch] = useState('')
+  const [forestSort, setForestSort] = useState<ForestSort>('recent')
   const [isForgeOpen, setIsForgeOpen] = useState(false)
   const [showDebugNumbers, setShowDebugNumbers] = useState(false)
   const forgeOpenButtonRef = useRef<HTMLButtonElement | null>(null)
@@ -484,7 +496,7 @@ export function GoalsPage() {
   const submitSeed = async (forceCreate = false) => {
     const normalizedTitle = seedTitle.trim()
     if (!normalizedTitle) return
-    const duplicate = goals.find((item) => item.title.trim().toLowerCase() === normalizedTitle.toLowerCase())
+    const duplicate = goals.find((item) => item.status === 'active' && item.title.trim().toLowerCase() === normalizedTitle.toLowerCase())
     if (duplicate && !forceCreate) {
       setDuplicateCandidate(duplicate)
       return
@@ -499,7 +511,7 @@ export function GoalsPage() {
       title: normalizedTitle,
       description: tpl.description,
       horizonDays: seedHorizon,
-      status: 'draft',
+      status: 'active',
       template: seedTemplate,
       weights: tpl.weights,
       okr: { objective: tpl.objective, keyResults },
@@ -900,6 +912,89 @@ export function GoalsPage() {
   }
 
 
+  const goalProgressMap = useMemo(() => {
+    const map = new Map<string, number>()
+    goals.forEach((goal) => {
+      if (!goalState) return
+      const evalResult = evaluateGoalScore(goal, goalState)
+      map.set(goal.id, evalResult.goalScore)
+    })
+    return map
+  }, [goals, goalState])
+
+  const visibleForestGoals = useMemo(() => {
+    const query = forestSearch.trim().toLowerCase()
+    return goals
+      .filter((goal) => goal.status === forestTab)
+      .filter((goal) => (query ? goal.title.toLowerCase().includes(query) : true))
+      .sort((a, b) => {
+        if (forestSort === 'progress') {
+          return (goalProgressMap.get(b.id) ?? -Infinity) - (goalProgressMap.get(a.id) ?? -Infinity)
+        }
+        if (forestSort === 'preset') {
+          return String(a.modePresetId ?? '').localeCompare(String(b.modePresetId ?? ''), 'ru')
+        }
+        return b.updatedAt - a.updatedAt
+      })
+  }, [forestSearch, forestSort, forestTab, goalProgressMap, goals])
+
+  const groves = useMemo(() => {
+    const map = new Map<string, GoalRecord[]>()
+    visibleForestGoals.forEach((goal) => {
+      const key = goal.groveId?.trim() || 'Без рощи'
+      map.set(key, [...(map.get(key) ?? []), goal])
+    })
+    return [['Все рощи', visibleForestGoals], ...Array.from(map.entries())] as Array<[string, GoalRecord[]]>
+  }, [visibleForestGoals])
+
+  const activeRoots = useMemo(() => goals.filter((goal) => goal.status === 'active' && !goal.parentGoalId), [goals])
+
+  const archiveGoal = async (goal: GoalRecord) => {
+    await updateGoal(goal.id, { status: 'archived', active: false })
+    await reload()
+  }
+
+  const trashGoal = async (goal: GoalRecord) => {
+    await updateGoal(goal.id, { status: 'trashed', active: false, trashedAt: new Date().toISOString() })
+    await reload()
+  }
+
+  const restoreGoal = async (goal: GoalRecord) => {
+    await updateGoal(goal.id, { status: 'active', trashedAt: undefined })
+    await reload()
+  }
+
+  const deleteForever = async (goal: GoalRecord) => {
+    if (!window.confirm(`Удалить цель «${goal.title}» навсегда?`)) return
+    const { db } = await import('../core/storage/db')
+    await db.goals.delete(goal.id)
+    await reload()
+  }
+
+  const renameGoal = async (goal: GoalRecord) => {
+    const next = window.prompt('Новое имя цели', goal.title)?.trim()
+    if (!next) return
+    await updateGoal(goal.id, { title: next })
+    await reload()
+  }
+
+  const assignGrove = async (goal: GoalRecord) => {
+    const next = window.prompt('Название рощи (пусто = Без рощи)', goal.groveId ?? '')
+    if (next == null) return
+    await updateGoal(goal.id, { groveId: next.trim() || undefined })
+    await reload()
+  }
+
+  const moveToSuperGoal = async (goal: GoalRecord) => {
+    const options = activeRoots.filter((item) => item.id !== goal.id)
+    const defaultValue = goal.parentGoalId ?? ''
+    const selectedParentId = window.prompt(`ID супер-цели (пусто = убрать):\n${options.map((item) => `${item.id}: ${item.title}`).join('\n')}`, defaultValue)
+    if (selectedParentId == null) return
+    await updateGoal(goal.id, { parentGoalId: selectedParentId.trim() || undefined })
+    await reload()
+  }
+
+
   return (
     <section className="goals-page">
       <div className="goals-page__topbar">
@@ -934,44 +1029,89 @@ export function GoalsPage() {
       <div className="goals-aaa-grid">
         <article className="panel goals-pane goals-pane--forest goals-forest">
           <h2>Лес целей</h2>
-          <p className="goals-pane__hint">Список целей прокручивается внутри панели.</p>
+          <p className="goals-pane__hint">Портфель целей: активные, архив и корзина.</p>
           <button type="button" onClick={startSeed}>Посадить семя</button>
+          <div className="settings-actions">
+            {(['active', 'archived', 'trashed'] as ForestTab[]).map((tab) => (
+              <button key={tab} type="button" className={forestTab === tab ? 'filter-button filter-button--active' : 'filter-button'} onClick={() => setForestTab(tab)}>{forestTabLabels[tab]}</button>
+            ))}
+          </div>
+          <label>
+            Поиск
+            <input value={forestSearch} onChange={(event) => setForestSearch(event.target.value)} placeholder="Название цели" />
+          </label>
+          <label>
+            Сортировка
+            <select value={forestSort} onChange={(event) => setForestSort(event.target.value as ForestSort)}>
+              <option value="recent">Недавние</option>
+              <option value="progress">По прогрессу</option>
+              <option value="preset">По режиму</option>
+            </select>
+          </label>
           <div className="goals-forest__list">
-            {goals.length === 0 ? (
+            {visibleForestGoals.length === 0 ? (
               <div className="goals-pane__empty">
-                <p><strong>Пока нет целей.</strong></p>
-                <p>Начните с одного семени и выберите горизонт в 7, 14 или 30 дней.</p>
+                <p><strong>В этой вкладке пока пусто.</strong></p>
               </div>
             ) : (
-              <ul>
-                {goals.map((goal) => (
-                  <li key={goal.id}>
-                    <button
-                      type="button"
-                      className={selectedGoalId === goal.id ? 'filter-button filter-button--active' : 'filter-button'}
-                      onClick={() => {
-                        setSelectedGoalId(goal.id)
-                        setEditor(goal)
-                      }}
-                    >
-                      {goal.title} {goal.active ? '· Активна' : ''} {goal.status === 'archived' ? '· Архив' : ''}
-                    </button>
-                  </li>
-                ))}
-              </ul>
+              groves.map(([groveTitle, groveGoals]) => (
+                <details key={groveTitle} open>
+                  <summary>{groveTitle} · {groveGoals.length}</summary>
+                  <ul>
+                    {groveGoals.map((goal) => {
+                      const children = goals.filter((item) => item.parentGoalId === goal.id && item.status === forestTab)
+                      const progress = goalProgressMap.get(goal.id)
+                      return (
+                        <li key={goal.id}>
+                          <button
+                            type="button"
+                            className={selectedGoalId === goal.id ? 'filter-button filter-button--active' : 'filter-button'}
+                            onClick={() => {
+                              setSelectedGoalId(goal.id)
+                              setEditor(goal)
+                            }}
+                          >
+                            {goal.title} {goal.active ? '· Активна' : ''} {goal.parentGoalId ? '· Дочерняя' : ''} {children.length ? `· Супер-цель (${children.length})` : ''} {typeof progress === 'number' ? `· ${Math.round(progress)}%` : ''}
+                          </button>
+                          <div className="settings-actions">
+                            <button type="button" onClick={async () => { await setActiveGoal(goal.id); await reload() }} disabled={goal.status !== 'active'}>Сделать активной</button>
+                            <button type="button" onClick={async () => { await renameGoal(goal) }}>Переименовать</button>
+                            <button type="button" onClick={async () => { await assignGrove(goal) }}>Назначить рощу</button>
+                            <button type="button" onClick={async () => { await moveToSuperGoal(goal) }}>{goal.parentGoalId ? 'Убрать из супер-цели' : 'В супер-цель'}</button>
+                            {goal.status === 'active' ? <button type="button" onClick={async () => { await archiveGoal(goal) }}>Архивировать</button> : null}
+                            {goal.status !== 'trashed' ? <button type="button" onClick={async () => { await trashGoal(goal) }}>В корзину</button> : null}
+                            {goal.status !== 'active' ? <button type="button" onClick={async () => { await restoreGoal(goal) }}>Восстановить</button> : null}
+                            {goal.status === 'trashed' ? <button type="button" onClick={async () => { await deleteForever(goal) }}>Удалить навсегда</button> : null}
+                          </div>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </details>
+              ))
             )}
           </div>
         </article>
 
         <article className="panel goals-pane goals-pane--stage">
           {selected ? (
-            <GoalYggdrasilTree
-              objective={selected.okr.objective}
-              branches={yggdrasilBranches}
-              selectedBranchId={selectedKrId}
-              onSelectBranch={setSelectedKrId}
-              resetSignal={stageResetSignal}
-            />
+            <>
+              <GoalYggdrasilTree
+                objective={selected.okr.objective}
+                branches={yggdrasilBranches}
+                selectedBranchId={selectedKrId}
+                onSelectBranch={setSelectedKrId}
+                resetSignal={stageResetSignal}
+              />
+              {goals.some((item) => item.parentGoalId === selected.id && item.status === 'active') ? (
+                <section className="summary-card">
+                  <h3>Дочерние деревья супер-цели</h3>
+                  <ul>
+                    {goals.filter((item) => item.parentGoalId === selected.id && item.status === 'active').map((child) => <li key={child.id}>{child.title}</li>)}
+                  </ul>
+                </section>
+              ) : null}
+            </>
           ) : (
             <div className="goals-pane__empty goals-pane__empty--stage">
               <p><strong>Выберите цель, чтобы увидеть сцену дерева.</strong></p>
@@ -1225,7 +1365,7 @@ export function GoalsPage() {
             </label>
             {duplicateCandidate ? (
               <div>
-                <p>Такая цель уже есть: открыть её?</p>
+                <p>Похожая цель уже есть среди активных: открыть её?</p>
                 <div className="settings-actions">
                   <button type="button" onClick={() => { setSelectedGoalId(duplicateCandidate.id); setEditor(duplicateCandidate); closeSeedModal() }}>Открыть</button>
                   <button type="button" onClick={async () => { await submitSeed(true) }}>Всё равно создать</button>

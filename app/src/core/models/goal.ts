@@ -1,6 +1,6 @@
 import type { MetricId } from '../metrics'
 
-export type GoalStatus = 'active' | 'draft' | 'archived'
+export type GoalStatus = 'active' | 'archived' | 'trashed'
 export type GoalModePresetId = 'balance' | 'recovery' | 'sprint' | 'finance' | 'social-shield'
 
 export interface GoalManualTuning {
@@ -83,6 +83,9 @@ export interface GoalRecord {
     maxEntropy?: number
   }
   status: GoalStatus
+  trashedAt?: string
+  groveId?: string
+  parentGoalId?: string
 }
 
 export interface GoalEventRecord {
