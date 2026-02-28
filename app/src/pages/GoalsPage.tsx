@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { METRICS, type MetricId } from '../core/metrics'
-import type { GoalKeyResult, GoalMission, GoalMissionAction, GoalRecord } from '../core/models/goal'
+import type { GoalKeyResult, GoalRecord } from '../core/models/goal'
 import {
   addGoalEvent,
   createGoal,
@@ -47,6 +47,31 @@ const templates: Record<GoalTemplateId, { title: string; description: string; we
     objective: 'Улучшаю cashflow и контроль решений.',
     weights: { cashFlow: 0.8, productivity: 0.4, stress: -0.4 },
   },
+}
+
+
+
+const missionTemplatesByMetric: Record<MetricId, string[]> = {
+  sleepHours: ['Ритуал сна 20 минут', 'Отбой на 30 минут раньше', 'Тихий час без экрана перед сном', 'Подготовить спальню до 22:00', 'Подъём в одно и то же время'],
+  energy: ['10 минут прогулка', 'Стакан воды сразу после подъёма', 'Короткая зарядка 7 минут', 'Пауза на восстановление днём', 'Режим воды + еды по графику'],
+  stress: ['3 минуты дыхание', 'Снять один раздражитель', '15 минут без уведомлений', 'Короткая пауза на тело', 'Записать и закрыть тревожную мысль'],
+  focus: ['Один блок глубокой работы 25 минут', 'Отключить отвлечения на первый спринт', 'Сделать главный шаг до обеда', 'План из трёх фокус-задач', 'Пять минут планирования перед стартом'],
+  productivity: ['Закрыть 1 приоритет до 12:00', 'Разобрать список задач на сегодня', 'Сделать 2 коротких спринта', 'Закрыть одну зависшую задачу', 'Подготовить старт следующего дня'],
+  mood: ['Короткая прогулка на свету', '1 действие для подъёма настроения', 'Музыкальная пауза 5 минут', 'Записать три хорошие вещи дня', 'Тёплый контакт с близким человеком'],
+  social: ['Один качественный разговор', 'Сообщение поддержки важному человеку', 'Короткий звонок вместо переписки', '15 минут на живой контакт', 'План одной встречи на неделю'],
+  health: ['10 минут мягкой активности', 'Полезный приём пищи по режиму', 'Пауза на осанку и дыхание', 'Контроль воды за день', 'Короткая разминка между задачами'],
+  cashFlow: ['Проверить один финансовый поток', 'Закрыть один денежный хвост', 'Сделать действие для дохода', 'Разобрать одну расходную утечку', 'Обновить недельный денежный план'],
+}
+
+const missionDurationOptions: Record<1 | 3, { min: number; max: number; expected: number }> = {
+  1: { min: 1, max: 4, expected: 2 },
+  3: { min: 3, max: 8, expected: 5 },
+}
+
+function missionProgressLabel(startedAt: number, durationDays: 1 | 3): string {
+  const passedDays = Math.max(1, Math.ceil((Date.now() - startedAt) / (24 * 60 * 60 * 1000) + 0.01))
+  const capped = Math.min(durationDays, passedDays)
+  return `${capped}/${durationDays}`
 }
 
 function clamp01(value: number): number {
@@ -100,8 +125,13 @@ export function GoalsPage() {
   const [seedHorizon, setSeedHorizon] = useState<7 | 14 | 30>(14)
   const [duplicateCandidate, setDuplicateCandidate] = useState<GoalRecord | null>(null)
   const [isForgeOpen, setIsForgeOpen] = useState(false)
+  const [nextMissionDuration, setNextMissionDuration] = useState<1 | 3>(3)
+  const [missionConfirmOpen, setMissionConfirmOpen] = useState(false)
+  const [missionAwardDraft, setMissionAwardDraft] = useState(5)
   const seedButtonRef = useRef<HTMLButtonElement | null>(null)
   const seedDialogRef = useRef<HTMLDivElement | null>(null)
+  const missionDoneButtonRef = useRef<HTMLButtonElement | null>(null)
+  const missionConfirmDialogRef = useRef<HTMLDivElement | null>(null)
 
   const reload = async () => {
     const [allGoals, active, latestState, latestRegime, checkins, latestForecast] = await Promise.all([
@@ -340,23 +370,21 @@ export function GoalsPage() {
     return actions.find((item) => item.metricId === selectedKrRow.kr.metricId) ?? null
   }, [actions, selectedKrRow])
 
-  const nextMissionStep = useMemo(() => {
-    if (!selectedKrRow) {
-      return 'Выберите ветвь на сцене, чтобы получить следующий шаг.'
-    }
+  const missionTargetKr = selectedKrRow ?? weakestKr ?? null
 
-    const activeMissionStep = selected?.activeMission?.actions.find((item) => !item.done && item.krId === selectedKrRow.kr.id)?.title
-    if (activeMissionStep) return activeMissionStep
-    if (selectedKrAction?.titleRu) return selectedKrAction.titleRu
-    if (selectedKrMetricLabel) {
-      const metricName = selectedKrMetricLabel
-      return `Поддержите ветвь «${metricName}» коротким ритуалом сегодня.`
+  const nextMissionTitle = useMemo(() => {
+    if (!missionTargetKr) return 'Выберите ветвь на сцене, чтобы получить миссию.'
+    const templates = missionTemplatesByMetric[missionTargetKr.kr.metricId] ?? []
+    if (templates.length > 0) {
+      const hash = missionTargetKr.kr.id.split('').reduce((acc, symbol) => acc + symbol.charCodeAt(0), 0)
+      return templates[hash % templates.length]
     }
-    return 'Обновите состояние, чтобы получить следующий шаг.'
-  }, [selected, selectedKrAction, selectedKrMetricLabel, selectedKrRow])
+    return selectedKrAction?.titleRu ?? `Ритуал по ветви «${selectedKrMetricLabel ?? missionTargetKr.kr.metricId}»`
+  }, [missionTargetKr, selectedKrAction, selectedKrMetricLabel])
 
   const activeMission = selected?.activeMission
-  const missionCompleted = Boolean(activeMission?.completedAt)
+  const missionProgress = activeMission ? missionProgressLabel(activeMission.startedAt, activeMission.durationDays) : null
+  const missionHistory = selected?.missionHistory ?? []
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -407,10 +435,9 @@ export function GoalsPage() {
         direction: row.kr.direction,
         rune,
         strength,
-        missions: (selected?.activeMission?.actions ?? [])
-          .filter((action) => action.krId === row.kr.id)
-          .slice(0, 3)
-          .map((action) => ({ id: action.id, title: action.title, done: action.done })),
+        missions: selected?.activeMission && selected.activeMission.krKey === row.kr.id
+          ? [{ id: selected.activeMission.id, title: selected.activeMission.title, done: false }]
+          : [],
         index,
       }
     })
@@ -434,57 +461,119 @@ export function GoalsPage() {
   }
 
   const acceptMission = async () => {
-    if (!selected || !selectedKrRow) return
-    const generatedActions: GoalMissionAction[] = [selectedKrRow.kr].map((kr, index) => {
-      const recommendation = actions.find((item) => item.metricId === kr.metricId)
-      return {
-        id: `${kr.id}-a-${index}`,
-        metricId: kr.metricId,
-        krId: kr.id,
-        done: false,
-        title: recommendation?.titleRu ?? `Ритуал по ветви: ${METRICS.find((item) => item.id === kr.metricId)?.labelRu ?? kr.metricId}`,
-      }
+    if (!selected || !missionTargetKr || activeMission) return
+    const now = Date.now()
+    const missionRange = missionDurationOptions[nextMissionDuration]
+    await updateGoal(selected.id, {
+      activeMission: {
+        id: `mission-${now}`,
+        goalId: selected.id,
+        krKey: missionTargetKr.kr.id,
+        title: nextMissionTitle,
+        durationDays: nextMissionDuration,
+        startedAt: now,
+        endsAt: now + nextMissionDuration * 24 * 60 * 60 * 1000,
+        expectedMin: missionRange.min,
+        expectedMax: missionRange.max,
+        expectedDefault: missionRange.expected,
+      },
     })
-
-    const mission: GoalMission = {
-      id: `mission-${Date.now()}`,
-      createdAt: Date.now(),
-      horizonDays: 3,
-      actions: generatedActions,
-    }
-
-    await updateGoal(selected.id, { activeMission: mission, fruitBadge: undefined })
     await reload()
   }
 
-  const toggleMissionAction = async (actionId: string, done: boolean) => {
-    if (!selected?.activeMission) return
-    const actionsUpdated = selected.activeMission.actions.map((item) => item.id === actionId ? { ...item, done } : item)
-    const completed = actionsUpdated.every((item) => item.done)
+  const openMissionConfirm = () => {
+    if (!activeMission) return
+    setMissionAwardDraft(activeMission.expectedDefault)
+    setMissionConfirmOpen(true)
+  }
 
+  const closeMissionConfirm = () => {
+    setMissionConfirmOpen(false)
+    requestAnimationFrame(() => missionDoneButtonRef.current?.focus())
+  }
+
+  useEffect(() => {
+    if (!missionConfirmOpen) return
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    const focusableSelectors = [
+      'button:not([disabled])',
+      'input:not([disabled])',
+      'select:not([disabled])',
+      'textarea:not([disabled])',
+      '[tabindex]:not([tabindex="-1"])',
+    ].join(',')
+
+    const node = missionConfirmDialogRef.current
+    const focusable = node ? Array.from(node.querySelectorAll<HTMLElement>(focusableSelectors)) : []
+    focusable[0]?.focus()
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!missionConfirmOpen) return
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        closeMissionConfirm()
+        return
+      }
+      if (event.key !== 'Tab') return
+      const dialogNode = missionConfirmDialogRef.current
+      if (!dialogNode) return
+      const trapped = Array.from(dialogNode.querySelectorAll<HTMLElement>(focusableSelectors))
+      if (trapped.length === 0) return
+      const first = trapped[0]
+      const last = trapped[trapped.length - 1]
+      const active = document.activeElement
+      if (!event.shiftKey && active === last) {
+        event.preventDefault()
+        first.focus()
+      } else if (event.shiftKey && active === first) {
+        event.preventDefault()
+        last.focus()
+      }
+    }
+
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('keydown', onKeyDown)
+      document.body.style.overflow = previousOverflow
+    }
+  }, [missionConfirmOpen])
+
+  const confirmMissionCompletion = async () => {
+    if (!selected || !activeMission) return
+    const awarded = Math.max(activeMission.expectedMin, Math.min(activeMission.expectedMax, Math.round(missionAwardDraft)))
     const updatedKrs = selectedKrs.map((kr) => {
-      const completedForKr = actionsUpdated.some((item) => item.krId === kr.id && item.done)
-      if (!completedForKr) return kr
+      if (kr.id !== activeMission.krKey) return kr
       const current = typeof kr.progress === 'number' ? kr.progress : 0
-      return { ...kr, progressMode: 'manual' as const, progress: clamp01(current + 0.34) }
+      const progressBoost = activeMission.durationDays === 1 ? 0.2 : 0.35
+      return { ...kr, progressMode: 'manual' as const, progress: clamp01(current + progressBoost) }
     })
+    const historyItem = {
+      id: `fruit-${Date.now()}`,
+      goalId: selected.id,
+      krKey: activeMission.krKey,
+      title: activeMission.title,
+      durationDays: activeMission.durationDays,
+      completedAt: Date.now(),
+      coresAwarded: awarded,
+    }
 
     await updateGoal(selected.id, {
       okr: { ...selected.okr, keyResults: updatedKrs },
-      activeMission: {
-        ...selected.activeMission,
-        actions: actionsUpdated,
-        completedAt: completed ? Date.now() : undefined,
-        rewardBadge: completed ? '🍎 Плод миссии: 3/3' : undefined,
-      },
-      fruitBadge: completed ? '🍎 Плод миссии' : selected.fruitBadge,
+      activeMission: undefined,
+      missionHistory: [historyItem, ...(selected.missionHistory ?? [])].slice(0, 10),
     })
 
-    if (completed && scoring) {
-      await addGoalEvent({ goalId: selected.id, goalScore: scoring.goalScore + 0.7, goalGap: scoring.goalGap - 0.5 })
+    if (scoring) {
+      const scoreBoost = activeMission.durationDays === 1 ? 0.35 : 0.7
+      await addGoalEvent({ goalId: selected.id, goalScore: scoring.goalScore + scoreBoost, goalGap: scoring.goalGap - scoreBoost })
     }
+
+    closeMissionConfirm()
     await reload()
   }
+
 
   return (
     <section className="goals-page">
@@ -595,32 +684,43 @@ export function GoalsPage() {
               </div>
               <p><strong>Слабая ветвь:</strong> {weakestKr ? (METRICS.find((item) => item.id === weakestKr.kr.metricId)?.labelRu ?? weakestKr.kr.metricId) : 'Выберите ветвь'}</p>
               <p><strong>Выбранная ветвь:</strong> {selectedKrMetricLabel ?? 'Выберите ветвь'}</p>
-              <div className="goals-tree-state__top-layer">
-                <p><strong>Следующий шаг:</strong> {nextMissionStep}</p>
-                <button type="button" onClick={acceptMission} disabled={Boolean(activeMission && !missionCompleted)}>Принять миссию</button>
-              </div>
-
-              <h3>Миссия на 3 дня</h3>
-              {activeMission ? (
-                <div className="goals-druid-mission">
-                  <p>Миссия {missionCompleted ? 'выполнена' : 'активна'}.</p>
-                  <ul>
-                    {activeMission.actions
-                      .filter((action) => !selectedKrId || action.krId === selectedKrId)
-                      .map((action) => (
-                      <li key={action.id}>
-                        <label>
-                          <input type="checkbox" checked={action.done} onChange={(e) => { void toggleMissionAction(action.id, e.target.checked) }} /> {action.title}
-                        </label>
-                      </li>
-                      ))}
-                  </ul>
-                  {activeMission.rewardBadge ? <p className="chip">{activeMission.rewardBadge}</p> : null}
-                  {selected.fruitBadge ? <p className="chip">{selected.fruitBadge}</p> : null}
+              {!activeMission ? (
+                <div className="goals-tree-state__top-layer">
+                  <h3>Следующая миссия</h3>
+                  <label>
+                    Длительность
+                    <select value={nextMissionDuration} onChange={(event) => setNextMissionDuration(Number(event.target.value) as 1 | 3)}>
+                      <option value={1}>1 день</option>
+                      <option value={3}>3 дня</option>
+                    </select>
+                  </label>
+                  <p><strong>Миссия:</strong> {nextMissionTitle}</p>
+                  <p><strong>Эффект:</strong> +{missionDurationOptions[nextMissionDuration].min}…{missionDurationOptions[nextMissionDuration].max} ядер (обычно +{missionDurationOptions[nextMissionDuration].expected})</p>
+                  <button type="button" onClick={acceptMission} disabled={!missionTargetKr}>Принять миссию</button>
                 </div>
               ) : (
-                <p className="goals-pane__hint">Миссия ещё не принята.</p>
+                <div className="goals-druid-mission">
+                  <h3>Активная миссия</h3>
+                  <p><strong>{activeMission.title}</strong></p>
+                  <p>Прогресс по дням: {missionProgress}</p>
+                  <p>Диапазон эффекта: +{activeMission.expectedMin}…{activeMission.expectedMax} ядер (обычно +{activeMission.expectedDefault})</p>
+                  <button ref={missionDoneButtonRef} type="button" onClick={openMissionConfirm}>Засчитать выполнение</button>
+                </div>
               )}
+
+              <div className="goals-druid-mission">
+                <h3>Последние плоды</h3>
+                {missionHistory.length === 0 ? <p className="goals-pane__hint">Плодов пока нет.</p> : null}
+                {missionHistory.length > 0 ? (
+                  <ul>
+                    {missionHistory.map((item) => (
+                      <li key={item.id}>
+                        {item.title} · {item.durationDays}/{item.durationDays} · +{item.coresAwarded} ядер
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
             </>
           ) : (
             <div className="goals-pane__empty">
@@ -649,7 +749,7 @@ export function GoalsPage() {
 
             <h4>Веса метрик</h4>
             {METRICS.map((metric) => (
-              <label key={metric.id}>{metric.labelRu}: {(editor.weights[metric.id] ?? 0).toFixed(2)}
+              <label key={metric.id}>{metric.labelRu}
                 <input type="range" min={-1} max={1} step={0.1} value={editor.weights[metric.id] ?? 0} onChange={(e) => setEditor({ ...editor, weights: { ...editor.weights, [metric.id]: Number(e.target.value) } })} />
               </label>
             ))}
@@ -687,10 +787,8 @@ export function GoalsPage() {
 
             {scoring ? (
               <div>
-                <p>Сила роста: <strong>{scoring.goalScore.toFixed(1)}</strong>{historyTrend ? ` (${historyTrend === 'up' ? '↑' : '↓'})` : ''}</p>
-                <p>Насколько далеко: <strong>{scoring.goalGap >= 0 ? '+' : ''}{scoring.goalGap.toFixed(1)}</strong></p>
-                <p>Прогресс цели: <strong>{goalState?.index.toFixed(1)}</strong></p>
-                <p>Риск шторма: <strong>{((goalState?.pCollapse ?? 0) * 100).toFixed(1)}%</strong></p>
+                <p>Сила роста: <strong>{historyTrend === 'up' ? 'Усиливается' : historyTrend === 'down' ? 'Ослабевает' : 'Стабильна'}</strong></p>
+                <p>Текущий вектор: <strong>{treeState?.label ?? 'N/A'}</strong></p>
               </div>
             ) : null}
 
@@ -701,6 +799,32 @@ export function GoalsPage() {
             </div>
           </article>
         </details>
+      ) : null}
+
+
+
+      {missionConfirmOpen && activeMission ? (
+        <div className="goals-modal-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) closeMissionConfirm() }}>
+          <div ref={missionConfirmDialogRef} className="panel goals-modal" role="dialog" aria-modal="true" aria-label="Подтвердить выполнение миссии">
+            <h2>Сколько ядер реально дал этот квест?</h2>
+            <label>
+              Ядра эффекта
+              <input
+                type="range"
+                min={activeMission.expectedMin}
+                max={activeMission.expectedMax}
+                step={1}
+                value={missionAwardDraft}
+                onChange={(event) => setMissionAwardDraft(Number(event.target.value))}
+              />
+            </label>
+            <p><strong>{missionAwardDraft}</strong> ядер (доступно {activeMission.expectedMin}…{activeMission.expectedMax})</p>
+            <div className="settings-actions">
+              <button type="button" onClick={async () => { await confirmMissionCompletion() }}>Подтвердить</button>
+              <button type="button" onClick={closeMissionConfirm}>Отмена</button>
+            </div>
+          </div>
+        </div>
       ) : null}
 
       {seedModalOpen ? (

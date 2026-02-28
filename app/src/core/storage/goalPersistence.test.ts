@@ -60,7 +60,7 @@ describe('goals persistence', () => {
     expect(rows[1].goalScore).toBe(55.1)
   })
 
-  it('сохраняет KR прогресс и активную миссию', async () => {
+  it('сохраняет KR прогресс, активную миссию и историю плодов', async () => {
     const { createGoal, updateGoal, listGoals } = await import('./repo')
 
     const goal = await createGoal({
@@ -77,19 +77,31 @@ describe('goals persistence', () => {
     await updateGoal(goal.id, {
       activeMission: {
         id: 'mission-1',
-        createdAt: 100,
-        horizonDays: 3,
-        actions: [{ id: 'a1', title: 'Сделать шаг', metricId: 'focus', krId: 'kr-focus', done: true }],
-        completedAt: 200,
-        rewardBadge: '🍎 Плод миссии: 1/1',
+        goalId: goal.id,
+        krKey: 'kr-focus',
+        title: 'Ритуал фокуса',
+        durationDays: 3,
+        startedAt: 100,
+        endsAt: 300,
+        expectedMin: 3,
+        expectedMax: 8,
+        expectedDefault: 5,
       },
-      fruitBadge: '🍎 Плод миссии',
+      missionHistory: [{
+        id: 'fruit-1',
+        goalId: goal.id,
+        krKey: 'kr-focus',
+        title: 'Ритуал фокуса',
+        durationDays: 3,
+        completedAt: 200,
+        coresAwarded: 6,
+      }],
     })
 
     const rows = await listGoals()
     expect(rows[0].okr.keyResults[0].progress).toBe(0.4)
-    expect(rows[0].activeMission?.actions).toHaveLength(1)
-    expect(rows[0].activeMission?.rewardBadge).toContain('Плод')
-    expect(rows[0].fruitBadge).toContain('Плод')
+    expect(rows[0].activeMission?.expectedDefault).toBe(5)
+    expect(rows[0].missionHistory).toHaveLength(1)
+    expect(rows[0].missionHistory?.[0].coresAwarded).toBe(6)
   })
 })

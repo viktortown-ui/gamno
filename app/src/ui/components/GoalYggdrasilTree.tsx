@@ -438,6 +438,7 @@ export function GoalYggdrasilTree({ objective, branches, selectedBranchId, onSel
                         className={`goal-yggdrasil__node-core goal-yggdrasil__node-core--${branch.strength} ${isSelected ? 'goal-yggdrasil__node-core--selected' : ''}`}
                         filter="url(#nodeGlow)"
                       />
+                      {sceneBranches.find((item) => item.id === branch.id)?.missions.length ? <circle cx="14" cy="-14" r="5" className="goal-yggdrasil__mission-fruit" /> : null}
                     </g>
                     {showLabel ? (
                       <text x={krNode.x + 15} y={krNode.y + 5} className={`goal-yggdrasil__node-label ${isSelected ? 'goal-yggdrasil__node-label--selected' : ''}`}>

@@ -12,21 +12,27 @@ export interface GoalKeyResult {
   note?: string
 }
 
-export interface GoalMissionAction {
+export interface GoalActiveMission {
   id: string
+  goalId: string
+  krKey: string
   title: string
-  metricId: MetricId
-  krId: string
-  done: boolean
+  durationDays: 1 | 3
+  startedAt: number
+  endsAt: number
+  expectedMin: number
+  expectedMax: number
+  expectedDefault: number
 }
 
-export interface GoalMission {
+export interface GoalMissionHistoryItem {
   id: string
-  createdAt: number
-  horizonDays: number
-  actions: GoalMissionAction[]
-  completedAt?: number
-  rewardBadge?: string
+  goalId: string
+  krKey: string
+  title: string
+  durationDays: 1 | 3
+  completedAt: number
+  coresAwarded: number
 }
 
 export interface GoalRecord {
@@ -42,8 +48,8 @@ export interface GoalRecord {
     objective: string
     keyResults: GoalKeyResult[]
   }
-  activeMission?: GoalMission
-  fruitBadge?: string
+  activeMission?: GoalActiveMission
+  missionHistory?: GoalMissionHistoryItem[]
   template?: 'growth' | 'anti-storm' | 'energy-balance' | 'money'
   targetIndex?: number
   targetPCollapse?: number
