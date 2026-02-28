@@ -17,6 +17,11 @@ export interface YggdrasilBranch {
   direction: 'up' | 'down'
   rune: 'I' | 'II' | 'III' | 'IV' | 'V'
   strength: BranchStrength
+  priorityBand: 'low' | 'medium' | 'high'
+  isTopPriority?: boolean
+  isWeak?: boolean
+  missionEffectCores: { min: number; max: number }
+  missionDayLabel?: string
   missions: YggdrasilMissionLeaf[]
 }
 
@@ -34,6 +39,11 @@ interface TreeHierarchyNode {
   title: string
   strength?: BranchStrength
   direction?: 'up' | 'down'
+  priorityBand?: 'low' | 'medium' | 'high'
+  isTopPriority?: boolean
+  isWeak?: boolean
+  missionEffectCores?: { min: number; max: number }
+  missionDayLabel?: string
   children?: TreeHierarchyNode[]
 }
 
@@ -126,6 +136,7 @@ export function GoalYggdrasilTree({ objective, branches, selectedBranchId, onSel
   const [transform, setTransform] = useState<ZoomTransform>(zoomIdentity)
   const [viewSize, setViewSize] = useState({ width: DEFAULT_SCENE_WIDTH, height: DEFAULT_SCENE_HEIGHT })
   const [isMobile, setIsMobile] = useState(false)
+  const [hoveredBranchId, setHoveredBranchId] = useState<string | null>(null)
   const sceneRef = useRef<SVGSVGElement | null>(null)
   const sceneWrapRef = useRef<HTMLDivElement | null>(null)
   const treeViewportRef = useRef<SVGGElement | null>(null)
@@ -176,6 +187,11 @@ export function GoalYggdrasilTree({ objective, branches, selectedBranchId, onSel
         title: branch.title,
         strength: branch.strength,
         direction: branch.direction,
+        priorityBand: branch.priorityBand,
+        isTopPriority: branch.isTopPriority,
+        isWeak: branch.isWeak,
+        missionEffectCores: branch.missionEffectCores,
+        missionDayLabel: branch.missionDayLabel,
       })),
     })
 
@@ -397,8 +413,11 @@ export function GoalYggdrasilTree({ objective, branches, selectedBranchId, onSel
                 const curve = branchCurve(rootNode.x, rootNode.y + 14, krNode.x, krNode.y, sway)
                 const centerPath = branchPath(rootNode.x, rootNode.y + 14, krNode.x, krNode.y, sway)
                 const branchBaseWidth = branch.strength === 'strong' ? 17 : branch.strength === 'normal' ? 14 : 11
-                const ribbonPath = makeRibbonPath(curve, branchBaseWidth * 1.35, branchBaseWidth * 0.78)
+                const branchWidthScale = branch.priorityBand === 'high' ? 1.2 : branch.priorityBand === 'medium' ? 1 : 0.8
+                const ribbonPath = makeRibbonPath(curve, branchBaseWidth * 1.35 * branchWidthScale, branchBaseWidth * 0.78 * branchWidthScale)
                 const particleCount = 10 + (hashSeed(`${branch.id}-leaf-count`) % 21)
+                const isHovered = hoveredBranchId === branch.id
+                const showEffectHint = (isSelected || isHovered) && branch.missionEffectCores
                 const particles = Array.from({ length: particleCount }, (_, index) => {
                   const seed = hashSeed(`${branch.id}-${index}`)
                   const angle = (seed % 360) * (Math.PI / 180)
@@ -413,6 +432,8 @@ export function GoalYggdrasilTree({ objective, branches, selectedBranchId, onSel
                   <g
                     key={branch.id}
                     className={`goal-yggdrasil__branch-group ${isSelected ? 'goal-yggdrasil__branch-group--selected' : ''} ${isDimmed ? 'goal-yggdrasil__branch-group--dimmed' : ''}`}
+                    onMouseEnter={() => setHoveredBranchId(branch.id)}
+                    onMouseLeave={() => setHoveredBranchId((current) => (current === branch.id ? null : current))}
                   >
                     <path
                       d={ribbonPath}
@@ -432,6 +453,10 @@ export function GoalYggdrasilTree({ objective, branches, selectedBranchId, onSel
                         ))}
                       </g>
                       <circle className="goal-yggdrasil__node-hit" r="22" onClick={() => onSelectBranch(branch.id)} />
+                      <circle
+                        className={`goal-yggdrasil__priority-halo ${branch.isTopPriority ? 'goal-yggdrasil__priority-halo--visible' : ''}`}
+                        r="24"
+                      />
                       <circle className={`goal-yggdrasil__node-halo goal-yggdrasil__node-halo--${branch.strength}`} r="17" />
                       <path
                         d="M-2,-11 C7,-10 13,-3 10,6 C7,14 -5,14 -11,8 C-15,3 -12,-6 -2,-11 Z"
@@ -439,6 +464,21 @@ export function GoalYggdrasilTree({ objective, branches, selectedBranchId, onSel
                         filter="url(#nodeGlow)"
                       />
                       {sceneBranches.find((item) => item.id === branch.id)?.missions.length ? <circle cx="14" cy="-14" r="5" className="goal-yggdrasil__mission-fruit" /> : null}
+                      {sceneBranches.find((item) => item.id === branch.id)?.missions.length && branch.missionDayLabel ? (
+                        <text x="20" y="-16" className="goal-yggdrasil__mission-day">{branch.missionDayLabel}</text>
+                      ) : null}
+                      {branch.isWeak ? (
+                        <g className="goal-yggdrasil__weak-mark" transform="translate(-20, -18)">
+                          <circle r="8" />
+                          <path d="M-2,-5 L1,-1 L-1,1 L2,5" />
+                        </g>
+                      ) : null}
+                      {showEffectHint && branch.missionEffectCores ? (
+                        <g className="goal-yggdrasil__effect-hint" transform="translate(26, 14)">
+                          <rect x="0" y="-15" width="146" height="24" rx="8" />
+                          <text x="8" y="1">Если выполнить миссию: +{branch.missionEffectCores.min}…{branch.missionEffectCores.max} ядер</text>
+                        </g>
+                      ) : null}
                     </g>
                     {showLabel ? (
                       <text x={krNode.x + 15} y={krNode.y + 5} className={`goal-yggdrasil__node-label ${isSelected ? 'goal-yggdrasil__node-label--selected' : ''}`}>
