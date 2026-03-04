@@ -27,6 +27,7 @@ import { ForgePreview } from './goals/components/ForgePreview'
 import { AdvancedTuning } from './goals/components/AdvancedTuning'
 import { dayKeyFromTs } from '../core/utils/dayKey'
 import { buildMissionSuggestion, missionEffectRange, type MissionTag } from './goals/missionPlanner'
+import { buildGoalAutoLinkSuggestions } from '../core/engines/goal/autoLinkSuggestions'
 
 type GoalTemplateId = 'growth' | 'anti-storm' | 'energy-balance' | 'money'
 
@@ -258,6 +259,9 @@ export function GoalsPage() {
   const [missionConfirmOpen, setMissionConfirmOpen] = useState(false)
   const [missionAwardDraft, setMissionAwardDraft] = useState(5)
   const [supportsExpanded, setSupportsExpanded] = useState(false)
+  const [showAutoLinkSuggestions, setShowAutoLinkSuggestions] = useState(false)
+  const [hiddenAutoSuggestionKeys, setHiddenAutoSuggestionKeys] = useState<Record<string, true>>({})
+  const [suggestionTypeDraftByGoalId, setSuggestionTypeDraftByGoalId] = useState<Record<string, GoalLinkType>>({})
   const [hiddenConflictDayKeyByGoal, setHiddenConflictDayKeyByGoal] = useState<Record<string, string>>({})
   const seedButtonRef = useRef<HTMLButtonElement | null>(null)
   const seedDialogRef = useRef<HTMLDivElement | null>(null)
@@ -357,6 +361,12 @@ export function GoalsPage() {
     return goals.filter((goal) => ids.has(goal.id))
   }, [goals, selectedLinksByType.depends_on])
 
+  const autoLinkSuggestions = useMemo(() => {
+    if (!selected) return []
+    return buildGoalAutoLinkSuggestions(selected, goals)
+      .filter((item) => !hiddenAutoSuggestionKeys[`${item.sourceGoalId}->${item.targetGoalId}`])
+  }, [goals, hiddenAutoSuggestionKeys, selected])
+
   const conflictAvoidTags = useMemo(() => {
     const tags = new Set<MissionTag>()
     for (const goal of conflictLinkedGoals) {
@@ -373,6 +383,10 @@ export function GoalsPage() {
 
   useEffect(() => {
     setSupportsExpanded(false)
+  }, [selected?.id])
+
+  useEffect(() => {
+    setShowAutoLinkSuggestions(false)
   }, [selected?.id])
 
   const selectedPreset = useMemo(() => {
@@ -1226,6 +1240,21 @@ export function GoalsPage() {
     await reload()
   }
 
+  const confirmAutoSuggestion = async (targetGoalId: string) => {
+    if (!selected) return
+    const suggestedType = suggestionTypeDraftByGoalId[targetGoalId] ?? 'supports'
+    const existing = selected.links ?? []
+    if (existing.some((item) => item.toGoalId === targetGoalId && item.type === suggestedType)) return
+    await updateGoal(selected.id, { links: [...existing, { toGoalId: targetGoalId, type: suggestedType }] })
+    setHiddenAutoSuggestionKeys((current) => ({ ...current, [`${selected.id}->${targetGoalId}`]: true }))
+    await reload()
+  }
+
+  const hideAutoSuggestion = (targetGoalId: string) => {
+    if (!selected) return
+    setHiddenAutoSuggestionKeys((current) => ({ ...current, [`${selected.id}->${targetGoalId}`]: true }))
+  }
+
 
   return (
     <section className="goals-page">
@@ -1364,6 +1393,17 @@ export function GoalsPage() {
               {selected ? (
                 <>
                   <h3>Карта корней: {selected.title}</h3>
+                  <div className="goals-roots-map__hint-block">
+                    <p className="goals-pane__hint">Связано по данным, не причина.</p>
+                    <label className="goals-roots-map__toggle">
+                      <input
+                        type="checkbox"
+                        checked={showAutoLinkSuggestions}
+                        onChange={(event) => setShowAutoLinkSuggestions(event.target.checked)}
+                      />
+                      Подсказки
+                    </label>
+                  </div>
                   <div className="goals-roots-map__center">{selected.title}</div>
                   <div className="goals-roots-map__groups">
                     {(['depends_on', 'supports', 'conflicts'] as GoalLinkType[]).map((type) => (
@@ -1377,6 +1417,41 @@ export function GoalsPage() {
                       </section>
                     ))}
                   </div>
+                  {showAutoLinkSuggestions ? (
+                    <section>
+                      <h4>Подозреваемые связи</h4>
+                      {autoLinkSuggestions.length === 0 ? <p className="goals-pane__hint">Недостаточно данных или сильных корреляций.</p> : null}
+                      <ul className="goals-roots-suggestions">
+                        {autoLinkSuggestions.map((item) => {
+                          const relation = item.r >= 0 ? 'движутся вместе' : 'движутся в разные стороны'
+                          return (
+                            <li key={`${item.sourceGoalId}-${item.targetGoalId}`} className="goals-roots-suggestion-item">
+                              <div>
+                                <strong>{goalTitleMap.get(item.targetGoalId) ?? item.targetGoalId}</strong>
+                                <p className="goals-pane__hint">r={item.r.toFixed(2)} · N={item.sampleSize} · {relation}</p>
+                              </div>
+                              <div className="goals-roots-suggestion-actions">
+                                <span className="chip">Уверенность: {item.confidence}</span>
+                                <select
+                                  value={suggestionTypeDraftByGoalId[item.targetGoalId] ?? 'supports'}
+                                  onChange={(event) => {
+                                    const value = event.target.value as GoalLinkType
+                                    setSuggestionTypeDraftByGoalId((current) => ({ ...current, [item.targetGoalId]: value }))
+                                  }}
+                                >
+                                  <option value="supports">Помогает</option>
+                                  <option value="depends_on">Зависит от</option>
+                                  <option value="conflicts">Конфликтует</option>
+                                </select>
+                                <button type="button" onClick={async () => { await confirmAutoSuggestion(item.targetGoalId) }}>Подтвердить</button>
+                                <button type="button" className="ghost-button" onClick={() => hideAutoSuggestion(item.targetGoalId)}>Скрыть</button>
+                              </div>
+                            </li>
+                          )
+                        })}
+                      </ul>
+                    </section>
+                  ) : null}
                 </>
               ) : null}
             </div>
