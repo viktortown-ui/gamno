@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { METRICS, type MetricId } from '../core/metrics'
 import type { GoalKeyResult, GoalLinkType, GoalModePresetId, GoalRecord } from '../core/models/goal'
@@ -229,8 +230,13 @@ export function GoalsPage() {
   const [forestSort, setForestSort] = useState<ForestSort>('recent')
   const [forestViewMode, setForestViewMode] = useState<'forest' | 'roots'>('forest')
   const [forestMenuGoalId, setForestMenuGoalId] = useState<string | null>(null)
+  const [forestMenuStyle, setForestMenuStyle] = useState<CSSProperties | null>(null)
+  const forestMenuTriggerRefs = useRef<Record<string, HTMLButtonElement | null>>({})
+  const forestMenuItemRefs = useRef<Array<HTMLButtonElement | null>>([])
+  const forestListRef = useRef<HTMLDivElement | null>(null)
   useEffect(() => {
     setForestMenuGoalId(null)
+    setForestMenuStyle(null)
   }, [forestTab, forestViewMode, goals])
 
   const [linkModalOpen, setLinkModalOpen] = useState(false)
@@ -1074,6 +1080,93 @@ export function GoalsPage() {
     await reload()
   }
 
+  const closeForestMenu = useCallback((options?: { restoreFocus?: boolean }) => {
+    const restoreFocus = options?.restoreFocus ?? false
+    const goalId = forestMenuGoalId
+    setForestMenuGoalId(null)
+    setForestMenuStyle(null)
+    if (restoreFocus && goalId) {
+      requestAnimationFrame(() => {
+        forestMenuTriggerRefs.current[goalId]?.focus()
+      })
+    }
+  }, [forestMenuGoalId])
+
+  const computeForestMenuStyle = (goalId: string): CSSProperties | null => {
+    const trigger = forestMenuTriggerRefs.current[goalId]
+    if (!trigger) return null
+    const rect = trigger.getBoundingClientRect()
+    const menuWidth = 240
+    const menuHeight = 320
+    const viewportWidth = window.innerWidth
+    const viewportHeight = window.innerHeight
+    const gutter = 8
+
+    let left = rect.right - menuWidth
+    if (left < gutter) {
+      left = Math.min(rect.left, viewportWidth - menuWidth - gutter)
+    }
+    left = Math.max(gutter, Math.min(left, viewportWidth - menuWidth - gutter))
+
+    let top = rect.bottom + 4
+    if (top + menuHeight > viewportHeight - gutter) {
+      top = rect.top - menuHeight - 4
+    }
+    top = Math.max(gutter, Math.min(top, viewportHeight - menuHeight - gutter))
+
+    return {
+      position: 'fixed',
+      top,
+      left,
+      minWidth: `${menuWidth}px`,
+      zIndex: 1200,
+    }
+  }
+
+  useEffect(() => {
+    if (!forestMenuGoalId) return
+    const updatePosition = () => {
+      setForestMenuStyle(computeForestMenuStyle(forestMenuGoalId))
+    }
+    updatePosition()
+    window.addEventListener('resize', updatePosition)
+    window.addEventListener('scroll', updatePosition, true)
+    return () => {
+      window.removeEventListener('resize', updatePosition)
+      window.removeEventListener('scroll', updatePosition, true)
+    }
+  }, [forestMenuGoalId])
+
+  useEffect(() => {
+    if (!forestMenuGoalId) return
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node
+      const activeTrigger = forestMenuTriggerRefs.current[forestMenuGoalId]
+      const menuElement = document.getElementById(`forest-menu-${forestMenuGoalId}`)
+      if (activeTrigger?.contains(target) || menuElement?.contains(target)) return
+      closeForestMenu()
+    }
+    const onForestScroll = () => {
+      closeForestMenu()
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    const forestList = forestListRef.current
+    forestList?.addEventListener('scroll', onForestScroll)
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown)
+      forestList?.removeEventListener('scroll', onForestScroll)
+    }
+  }, [closeForestMenu, forestMenuGoalId])
+
+  useEffect(() => {
+    if (!forestMenuGoalId) return
+    const timer = window.setTimeout(() => {
+      const firstEnabledItem = forestMenuItemRefs.current.find((item) => item && !item.disabled)
+      firstEnabledItem?.focus()
+    }, 0)
+    return () => window.clearTimeout(timer)
+  }, [forestMenuGoalId])
+
   const openLinkModal = () => {
     if (!selected) return
     setLinkSearch('')
@@ -1160,7 +1253,7 @@ export function GoalsPage() {
                   <option value="preset">По режиму</option>
                 </select>
               </label>
-              <div className="goals-forest__list">
+              <div className="goals-forest__list" ref={forestListRef}>
                 {visibleForestGoals.length === 0 ? (
                   <div className="goals-pane__empty">
                     <p><strong>В этой вкладке пока пусто.</strong></p>
@@ -1200,23 +1293,25 @@ export function GoalsPage() {
                                   <button
                                     type="button"
                                     className="filter-button"
+                                    ref={(node) => {
+                                      forestMenuTriggerRefs.current[goal.id] = node
+                                    }}
                                     aria-label={`Открыть меню: ${goal.title}`}
-                                    onClick={() => setForestMenuGoalId((prev) => prev === goal.id ? null : goal.id)}
+                                    aria-haspopup="menu"
+                                    aria-expanded={forestMenuGoalId === goal.id}
+                                    aria-controls={`forest-menu-${goal.id}`}
+                                    onClick={() => {
+                                      setForestMenuGoalId((prev) => {
+                                        if (prev === goal.id) {
+                                          setForestMenuStyle(null)
+                                          return null
+                                        }
+                                        return goal.id
+                                      })
+                                    }}
                                   >
                                     ⋯
                                   </button>
-                                  {forestMenuGoalId === goal.id ? (
-                                    <div className="goals-forest__menu" role="menu" aria-label={`Действия для цели ${goal.title}`}>
-                                      <button type="button" role="menuitem" onClick={async () => { await setActiveGoal(goal.id); await reload(); setForestMenuGoalId(null) }} disabled={goal.status !== 'active'}>Сделать активной</button>
-                                      <button type="button" role="menuitem" onClick={async () => { await renameGoal(goal); setForestMenuGoalId(null) }}>Переименовать</button>
-                                      <button type="button" role="menuitem" onClick={async () => { await assignGrove(goal); setForestMenuGoalId(null) }}>Назначить рощу</button>
-                                      <button type="button" role="menuitem" onClick={async () => { await moveToSuperGoal(goal); setForestMenuGoalId(null) }}>{goal.parentGoalId ? 'Убрать из супер-цели' : 'В супер-цель'}</button>
-                                      {goal.status === 'active' ? <button type="button" role="menuitem" onClick={async () => { await archiveGoal(goal); setForestMenuGoalId(null) }}>Архивировать</button> : null}
-                                      {goal.status !== 'trashed' ? <button type="button" role="menuitem" onClick={async () => { await trashGoal(goal); setForestMenuGoalId(null) }}>В корзину</button> : null}
-                                      {goal.status !== 'active' ? <button type="button" role="menuitem" onClick={async () => { await restoreGoal(goal); setForestMenuGoalId(null) }}>Восстановить</button> : null}
-                                      {goal.status === 'trashed' ? <button type="button" role="menuitem" onClick={async () => { await deleteForever(goal); setForestMenuGoalId(null) }}>Удалить навсегда</button> : null}
-                                    </div>
-                                  ) : null}
                                 </div>
                               </div>
                             </li>
@@ -1251,6 +1346,164 @@ export function GoalsPage() {
               ) : null}
             </div>
           )}
+          {forestMenuGoalId && forestMenuStyle ? createPortal((() => {
+            const menuGoal = goals.find((item) => item.id === forestMenuGoalId)
+            if (!menuGoal) return null
+            const menuItems: Array<{
+              key: string
+              label: string
+              action: () => Promise<void> | void
+              disabled?: boolean
+              danger?: boolean
+            }> = [
+              {
+                key: 'open',
+                label: 'Открыть',
+                action: () => {
+                  setSelectedGoalId(menuGoal.id)
+                  setEditor(menuGoal)
+                },
+              },
+              {
+                key: 'activate',
+                label: 'Сделать активной',
+                action: async () => {
+                  await setActiveGoal(menuGoal.id)
+                  await reload()
+                },
+                disabled: menuGoal.status !== 'active',
+              },
+              {
+                key: 'grove',
+                label: 'Назначить рощу',
+                action: () => assignGrove(menuGoal),
+              },
+              {
+                key: 'super-goal',
+                label: menuGoal.parentGoalId ? 'Убрать из супер-цели' : 'В супер-цель',
+                action: () => moveToSuperGoal(menuGoal),
+              },
+              {
+                key: 'rename',
+                label: 'Переименовать',
+                action: () => renameGoal(menuGoal),
+              },
+              ...(menuGoal.status === 'active' ? [{
+                key: 'archive',
+                label: 'Архивировать',
+                action: () => archiveGoal(menuGoal),
+              }] : []),
+              ...(menuGoal.status !== 'trashed' ? [{
+                key: 'trash',
+                label: 'В корзину',
+                action: () => trashGoal(menuGoal),
+              }] : []),
+              ...(menuGoal.status !== 'active' ? [{
+                key: 'restore',
+                label: 'Восстановить',
+                action: () => restoreGoal(menuGoal),
+              }] : []),
+              ...(menuGoal.status === 'trashed' ? [{
+                key: 'delete-forever',
+                label: 'Удалить навсегда',
+                danger: true,
+                action: () => deleteForever(menuGoal),
+              }] : []),
+            ]
+            const sections: string[][] = [
+              ['open', 'activate'],
+              ['grove', 'super-goal', 'rename'],
+              ['archive', 'trash', 'restore'],
+              ['delete-forever'],
+            ]
+            const keyToItem = new Map(menuItems.map((item) => [item.key, item]))
+            const sectionItems = sections
+              .map((section) => section.map((key) => keyToItem.get(key)).filter(Boolean) as typeof menuItems)
+              .filter((section) => section.length > 0)
+            const flatItems = sectionItems.flat()
+            forestMenuItemRefs.current = []
+
+            const moveFocus = (direction: 1 | -1, fromIndex: number) => {
+              for (let offset = 1; offset <= flatItems.length; offset += 1) {
+                const nextIndex = (fromIndex + direction * offset + flatItems.length) % flatItems.length
+                const candidate = forestMenuItemRefs.current[nextIndex]
+                if (candidate && !candidate.disabled) {
+                  candidate.focus()
+                  return
+                }
+              }
+            }
+
+            const focusBoundary = (target: 'first' | 'last') => {
+              const ordered = target === 'first' ? forestMenuItemRefs.current : [...forestMenuItemRefs.current].reverse()
+              const nextItem = ordered.find((item) => item && !item.disabled)
+              nextItem?.focus()
+            }
+
+            return (
+              <div
+                id={`forest-menu-${menuGoal.id}`}
+                className="goals-forest__menu"
+                style={forestMenuStyle}
+                role="menu"
+                aria-label={`Действия для цели ${menuGoal.title}`}
+              >
+                {sectionItems.map((section, sectionIndex) => (
+                  <div key={`section-${sectionIndex}`} className="goals-forest__menu-section" role="none">
+                    {section.map((item) => {
+                      const itemIndex = flatItems.findIndex((row) => row.key === item.key)
+                      return (
+                        <button
+                          key={item.key}
+                          type="button"
+                          role="menuitem"
+                          tabIndex={-1}
+                          disabled={item.disabled}
+                          className={item.danger ? 'goals-forest__menu-item goals-forest__menu-item--danger' : 'goals-forest__menu-item'}
+                          ref={(node) => {
+                            forestMenuItemRefs.current[itemIndex] = node
+                          }}
+                          onKeyDown={async (event) => {
+                            if (event.key === 'ArrowDown') {
+                              event.preventDefault()
+                              moveFocus(1, itemIndex)
+                            } else if (event.key === 'ArrowUp') {
+                              event.preventDefault()
+                              moveFocus(-1, itemIndex)
+                            } else if (event.key === 'Home') {
+                              event.preventDefault()
+                              focusBoundary('first')
+                            } else if (event.key === 'End') {
+                              event.preventDefault()
+                              focusBoundary('last')
+                            } else if (event.key === 'Escape') {
+                              event.preventDefault()
+                              closeForestMenu({ restoreFocus: true })
+                            } else if (event.key === 'Tab') {
+                              closeForestMenu()
+                            } else if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault()
+                              if (!item.disabled) {
+                                await item.action()
+                                closeForestMenu({ restoreFocus: true })
+                              }
+                            }
+                          }}
+                          onClick={async () => {
+                            if (item.disabled) return
+                            await item.action()
+                            closeForestMenu({ restoreFocus: true })
+                          }}
+                        >
+                          {item.label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                ))}
+              </div>
+            )
+          })(), document.body) : null}
         </article>
 
         <article className="panel goals-pane goals-pane--stage">

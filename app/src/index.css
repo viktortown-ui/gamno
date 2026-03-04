@@ -2990,13 +2990,11 @@ button.danger { background: color-mix(in srgb, #e45959 30%, var(--panel) 70%); b
 }
 
 .goals-forest__menu {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 4px);
-  z-index: 6;
-  min-width: 220px;
+  position: fixed;
+  z-index: 1200;
+  min-width: 240px;
   display: grid;
-  gap: 4px;
+  gap: 6px;
   padding: 6px;
   border-radius: 10px;
   border: 1px solid var(--line);
@@ -3004,9 +3002,19 @@ button.danger { background: color-mix(in srgb, #e45959 30%, var(--panel) 70%); b
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
 }
 
-.goals-forest__menu button {
+.goals-forest__menu-section + .goals-forest__menu-section {
+  border-top: 1px solid var(--line);
+  padding-top: 6px;
+}
+
+.goals-forest__menu-item {
+  width: 100%;
   text-align: left;
   justify-content: flex-start;
+}
+
+.goals-forest__menu-item--danger {
+  color: #ff8d8d;
 }
 .goal-yggdrasil {
   min-height: 0;
