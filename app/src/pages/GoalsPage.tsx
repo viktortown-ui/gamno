@@ -18,6 +18,7 @@ import {
 import { evaluateGoalScore, type GoalStateInput } from '../core/engines/goal'
 import { getLatestForecastRun } from '../repo/forecastRepo'
 import { GoalYggdrasilTree, type BranchStrength } from '../ui/components/GoalYggdrasilTree'
+import { GoalCellsStage } from '../ui/components/GoalCellsStage'
 import { DruidGauge } from './goals/components/DruidGauge'
 import { ForgeSheet } from './goals/components/ForgeSheet'
 import { PresetSelector } from './goals/components/PresetSelector'
@@ -220,6 +221,11 @@ export function GoalsPage() {
   const [historyTrend, setHistoryTrend] = useState<'up' | 'down' | null>(null)
   const [selectedKrId, setSelectedKrId] = useState<string | null>(null)
   const [stageResetSignal, setStageResetSignal] = useState(0)
+  const [goalsStageMode, setGoalsStageMode] = useState<'cells' | 'tree'>(() => {
+    if (typeof window === 'undefined') return 'cells'
+    const stored = window.localStorage.getItem('gamno.goalsStageMode')
+    return stored === 'tree' ? 'tree' : 'cells'
+  })
   const [seedModalOpen, setSeedModalOpen] = useState(false)
   const [seedTemplate, setSeedTemplate] = useState<GoalTemplateId>('growth')
   const [seedTitle, setSeedTitle] = useState('')
@@ -499,6 +505,11 @@ export function GoalsPage() {
     if (scoring.goalGap <= 2) return { label: 'Штормит', toneClass: 'status-badge--mid' }
     return { label: 'Стоит', toneClass: 'status-badge--high' }
   }, [scoring])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    window.localStorage.setItem('gamno.goalsStageMode', goalsStageMode)
+  }, [goalsStageMode])
 
   useEffect(() => {
     let cancelled = false
@@ -797,6 +808,30 @@ export function GoalsPage() {
       }
     })
   }, [krProgressRows, missionProgress, selected, selectedWeights, weakestKr])
+
+  const stageTemperature = useMemo<'hot' | 'cold' | 'neutral'>(() => {
+    if (!scoring || !goalState) return 'neutral'
+    const weakestProgress = weakestKr?.progress ?? 0.5
+    const lowStorm = goalState.pCollapse < 0.3
+    if (historyTrend === 'up' && lowStorm && weakestProgress >= 0.34) return 'hot'
+    if (historyTrend === 'down' || goalState.pCollapse >= 0.35 || weakestProgress < 0.3) return 'cold'
+    return 'neutral'
+  }, [goalState, historyTrend, scoring, weakestKr?.progress])
+
+  const stageLinkSatellites = useMemo(() => {
+    if (!selected) return []
+    return (selected.links ?? [])
+      .map((link) => {
+        const linkedGoal = goals.find((item) => item.id === link.toGoalId)
+        if (!linkedGoal) return null
+        return {
+          goalId: linkedGoal.id,
+          title: linkedGoal.title,
+          type: link.type,
+        }
+      })
+      .filter((item): item is { goalId: string; title: string; type: GoalLinkType } => Boolean(item))
+  }, [goals, selected])
 
   const editorKeyResults = useMemo(() => {
     if (!editor) return []
@@ -1509,13 +1544,34 @@ export function GoalsPage() {
         <article className="panel goals-pane goals-pane--stage">
           {selected ? (
             <>
-              <GoalYggdrasilTree
-                objective={selected.okr.objective}
-                branches={yggdrasilBranches}
-                selectedBranchId={selectedKrId}
-                onSelectBranch={setSelectedKrId}
-                resetSignal={stageResetSignal}
-              />
+              {goalsStageMode === 'cells' ? (
+                <GoalCellsStage
+                  objective={selected.okr.objective}
+                  branches={yggdrasilBranches}
+                  selectedBranchId={selectedKrId}
+                  onSelectBranch={setSelectedKrId}
+                  temperature={stageTemperature}
+                  satellites={stageLinkSatellites}
+                  onSelectSatellite={(goalId) => {
+                    setSelectedGoalId(goalId)
+                    setForestViewMode('forest')
+                  }}
+                  resetSignal={stageResetSignal}
+                />
+              ) : (
+                <GoalYggdrasilTree
+                  objective={selected.okr.objective}
+                  branches={yggdrasilBranches}
+                  selectedBranchId={selectedKrId}
+                  onSelectBranch={setSelectedKrId}
+                  resetSignal={stageResetSignal}
+                />
+              )}
+              <div className="goals-stage-mode-toggle">
+                <button type="button" onClick={() => setGoalsStageMode((value) => value === 'cells' ? 'tree' : 'cells')}>
+                  Stage mode: {goalsStageMode === 'cells' ? 'cells' : 'tree'}
+                </button>
+              </div>
               {goals.some((item) => item.parentGoalId === selected.id && item.status === 'active') ? (
                 <section className="summary-card">
                   <h3>Дочерние деревья супер-цели</h3>
@@ -1527,13 +1583,13 @@ export function GoalsPage() {
             </>
           ) : (
             <div className="goals-pane__empty goals-pane__empty--stage">
-              <p><strong>Выберите цель, чтобы увидеть сцену дерева.</strong></p>
-              <p>Когда цель выбрана, здесь появится Иггдрасиль, ветви и фокус на следующем шаге.</p>
+              <p><strong>Выберите цель, чтобы увидеть сцену клетки.</strong></p>
+              <p>Когда цель выбрана, здесь появится круг цели, рычаги влияния и фокус на следующем шаге.</p>
               <button type="button" onClick={startSeed}>Посадить семя</button>
             </div>
           )}
 
-          <p className="goals-stage-legend">Толще = приоритет · Трещина = слабая · Плод = активная миссия</p>
+          <p className="goals-stage-legend">Размер = влияние · Контур = приоритет · Трещина = слабая · Плод = активная миссия</p>
 
           <section className="goals-stage-krs">
             <h3>Ключевые ветви</h3>

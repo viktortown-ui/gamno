@@ -3979,3 +3979,97 @@ button.danger { background: color-mix(in srgb, #e45959 30%, var(--panel) 70%); b
     grid-column: 1 / -1;
   }
 }
+
+.goals-stage-mode-toggle {
+  display: flex;
+  justify-content: flex-end;
+  margin: 8px 0 12px;
+}
+
+.goal-cells-stage {
+  display: grid;
+  gap: 8px;
+}
+
+.goal-cells-stage__head h2,
+.goal-cells-stage__objective {
+  margin: 0;
+}
+
+.goal-cells-stage__scene {
+  position: relative;
+  min-height: clamp(340px, 52vh, 620px);
+  border: 1px solid rgba(114, 134, 188, 0.35);
+  border-radius: 16px;
+  overflow: hidden;
+  background: radial-gradient(circle at 28% 16%, rgba(72, 98, 164, 0.24), rgba(13, 18, 30, 0.92));
+}
+
+.goal-cells-stage__scene svg {
+  width: 100%;
+  height: 100%;
+}
+
+.goal-cells-stage__floating-controls {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
+  display: flex;
+  gap: 8px;
+}
+
+.goal-cells-stage__shell--hot { fill: url(#goalCellHot); }
+.goal-cells-stage__shell--cold { fill: url(#goalCellCold); }
+.goal-cells-stage__shell--neutral { fill: url(#goalCellNeutral); }
+
+.goal-cells-stage__kr-halo--low { fill: rgba(129, 166, 255, 0.16); }
+.goal-cells-stage__kr-halo--medium { fill: rgba(129, 166, 255, 0.26); }
+.goal-cells-stage__kr-halo--high { fill: rgba(255, 179, 86, 0.3); }
+.goal-cells-stage__kr-core { fill: rgba(224, 235, 255, 0.9); stroke: rgba(84, 113, 178, 0.85); stroke-width: 2; }
+.goal-cells-stage__kr-hit { fill: transparent; }
+.goal-cells-stage__kr text { font-size: 12px; text-anchor: middle; fill: rgba(232, 239, 255, 0.95); pointer-events: none; }
+.goal-cells-stage__kr--selected .goal-cells-stage__kr-core { stroke: rgba(255, 215, 133, 0.95); stroke-width: 3; }
+
+.goal-cells-stage__weak-crack path {
+  stroke: rgba(168, 32, 54, 0.9);
+  stroke-width: 2.5;
+  fill: none;
+  stroke-linecap: round;
+}
+
+.goal-cells-stage__effect-badge rect {
+  fill: rgba(12, 17, 32, 0.84);
+  stroke: rgba(150, 173, 228, 0.52);
+}
+
+.goal-cells-stage__effect-badge text {
+  fill: rgba(236, 242, 255, 0.95);
+  font-size: 12px;
+}
+
+.goal-cells-stage__mission-fruit circle {
+  fill: rgba(121, 238, 168, 0.95);
+}
+
+.goal-cells-stage__link { stroke-width: 2; opacity: 0.84; }
+.goal-cells-stage__link--supports { stroke: rgba(121, 238, 168, 0.9); }
+.goal-cells-stage__link--depends_on { stroke: rgba(132, 184, 255, 0.9); }
+.goal-cells-stage__link--conflicts { stroke: rgba(255, 128, 128, 0.92); }
+
+.goal-cells-stage__satellite circle {
+  fill: rgba(19, 28, 53, 0.9);
+  stroke: rgba(162, 186, 242, 0.85);
+  stroke-width: 2;
+}
+.goal-cells-stage__satellite text {
+  font-size: 11px;
+  text-anchor: middle;
+  fill: rgba(225, 236, 255, 0.95);
+  pointer-events: none;
+}
+
+.goal-cells-stage__more {
+  fill: rgba(209, 223, 255, 0.86);
+  font-size: 12px;
+}
