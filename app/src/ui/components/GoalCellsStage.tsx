@@ -1,4 +1,4 @@
-import { hierarchy, pack } from 'd3-hierarchy'
+import { hierarchy, pack, type HierarchyCircularNode } from 'd3-hierarchy'
 import { select } from 'd3-selection'
 import { zoom, zoomIdentity, type ZoomBehavior, type ZoomTransform } from 'd3-zoom'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -32,6 +32,19 @@ interface PackedCircle {
   hasActiveMission: boolean
 }
 
+interface CellDatum {
+  kind: 'goal' | 'kr'
+  id: string
+  label: string
+  value: number
+  krId?: string
+  priorityBand?: 'low' | 'medium' | 'high'
+  isWeak?: boolean
+  missionEffect?: { min: number; max: number; expected: number }
+  branch?: YggdrasilBranch
+  children?: CellDatum[]
+}
+
 interface GoalCellsStageProps {
   objective: string
   branches: YggdrasilBranch[]
@@ -58,21 +71,38 @@ function computePackedLayout(width: number, height: number, branches: YggdrasilB
     }
   })
 
-  const root = hierarchy<any>({
+  const root = hierarchy<CellDatum>({
+    kind: 'goal',
+    id: 'goal-root',
+    label: 'goal-root',
+    value: 0,
     children: normalized.map((item) => ({
+      kind: 'kr',
       id: item.branch.id,
+      label: item.branch.title,
       value: item.value,
+      krId: item.branch.id,
+      priorityBand: item.branch.priorityBand,
+      isWeak: item.branch.isWeak,
+      missionEffect: {
+        min: item.branch.missionEffectCores.min,
+        max: item.branch.missionEffectCores.max,
+        expected: item.branch.missionEffectExpected ?? Math.round((item.branch.missionEffectCores.min + item.branch.missionEffectCores.max) / 2),
+      },
       branch: item.branch,
     })),
   })
-    .sum((node: { value?: number }) => (typeof node.value === 'number' ? node.value : 0))
+    .sum((node) => node.value)
 
-  const packed = pack<any>()
+  const packed = pack<CellDatum>()
     .size([shellRadius * 2, shellRadius * 2])
     .padding(8)(root)
 
-  return (packed.children ?? []).map((leaf) => {
-    const payload = leaf.data as { id: string; value: number; branch: YggdrasilBranch }
+  return (packed.children ?? []).map((leaf: HierarchyCircularNode<CellDatum>) => {
+    const payload = leaf.data
+    if (!payload.branch) {
+      throw new Error('Packed KR node must include branch data')
+    }
     return {
       id: payload.id,
       x: centerX - shellRadius + leaf.x,
