@@ -4066,10 +4066,49 @@ button.danger { background: color-mix(in srgb, #e45959 30%, var(--panel) 70%); b
 .goal-cells-stage__kr-halo--low { fill: rgba(129, 166, 255, 0.16); }
 .goal-cells-stage__kr-halo--medium { fill: rgba(129, 166, 255, 0.26); }
 .goal-cells-stage__kr-halo--high { fill: rgba(255, 179, 86, 0.3); }
-.goal-cells-stage__kr-core { fill: rgba(224, 235, 255, 0.9); stroke: rgba(84, 113, 178, 0.85); stroke-width: 2; }
-.goal-cells-stage__kr-hit { fill: transparent; }
-.goal-cells-stage__kr text { font-size: 12px; text-anchor: middle; fill: rgba(232, 239, 255, 0.95); pointer-events: none; }
-.goal-cells-stage__kr--selected .goal-cells-stage__kr-core { stroke: rgba(255, 215, 133, 0.95); stroke-width: 3; }
+
+.goal-cells-stage__catcher {
+  pointer-events: all;
+}
+
+.goal-cells-stage__goal-shell {
+  fill: rgba(54, 79, 132, 0.5);
+  stroke: rgba(138, 166, 231, 0.6);
+  stroke-width: 2;
+}
+
+.goal-cells-stage__goal--selected .goal-cells-stage__goal-shell {
+  stroke: rgba(255, 214, 122, 0.95);
+  stroke-width: 3;
+}
+
+.goal-cells-stage__goal-title {
+  font-size: 12px;
+  text-anchor: middle;
+  fill: rgba(230, 239, 255, 0.9);
+  pointer-events: none;
+}
+
+.goal-cells-stage__kr-core { fill: rgba(224, 235, 255, 0.9); stroke: rgba(84, 113, 178, 0.85); stroke-width: 1.8; }
+.goal-cells-stage__kr text { font-size: 10px; text-anchor: middle; fill: rgba(232, 239, 255, 0.95); pointer-events: none; }
+.goal-cells-stage__kr--selected .goal-cells-stage__kr-core { stroke: rgba(255, 215, 133, 0.95); stroke-width: 2.6; }
+
+.goal-cells-stage__mission-dot {
+  fill: rgba(121, 238, 168, 0.95);
+  stroke: rgba(12, 24, 18, 0.82);
+  stroke-width: 1;
+}
+
+.goal-cells-stage__link {
+  fill: none;
+  stroke-width: 2;
+  opacity: 0.84;
+}
+
+.goal-cells-stage__link--suggested {
+  stroke-dasharray: 5 4;
+  opacity: 0.74;
+}
 
 .goal-cells-stage__weak-crack path {
   stroke: rgba(168, 32, 54, 0.9);
@@ -4092,22 +4131,9 @@ button.danger { background: color-mix(in srgb, #e45959 30%, var(--panel) 70%); b
   fill: rgba(121, 238, 168, 0.95);
 }
 
-.goal-cells-stage__link { stroke-width: 2; opacity: 0.84; }
 .goal-cells-stage__link--supports { stroke: rgba(121, 238, 168, 0.9); }
 .goal-cells-stage__link--depends_on { stroke: rgba(132, 184, 255, 0.9); }
 .goal-cells-stage__link--conflicts { stroke: rgba(255, 128, 128, 0.92); }
-
-.goal-cells-stage__satellite circle {
-  fill: rgba(19, 28, 53, 0.9);
-  stroke: rgba(162, 186, 242, 0.85);
-  stroke-width: 2;
-}
-.goal-cells-stage__satellite text {
-  font-size: 11px;
-  text-anchor: middle;
-  fill: rgba(225, 236, 255, 0.95);
-  pointer-events: none;
-}
 
 .goal-cells-stage__more {
   fill: rgba(209, 223, 255, 0.86);

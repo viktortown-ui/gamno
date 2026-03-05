@@ -18,7 +18,7 @@ import {
 import { evaluateGoalScore, type GoalStateInput } from '../core/engines/goal'
 import { getLatestForecastRun } from '../repo/forecastRepo'
 import { GoalYggdrasilTree, type BranchStrength } from '../ui/components/GoalYggdrasilTree'
-import { GoalCellsStage } from '../ui/components/GoalCellsStage'
+import { GoalCellsStage, type UniverseStageGoal } from '../ui/components/GoalCellsStage'
 import { DruidGauge } from './goals/components/DruidGauge'
 import { ForgeSheet } from './goals/components/ForgeSheet'
 import { PresetSelector } from './goals/components/PresetSelector'
@@ -823,18 +823,10 @@ export function GoalsPage() {
     })
   }, [krProgressRows, missionProgress, selected, selectedWeights, weakestKr])
 
-  const stageTemperature = useMemo<'hot' | 'cold' | 'neutral'>(() => {
-    if (!scoring || !goalState) return 'neutral'
-    const weakestProgress = weakestKr?.progress ?? 0.5
-    const lowStorm = goalState.pCollapse < 0.3
-    if (historyTrend === 'up' && lowStorm && weakestProgress >= 0.34) return 'hot'
-    if (historyTrend === 'down' || goalState.pCollapse >= 0.35 || weakestProgress < 0.3) return 'cold'
-    return 'neutral'
-  }, [goalState, historyTrend, scoring, weakestKr?.progress])
 
-  const stageLinkSatellites = useMemo(() => {
+  const stageLinks = useMemo(() => {
     if (!selected) return []
-    return (selected.links ?? [])
+    const baseLinks = (selected.links ?? [])
       .map((link) => {
         const linkedGoal = goals.find((item) => item.id === link.toGoalId)
         if (!linkedGoal) return null
@@ -845,7 +837,17 @@ export function GoalsPage() {
         }
       })
       .filter((item): item is { goalId: string; title: string; type: GoalLinkType } => Boolean(item))
-  }, [goals, selected])
+
+    if (forestViewMode !== 'roots' || !showAutoLinkSuggestions) return baseLinks
+
+    const suggestionLinks = autoLinkSuggestions.map((item) => ({
+      goalId: item.targetGoalId,
+      title: goalTitleMap.get(item.targetGoalId) ?? item.targetGoalId,
+      type: suggestionTypeDraftByGoalId[item.targetGoalId] ?? 'supports' as GoalLinkType,
+      isSuggested: true,
+    }))
+    return [...baseLinks, ...suggestionLinks]
+  }, [autoLinkSuggestions, forestViewMode, goalTitleMap, goals, selected, showAutoLinkSuggestions, suggestionTypeDraftByGoalId])
 
   const editorKeyResults = useMemo(() => {
     if (!editor) return []
@@ -1072,6 +1074,43 @@ export function GoalsPage() {
         return b.updatedAt - a.updatedAt
       })
   }, [forestSearch, forestSort, forestTab, goalProgressMap, goals])
+
+  const universeStageGoals = useMemo<UniverseStageGoal[]>(() => {
+    return visibleForestGoals.map((goal) => {
+      const krs = ensureGoalKeyResults(goal, goalState)
+      const weakestKrId = krs.reduce<{ id: string | null; progress: number }>((acc, kr) => {
+        const progress = typeof kr.progress === 'number' ? kr.progress : 0.5
+        if (progress < acc.progress) {
+          return { id: kr.id, progress }
+        }
+        return acc
+      }, { id: null, progress: Infinity }).id
+      const levers = krs.slice(0, 8).map((kr) => {
+        const weight = Math.max(0.05, Math.abs(goal.weights[kr.metricId] ?? 0.2))
+        const influence = Math.max(1, Math.round(weight * 10 + (typeof kr.progress === 'number' ? kr.progress * 3 : 1)))
+        const label = METRICS.find((item) => item.id === kr.metricId)?.labelRu ?? kr.metricId
+        const priorityBand: 'low' | 'medium' | 'high' = weight > 0.66 ? 'high' : weight > 0.33 ? 'medium' : 'low'
+        return {
+          id: kr.id,
+          title: label,
+          influence,
+          priorityBand,
+          isWeak: kr.id === weakestKrId,
+          hasActiveMission: goal.activeMission?.krKey === kr.id,
+        }
+      })
+
+      const sizeScore = Math.max(1, levers.reduce((sum, lever) => sum + lever.influence, 0))
+      return {
+        id: goal.id,
+        title: goal.title,
+        objective: goal.okr.objective,
+        sizeScore,
+        levers,
+      }
+    })
+  }, [goalState, visibleForestGoals])
+
 
   const groves = useMemo(() => {
     const map = new Map<string, GoalRecord[]>()
@@ -1617,52 +1656,48 @@ export function GoalsPage() {
         </article>
 
         <article className="panel goals-pane goals-pane--stage">
-          {selected ? (
-            <>
-              {goalsStageMode === 'cells' ? (
-                <GoalCellsStage
-                  objective={selected.okr.objective}
-                  branches={yggdrasilBranches}
-                  selectedBranchId={selectedKrId}
-                  onSelectBranch={setSelectedKrId}
-                  temperature={stageTemperature}
-                  satellites={stageLinkSatellites}
-                  onSelectSatellite={(goalId) => {
-                    setSelectedGoalId(goalId)
-                    setForestViewMode('forest')
-                  }}
-                  resetSignal={stageResetSignal}
-                />
-              ) : (
-                <GoalYggdrasilTree
-                  objective={selected.okr.objective}
-                  branches={yggdrasilBranches}
-                  selectedBranchId={selectedKrId}
-                  onSelectBranch={setSelectedKrId}
-                  resetSignal={stageResetSignal}
-                />
-              )}
-              <div className="goals-stage-mode-toggle">
-                <button type="button" onClick={() => setGoalsStageMode((value) => value === 'cells' ? 'tree' : 'cells')}>
-                  Stage mode: {goalsStageMode === 'cells' ? 'cells' : 'tree'}
-                </button>
+          <>
+            {goalsStageMode === 'cells' ? (
+              <GoalCellsStage
+                goals={universeStageGoals}
+                selectedGoalId={selectedGoalId}
+                selectedBranchId={selectedKrId}
+                onSelectGoal={(goalId) => {
+                  setSelectedGoalId(goalId)
+                  setForestViewMode('forest')
+                }}
+                onSelectBranch={setSelectedKrId}
+                links={stageLinks}
+                resetSignal={stageResetSignal}
+              />
+            ) : selected ? (
+              <GoalYggdrasilTree
+                objective={selected.okr.objective}
+                branches={yggdrasilBranches}
+                selectedBranchId={selectedKrId}
+                onSelectBranch={setSelectedKrId}
+                resetSignal={stageResetSignal}
+              />
+            ) : (
+              <div className="goals-pane__empty goals-pane__empty--stage">
+                <p><strong>Выберите цель, чтобы увидеть дерево.</strong></p>
+                <button type="button" onClick={startSeed}>Посадить семя</button>
               </div>
-              {goals.some((item) => item.parentGoalId === selected.id && item.status === 'active') ? (
-                <section className="summary-card">
-                  <h3>Дочерние деревья супер-цели</h3>
-                  <ul>
-                    {goals.filter((item) => item.parentGoalId === selected.id && item.status === 'active').map((child) => <li key={child.id}>{child.title}</li>)}
-                  </ul>
-                </section>
-              ) : null}
-            </>
-          ) : (
-            <div className="goals-pane__empty goals-pane__empty--stage">
-              <p><strong>Выберите цель, чтобы увидеть сцену клетки.</strong></p>
-              <p>Когда цель выбрана, здесь появится круг цели, рычаги влияния и фокус на следующем шаге.</p>
-              <button type="button" onClick={startSeed}>Посадить семя</button>
+            )}
+            <div className="goals-stage-mode-toggle">
+              <button type="button" onClick={() => setGoalsStageMode((value) => value === 'cells' ? 'tree' : 'cells')}>
+                Stage mode: {goalsStageMode === 'cells' ? 'cells' : 'tree'}
+              </button>
             </div>
-          )}
+            {selected && goals.some((item) => item.parentGoalId === selected.id && item.status === 'active') ? (
+              <section className="summary-card">
+                <h3>Дочерние деревья супер-цели</h3>
+                <ul>
+                  {goals.filter((item) => item.parentGoalId === selected.id && item.status === 'active').map((child) => <li key={child.id}>{child.title}</li>)}
+                </ul>
+              </section>
+            ) : null}
+          </>
 
           <p className="goals-stage-legend">Размер = влияние · Контур = приоритет · Трещина = слабая · Плод = активная миссия</p>
 
