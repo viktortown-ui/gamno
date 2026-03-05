@@ -2,7 +2,6 @@ import { hierarchy, pack, type HierarchyCircularNode } from 'd3-hierarchy'
 import { select } from 'd3-selection'
 import { zoom, zoomIdentity, type ZoomBehavior, type ZoomTransform } from 'd3-zoom'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { GoalLinkType } from '../../core/models/goal'
 
 const DEFAULT_SCENE_WIDTH = 900
 const DEFAULT_SCENE_HEIGHT = 560
@@ -23,14 +22,8 @@ export interface UniverseStageGoal {
   title: string
   objective: string
   sizeScore: number
+  temperature: 'hot' | 'neutral' | 'cold'
   levers: StageLever[]
-}
-
-interface StageLink {
-  goalId: string
-  title: string
-  type: GoalLinkType
-  isSuggested?: boolean
 }
 
 interface GoalCellsStageProps {
@@ -39,7 +32,7 @@ interface GoalCellsStageProps {
   selectedBranchId: string | null
   onSelectGoal: (goalId: string) => void
   onSelectBranch: (branchId: string) => void
-  links: StageLink[]
+  onClearBranch: () => void
   resetSignal?: number
 }
 
@@ -57,6 +50,7 @@ interface LayoutGoal extends UniverseStageGoal {
   leversLayout: LayoutLever[]
   visibleLeverCount: number
   isSelected: boolean
+  temperature: 'hot' | 'neutral' | 'cold'
 }
 
 interface PackDatum {
@@ -76,17 +70,20 @@ function computeGoalBounds(nodes: Array<{ x: number; y: number; r: number }>) {
   return { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY }
 }
 
-function packLevers(goal: UniverseStageGoal, goalX: number, goalY: number, goalR: number, selectedBranchId: string | null, isFocused: boolean): LayoutLever[] {
+function packLevers(goal: UniverseStageGoal, goalX: number, goalY: number, goalR: number, selectedBranchId: string | null): LayoutLever[] {
   const innerPadding = Math.max(4, Math.min(12, goalR * 0.08))
   const shell = Math.max(20, goalR - innerPadding)
   const leverRoot = hierarchy<PackDatum>({
     id: `${goal.id}-levers`,
     value: 0,
-    children: goal.levers.map((lever) => ({ id: lever.id, value: Math.max(1, lever.influence), lever })),
+    children: goal.levers
+      .slice()
+      .sort((a, b) => a.id.localeCompare(b.id))
+      .map((lever) => ({ id: lever.id, value: Math.max(1, lever.influence), lever })),
   }).sum((node) => node.value)
 
   const packed = pack<PackDatum>().size([shell * 2, shell * 2]).padding(Math.max(3, shell * 0.05))(leverRoot)
-  const maxLevers = isFocused ? goal.levers.length : Math.min(MAX_UNIVERSE_LEVERS, goal.levers.length)
+  const maxLevers = Math.min(MAX_UNIVERSE_LEVERS, goal.levers.length)
   return (packed.children ?? [])
     .slice()
     .sort((a, b) => b.r - a.r)
@@ -106,16 +103,19 @@ function packLevers(goal: UniverseStageGoal, goalX: number, goalY: number, goalR
     })
 }
 
-function computeUniverseLayout(width: number, height: number, goals: UniverseStageGoal[], selectedGoalId: string | null, selectedBranchId: string | null, focusedGoalId: string | null): LayoutGoal[] {
+function computeUniverseLayout(width: number, height: number, goals: UniverseStageGoal[], selectedGoalId: string | null, selectedBranchId: string | null): LayoutGoal[] {
   if (goals.length === 0) return []
   const root = hierarchy<PackDatum>({
     id: 'universe-root',
     value: 0,
-    children: goals.map((goal) => ({
+    children: goals
+      .slice()
+      .sort((a, b) => a.id.localeCompare(b.id))
+      .map((goal) => ({
       id: goal.id,
       value: Math.max(1, goal.sizeScore),
       goal,
-    })),
+      })),
   }).sum((node) => node.value)
 
   const packed = pack<PackDatum>().size([width, height]).padding(18)(root)
@@ -124,38 +124,29 @@ function computeUniverseLayout(width: number, height: number, goals: UniverseSta
     if (!goal) {
       throw new Error('Goal payload is missing in universe pack')
     }
-    const isFocused = focusedGoalId === goal.id
     return {
       ...goal,
       x: leaf.x,
       y: leaf.y,
       r: Math.max(36, leaf.r),
-      leversLayout: packLevers(goal, leaf.x, leaf.y, Math.max(36, leaf.r), selectedBranchId, isFocused),
-      visibleLeverCount: isFocused ? goal.levers.length : Math.min(MAX_UNIVERSE_LEVERS, goal.levers.length),
+      leversLayout: packLevers(goal, leaf.x, leaf.y, Math.max(36, leaf.r), selectedBranchId),
+      visibleLeverCount: Math.min(MAX_UNIVERSE_LEVERS, goal.levers.length),
       isSelected: goal.id === selectedGoalId,
+      temperature: goal.temperature,
     }
   })
 }
 
-function linkPath(from: LayoutGoal, to: LayoutGoal): string {
-  const dx = to.x - from.x
-  const dy = to.y - from.y
-  const bend = Math.max(24, Math.hypot(dx, dy) * 0.18)
-  const nx = -dy / Math.max(1, Math.hypot(dx, dy))
-  const ny = dx / Math.max(1, Math.hypot(dx, dy))
-  const cx = (from.x + to.x) / 2 + nx * bend
-  const cy = (from.y + to.y) / 2 + ny * bend
-  return `M ${from.x} ${from.y} Q ${cx} ${cy} ${to.x} ${to.y}`
-}
-
-export function GoalCellsStage({ goals, selectedGoalId, selectedBranchId, onSelectGoal, onSelectBranch, links, resetSignal = 0 }: GoalCellsStageProps) {
+export function GoalCellsStage({ goals, selectedGoalId, selectedBranchId, onSelectGoal, onSelectBranch, onClearBranch, resetSignal = 0 }: GoalCellsStageProps) {
   const [viewSize, setViewSize] = useState({ width: DEFAULT_SCENE_WIDTH, height: DEFAULT_SCENE_HEIGHT })
   const [transform, setTransform] = useState<ZoomTransform>(zoomIdentity)
   const [isMobile, setIsMobile] = useState(false)
-  const [focusedGoalId, setFocusedGoalId] = useState<string | null>(null)
+  const [fitRequest, setFitRequest] = useState<{ mode: 'all' | 'selected'; key: number } | null>(null)
   const sceneRef = useRef<SVGSVGElement | null>(null)
   const sceneWrapRef = useRef<HTMLDivElement | null>(null)
   const zoomRef = useRef<ZoomBehavior<SVGSVGElement, unknown> | null>(null)
+  const fitKeyRef = useRef(0)
+  const mountedRef = useRef(false)
 
   useEffect(() => {
     if (!sceneWrapRef.current || typeof ResizeObserver === 'undefined') return
@@ -181,12 +172,12 @@ export function GoalCellsStage({ goals, selectedGoalId, selectedBranchId, onSele
   }, [])
 
   const layoutGoals = useMemo(
-    () => computeUniverseLayout(viewSize.width, viewSize.height, goals, selectedGoalId, selectedBranchId, focusedGoalId),
-    [focusedGoalId, goals, selectedBranchId, selectedGoalId, viewSize.height, viewSize.width],
+    () => computeUniverseLayout(viewSize.width, viewSize.height, goals, selectedGoalId, selectedBranchId),
+    [goals, selectedBranchId, selectedGoalId, viewSize.height, viewSize.width],
   )
 
   const goalById = useMemo(() => new Map(layoutGoals.map((goal) => [goal.id, goal])), [layoutGoals])
-  const selectedGoal = selectedGoalId ? goalById.get(selectedGoalId) ?? null : null
+  const dataSignature = useMemo(() => goals.map((goal) => goal.id).sort().join('|'), [goals])
 
   const applyTransform = useCallback((target: ZoomTransform, durationMs = 240) => {
     if (!sceneRef.current || !zoomRef.current) return
@@ -200,7 +191,8 @@ export function GoalCellsStage({ goals, selectedGoalId, selectedBranchId, onSele
     if (!bounds) return zoomIdentity
     const availableWidth = Math.max(10, viewSize.width - FIT_PADDING * 2)
     const availableHeight = Math.max(10, viewSize.height - FIT_PADDING * 2)
-    const scale = Math.max(0.6, Math.min(2.2, Math.min(availableWidth / bounds.width, availableHeight / bounds.height)))
+    const baseScale = Math.min(availableWidth / Math.max(1, bounds.width), availableHeight / Math.max(1, bounds.height))
+    const scale = Math.max(0.6, Math.min(2.2, baseScale * 0.9))
     const centerX = (bounds.minX + bounds.maxX) / 2
     const centerY = (bounds.minY + bounds.maxY) / 2
     return zoomIdentity.translate(viewSize.width / 2 - centerX * scale, viewSize.height / 2 - centerY * scale).scale(scale)
@@ -210,14 +202,18 @@ export function GoalCellsStage({ goals, selectedGoalId, selectedBranchId, onSele
     applyTransform(computeFitTransform(layoutGoals), durationMs)
   }, [applyTransform, computeFitTransform, layoutGoals])
 
-  const focusGoal = useCallback((goalId?: string) => {
+  const runFocusSelected = useCallback((goalId?: string, durationMs = 260) => {
     const targetId = goalId ?? selectedGoalId
     if (!targetId) return
     const targetGoal = goalById.get(targetId)
     if (!targetGoal) return
-    setFocusedGoalId(targetId)
-    applyTransform(computeFitTransform([{ x: targetGoal.x, y: targetGoal.y, r: Math.max(targetGoal.r + 28, targetGoal.r * 1.2) }]))
+    applyTransform(computeFitTransform([{ x: targetGoal.x, y: targetGoal.y, r: Math.max(targetGoal.r + 28, targetGoal.r * 1.2) }]), durationMs)
   }, [applyTransform, computeFitTransform, goalById, selectedGoalId])
+
+  const queueFit = useCallback((mode: 'all' | 'selected') => {
+    fitKeyRef.current += 1
+    setFitRequest({ mode, key: fitKeyRef.current })
+  }, [])
 
   useEffect(() => {
     if (!sceneRef.current) return
@@ -240,25 +236,45 @@ export function GoalCellsStage({ goals, selectedGoalId, selectedBranchId, onSele
   }, [viewSize.height, viewSize.width])
 
   useEffect(() => {
-    if (!zoomRef.current) return
-    requestAnimationFrame(() => runFitToView(0))
-  }, [goals, runFitToView])
+    if (!mountedRef.current) {
+      mountedRef.current = true
+      queueFit('all')
+      return
+    }
+    queueFit('all')
+  }, [dataSignature, queueFit])
 
   useEffect(() => {
-    if (resetSignal > 0) requestAnimationFrame(() => runFitToView())
-  }, [resetSignal, runFitToView])
+    if (resetSignal > 0) queueFit('all')
+  }, [queueFit, resetSignal])
+
+  useEffect(() => {
+    if (!fitRequest) return
+    requestAnimationFrame(() => {
+      if (fitRequest.mode === 'selected') {
+        runFocusSelected(undefined, 260)
+      } else {
+        runFitToView(260)
+      }
+    })
+  }, [fitRequest, runFitToView, runFocusSelected])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault()
-        setFocusedGoalId(null)
-        runFitToView()
+        queueFit('all')
+      } else if (event.key.toLowerCase() === 'r') {
+        event.preventDefault()
+        queueFit('all')
+      } else if (event.key.toLowerCase() === 'f' && selectedGoalId) {
+        event.preventDefault()
+        queueFit('selected')
       }
     }
     document.addEventListener('keydown', onKeyDown)
     return () => document.removeEventListener('keydown', onKeyDown)
-  }, [runFitToView])
+  }, [queueFit, selectedGoalId])
 
   return (
     <div className="goal-cells-stage">
@@ -268,24 +284,12 @@ export function GoalCellsStage({ goals, selectedGoalId, selectedBranchId, onSele
       <p className="goal-cells-stage__objective"><strong>Universe:</strong> все цели текущего фильтра Forest на одной сцене.</p>
       <div className="goal-cells-stage__scene" ref={sceneWrapRef} aria-label="Сцена всех целей и рычагов">
         <div className="goal-cells-stage__floating-controls" role="toolbar" aria-label="Управление сценой">
-          <button type="button" className="filter-button" onClick={() => { setFocusedGoalId(null); runFitToView() }}>{isMobile ? '↺' : 'Сброс вида (R)'}</button>
-          <button type="button" className="filter-button" onClick={() => focusGoal()} disabled={!selectedGoalId}>{isMobile ? '◎' : 'Фокус на цели'}</button>
+          <button type="button" className="filter-button" onClick={() => queueFit('all')}>{isMobile ? '↺' : 'Сброс вида (R)'}</button>
+          <button type="button" className="filter-button" onClick={() => queueFit('selected')} disabled={!selectedGoalId}>{isMobile ? '◎' : 'Фокус выбранной (F)'}</button>
         </div>
         <svg ref={sceneRef} viewBox={`0 0 ${viewSize.width} ${viewSize.height}`} role="img" aria-label="Вселенная целей">
-          <rect className="goal-cells-stage__catcher" x={0} y={0} width={viewSize.width} height={viewSize.height} fill="transparent" />
+          <rect className="goal-cells-stage__catcher" x={0} y={0} width={viewSize.width} height={viewSize.height} fill="transparent" onClick={onClearBranch} />
           <g transform={transform.toString()}>
-            {selectedGoal ? links.map((link) => {
-              const target = goalById.get(link.goalId)
-              if (!target) return null
-              return (
-                <path
-                  key={`${selectedGoal.id}-${link.goalId}-${link.type}-${link.isSuggested ? 'suggest' : 'base'}`}
-                  d={linkPath(selectedGoal, target)}
-                  className={`goal-cells-stage__link goal-cells-stage__link--${link.type}${link.isSuggested ? ' goal-cells-stage__link--suggested' : ''}`}
-                />
-              )
-            }) : null}
-
             {layoutGoals.map((goal) => (
               <g
                 key={goal.id}
@@ -293,7 +297,7 @@ export function GoalCellsStage({ goals, selectedGoalId, selectedBranchId, onSele
                 role="button"
                 tabIndex={0}
                 onClick={() => onSelectGoal(goal.id)}
-                onDoubleClick={() => focusGoal(goal.id)}
+                onDoubleClick={() => runFocusSelected(goal.id)}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter' || event.key === ' ') {
                     event.preventDefault()
@@ -302,7 +306,7 @@ export function GoalCellsStage({ goals, selectedGoalId, selectedBranchId, onSele
                 }}
                 aria-label={`Цель: ${goal.title}`}
               >
-                <circle className="goal-cells-stage__goal-shell" cx={goal.x} cy={goal.y} r={goal.r} />
+                <circle className={`goal-cells-stage__goal-shell goal-cells-stage__goal-shell--${goal.temperature}`} cx={goal.x} cy={goal.y} r={goal.r} />
                 <text className="goal-cells-stage__goal-title" x={goal.x} y={goal.y - goal.r + 18}>{goal.title.slice(0, 26)}</text>
 
                 {goal.leversLayout.map((lever) => (

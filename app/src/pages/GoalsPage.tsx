@@ -836,31 +836,6 @@ export function GoalsPage() {
   }, [krProgressRows, missionProgress, selected, selectedWeights, weakestKr])
 
 
-  const stageLinks = useMemo(() => {
-    if (!selected) return []
-    const baseLinks = (selected.links ?? [])
-      .map((link) => {
-        const linkedGoal = goals.find((item) => item.id === link.toGoalId)
-        if (!linkedGoal) return null
-        return {
-          goalId: linkedGoal.id,
-          title: linkedGoal.title,
-          type: link.type,
-        }
-      })
-      .filter((item): item is { goalId: string; title: string; type: GoalLinkType } => Boolean(item))
-
-    if (forestViewMode !== 'roots' || !showAutoLinkSuggestions) return baseLinks
-
-    const suggestionLinks = autoLinkSuggestions.map((item) => ({
-      goalId: item.targetGoalId,
-      title: goalTitleMap.get(item.targetGoalId) ?? item.targetGoalId,
-      type: suggestionTypeDraftByGoalId[item.targetGoalId] ?? 'supports' as GoalLinkType,
-      isSuggested: true,
-    }))
-    return [...baseLinks, ...suggestionLinks]
-  }, [autoLinkSuggestions, forestViewMode, goalTitleMap, goals, selected, showAutoLinkSuggestions, suggestionTypeDraftByGoalId])
-
   const editorKeyResults = useMemo(() => {
     if (!editor) return []
     return ensureGoalKeyResults(editor, goalState)
@@ -1113,15 +1088,24 @@ export function GoalsPage() {
       })
 
       const sizeScore = Math.max(1, levers.reduce((sum, lever) => sum + lever.influence, 0))
+      const score = goalProgressMap.get(goal.id) ?? 0.5
+      const temperature: 'hot' | 'neutral' | 'cold' = score >= 0.67 ? 'hot' : score <= 0.34 ? 'cold' : 'neutral'
       return {
         id: goal.id,
         title: goal.title,
         objective: goal.okr.objective,
         sizeScore,
+        temperature,
         levers,
       }
     })
-  }, [goalState, visibleForestGoals])
+  }, [goalProgressMap, goalState, visibleForestGoals])
+
+  const selectedUniverseGoal = useMemo(() => universeStageGoals.find((goal) => goal.id === selectedGoalId) ?? null, [selectedGoalId, universeStageGoals])
+  const selectedUniverseLever = useMemo(() => {
+    if (!selectedKrId || !selectedUniverseGoal) return null
+    return selectedUniverseGoal.levers.find((lever) => lever.id === selectedKrId) ?? null
+  }, [selectedKrId, selectedUniverseGoal])
 
 
   const groves = useMemo(() => {
@@ -1735,7 +1719,7 @@ export function GoalsPage() {
                   setForestViewMode('forest')
                 }}
                 onSelectBranch={setSelectedKrId}
-                links={stageLinks}
+                onClearBranch={() => setSelectedKrId(null)}
                 resetSignal={stageResetSignal}
               />
             ) : selected ? (
@@ -1788,7 +1772,8 @@ export function GoalsPage() {
             <h2>Cockpit summary</h2>
             <p>Goals: {goals.length} · Active roots: {activeRoots.length}</p>
             <div className="goals-surface__dial-row"><span>Dial A</span><span>Dial B</span><span>Dial C</span></div>
-            <p className="goals-pane__hint">Warnings placeholder</p>
+            <p className="goals-pane__hint">Selected goal: {selectedUniverseGoal ? `${selectedUniverseGoal.title} (${selectedUniverseGoal.id})` : '—'}</p>
+            <p className="goals-pane__hint">Selected lever: {selectedUniverseLever ? `${selectedUniverseLever.title} (${selectedUniverseLever.id})` : '—'}</p>
           </section>
           <section className="goals-surface__cockpit-floor goals-surface__cockpit-floor--inspector">
           <h2>Друид</h2>

@@ -4077,6 +4077,20 @@ button.danger { background: color-mix(in srgb, #e45959 30%, var(--panel) 70%); b
   stroke-width: 2;
 }
 
+.goal-cells-stage__goal-shell--hot {
+  fill: rgba(89, 135, 214, 0.56);
+  stroke: rgba(255, 191, 134, 0.74);
+}
+
+.goal-cells-stage__goal-shell--neutral {
+  fill: rgba(74, 111, 180, 0.5);
+}
+
+.goal-cells-stage__goal-shell--cold {
+  fill: rgba(64, 89, 150, 0.45);
+  stroke: rgba(143, 184, 255, 0.68);
+}
+
 .goal-cells-stage__goal--selected .goal-cells-stage__goal-shell {
   stroke: rgba(255, 214, 122, 0.95);
   stroke-width: 3;
