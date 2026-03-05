@@ -1,0 +1,67 @@
+.goals-surface {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100%;
+  gap: 0;
+  background: var(--panel-bg, #101418);
+}
+
+.goals-surface__submenu {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--line, #ffffff) 14%, transparent);
+  padding: 10px 14px;
+}
+
+.goals-surface__submenu-item { position: relative; }
+.goals-surface__submenu-trigger {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 6px 10px;
+}
+.goals-surface__submenu-trigger:hover,
+.goals-surface__submenu-trigger--active { background: color-mix(in srgb, var(--line, #fff) 10%, transparent); }
+.goals-surface__submenu-muted { margin-left: 6px; opacity: 0.7; font-size: 12px; }
+.goals-surface__submenu-popover {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 200px;
+  z-index: 10;
+  background: var(--panel-bg, #101418);
+  border: 1px solid color-mix(in srgb, var(--line, #ffffff) 16%, transparent);
+  padding: 10px;
+}
+
+.goals-surface__body {
+  display: grid;
+  grid-template-columns: minmax(220px, 320px) minmax(0, 1fr) minmax(280px, 360px);
+  min-height: 0;
+  height: 100%;
+  gap: 0;
+}
+
+.goals-surface__left,
+.goals-surface__stage,
+.goals-surface__cockpit {
+  min-height: 0;
+  padding: 12px;
+}
+
+.goals-surface__left,
+.goals-surface__stage { border-right: 1px solid color-mix(in srgb, var(--line, #ffffff) 14%, transparent); }
+.goals-surface__left--collapsed { padding: 10px 8px; }
+.goals-surface__section-head { display: flex; justify-content: space-between; align-items: center; }
+
+.goals-surface__cockpit {
+  display: grid;
+  grid-template-rows: 1fr 1fr;
+  gap: 0;
+  padding: 0;
+}
+.goals-surface__cockpit-floor { padding: 12px; min-height: 0; }
+.goals-surface__cockpit-floor--summary { border-bottom: 1px solid color-mix(in srgb, var(--line, #ffffff) 14%, transparent); }
+.goals-surface__dial-row { display: flex; gap: 8px; }
+.goals-surface__dial-row > span { padding: 4px 8px; border: 1px solid color-mix(in srgb, var(--line, #ffffff) 14%, transparent); }

@@ -28,6 +28,7 @@ import { AdvancedTuning } from './goals/components/AdvancedTuning'
 import { dayKeyFromTs } from '../core/utils/dayKey'
 import { buildMissionSuggestion, missionEffectRange, type MissionTag } from './goals/missionPlanner'
 import { buildGoalAutoLinkSuggestions } from '../core/engines/goal/autoLinkSuggestions'
+import './goals/GoalsSurface.css'
 
 type GoalTemplateId = 'growth' | 'anti-storm' | 'energy-balance' | 'money'
 
@@ -258,6 +259,17 @@ export function GoalsPage() {
   const [missionDetailsOpen, setMissionDetailsOpen] = useState(false)
   const [missionConfirmOpen, setMissionConfirmOpen] = useState(false)
   const [missionAwardDraft, setMissionAwardDraft] = useState(5)
+  const [submenuOpen, setSubmenuOpen] = useState<'search' | 'sort' | 'filter' | 'roots' | 'autolinks' | 'forge' | null>(null)
+  const submenuTriggerRefs = useRef<Record<'search' | 'sort' | 'filter' | 'roots' | 'autolinks' | 'forge', HTMLButtonElement | null>>({
+    search: null,
+    sort: null,
+    filter: null,
+    roots: null,
+    autolinks: null,
+    forge: null,
+  })
+  const submenuPopoverRef = useRef<HTMLDivElement | null>(null)
+  const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false)
   const [supportsExpanded, setSupportsExpanded] = useState(false)
   const [showAutoLinkSuggestions, setShowAutoLinkSuggestions] = useState(false)
   const [hiddenAutoSuggestionKeys, setHiddenAutoSuggestionKeys] = useState<Record<string, true>>({})
@@ -1294,42 +1306,97 @@ export function GoalsPage() {
     setHiddenAutoSuggestionKeys((current) => ({ ...current, [`${selected.id}->${targetGoalId}`]: true }))
   }
 
+  const closeSubmenu = useCallback(() => {
+    if (!submenuOpen) return
+    const trigger = submenuTriggerRefs.current[submenuOpen]
+    setSubmenuOpen(null)
+    trigger?.focus()
+  }, [submenuOpen])
+
+  useEffect(() => {
+    if (!submenuOpen) return
+    const onPointerDown = (event: MouseEvent) => {
+      const target = event.target as Node
+      const activeTrigger = submenuTriggerRefs.current[submenuOpen]
+      if (submenuPopoverRef.current?.contains(target)) return
+      if (activeTrigger?.contains(target)) return
+      setSubmenuOpen(null)
+    }
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      closeSubmenu()
+    }
+    window.addEventListener('mousedown', onPointerDown)
+    window.addEventListener('keydown', onEscape)
+    return () => {
+      window.removeEventListener('mousedown', onPointerDown)
+      window.removeEventListener('keydown', onEscape)
+    }
+  }, [closeSubmenu, submenuOpen])
 
   return (
-    <section className="goals-page">
-      <div className="goals-page__topbar">
-        <h1>Цели</h1>
-        <div className="settings-actions">
-          <button ref={seedButtonRef} type="button" onClick={startSeed}>Посадить семя</button>
-          <button
-            type="button"
-            onClick={() => {
-            if (!selected) return
-            const focus = Object.entries(selectedWeights)
-              .sort((a, b) => Math.abs((b[1] ?? 0)) - Math.abs((a[1] ?? 0)))
-              .slice(0, 3)
-            const impulses = Object.fromEntries(focus.map(([metricId, w]) => [metricId, (w ?? 0) > 0 ? 0.5 : -0.5]))
-            window.localStorage.setItem('gamno.multiverseDraft', JSON.stringify({
-              impulses,
-              focusMetrics: focus.map(([metricId]) => metricId),
-              sourceLabelRu: 'Цель+миссия → Мультивселенная',
-              activeGoal: { id: selected.id, title: selected.title, objective: selected.okr.objective },
-              activeMission: selected.activeMission,
-            }))
-              navigate('/multiverse')
-            }}
-          >
-            Открыть в Мультивселенной
-          </button>
-        </div>
+    <section className="goals-page goals-surface">
+      <div className="goals-surface__submenu" role="menubar" aria-label="Goals submenu">
+        {([
+          ['search', 'Search'],
+          ['sort', 'Sort'],
+          ['filter', 'Filter'],
+          ['roots', 'Roots'],
+          ['autolinks', 'Auto-links'],
+          ['forge', 'Forge'],
+        ] as const).map(([id, label]) => {
+          const isOpen = submenuOpen === id
+          return (
+            <div key={id} className="goals-surface__submenu-item">
+              <button
+                ref={(node) => { submenuTriggerRefs.current[id] = node }}
+                type="button"
+                className={isOpen ? 'goals-surface__submenu-trigger goals-surface__submenu-trigger--active' : 'goals-surface__submenu-trigger'}
+                aria-haspopup="menu"
+                aria-expanded={isOpen}
+                onClick={() => setSubmenuOpen((value) => value === id ? null : id)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault()
+                    setSubmenuOpen(id)
+                  }
+                  if (event.key === 'Escape') {
+                    event.preventDefault()
+                    closeSubmenu()
+                  }
+                }}
+              >
+                {label}{id === 'autolinks' ? <span className="goals-surface__submenu-muted">OFF</span> : null}
+              </button>
+              {isOpen ? (
+                <div ref={(node) => { submenuPopoverRef.current = node }} className="goals-surface__submenu-popover" role="menu">
+                  <p>{label} menu placeholder</p>
+                  {id === 'forge' ? <button ref={seedButtonRef} type="button" onClick={startSeed}>Посадить семя</button> : null}
+                  {id === 'forge' ? <button type="button" onClick={() => {
+                    if (!selected) return
+                    const focus = Object.entries(selectedWeights).sort((a, b) => Math.abs((b[1] ?? 0)) - Math.abs((a[1] ?? 0))).slice(0, 3)
+                    const impulses = Object.fromEntries(focus.map(([metricId, w]) => [metricId, (w ?? 0) > 0 ? 0.5 : -0.5]))
+                    window.localStorage.setItem('gamno.multiverseDraft', JSON.stringify({
+                      impulses,
+                      focusMetrics: focus.map(([metricId]) => metricId),
+                      sourceLabelRu: 'Цель+миссия → Мультивселенная',
+                      activeGoal: { id: selected.id, title: selected.title, objective: selected.okr.objective },
+                      activeMission: selected.activeMission,
+                    }))
+                    navigate('/multiverse')
+                  }}>Открыть в Мультивселенной</button> : null}
+                </div>
+              ) : null}
+            </div>
+          )
+        })}
       </div>
 
-
-
-      <div className="goals-aaa-grid">
-        <article className="panel goals-pane goals-pane--forest goals-forest">
-          <h2>Лес целей</h2>
-          <p className="goals-pane__hint">Портфель целей: активные, архив и корзина.</p>
+      <div className="goals-surface__body">
+        <article className={leftPanelCollapsed ? "goals-surface__left goals-pane goals-forest goals-surface__left--collapsed" : "goals-surface__left goals-pane goals-forest"}>
+          <div className="goals-surface__section-head"><h2>Лес целей</h2><button type="button" onClick={() => setLeftPanelCollapsed((value) => !value)}>{leftPanelCollapsed ? "Expand" : "Collapse"}</button></div>
+          <p className="goals-pane__hint">Портфель целей: активные, архив и корзина.</p>{leftPanelCollapsed ? null : <>
           <button type="button" onClick={startSeed}>Посадить семя</button>
           <div className="settings-actions">
             <button type="button" className={forestViewMode === 'forest' ? 'filter-button filter-button--active' : 'filter-button'} onClick={() => setForestViewMode('forest')}>Лес</button>
@@ -1653,9 +1720,10 @@ export function GoalsPage() {
               </div>
             )
           })(), document.body) : null}
+          </>}
         </article>
 
-        <article className="panel goals-pane goals-pane--stage">
+        <article className="goals-surface__stage goals-pane">
           <>
             {goalsStageMode === 'cells' ? (
               <GoalCellsStage
@@ -1715,7 +1783,14 @@ export function GoalsPage() {
           </section>
         </article>
 
-        <article className="panel goals-pane goals-pane--druid goals-tree-state">
+        <article className="goals-surface__cockpit goals-pane goals-tree-state">
+          <section className="goals-surface__cockpit-floor goals-surface__cockpit-floor--summary">
+            <h2>Cockpit summary</h2>
+            <p>Goals: {goals.length} · Active roots: {activeRoots.length}</p>
+            <div className="goals-surface__dial-row"><span>Dial A</span><span>Dial B</span><span>Dial C</span></div>
+            <p className="goals-pane__hint">Warnings placeholder</p>
+          </section>
+          <section className="goals-surface__cockpit-floor goals-surface__cockpit-floor--inspector">
           <h2>Друид</h2>
           {selected ? (
             <>
@@ -1881,6 +1956,7 @@ export function GoalsPage() {
               <button type="button" disabled title="Создайте цель, чтобы настраивать режим">Кузница / Настроить режим</button>
             </div>
           )}
+          </section>
         </article>
       </div>
 
