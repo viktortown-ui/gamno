@@ -207,27 +207,34 @@ export function GoalCellsStage({ goals, links, showLinks, selectedGoalId, select
   const [viewSize, setViewSize] = useState({ width: DEFAULT_SCENE_WIDTH, height: DEFAULT_SCENE_HEIGHT })
   const [transform, setTransform] = useState<ZoomTransform>(zoomIdentity)
   const [isMobile, setIsMobile] = useState(false)
-  const [fitRequest, setFitRequest] = useState<{ kind: 'ALL' | 'FOCUS'; key: string; requestedAt: number; reason: string } | null>(null)
+  const [fitRequest, setFitRequest] = useState<{ kind: 'ALL' | 'FOCUS'; key: string; requestedAt: number; reason: string; source: 'auto' | 'manual'; datasetSignatureChanged?: boolean } | null>(null)
   const [interactionRevision, setInteractionRevision] = useState(0)
   const [fitApplyCount, setFitApplyCount] = useState(0)
   const [lastFitReason, setLastFitReason] = useState('none')
+  const [viewportStable, setViewportStable] = useState(false)
+  const [lastAutoMoveCause, setLastAutoMoveCause] = useState<'fit' | 'focus' | 'scrollIntoView' | 'scrollRestoration' | 'unknown' | 'scroll-lock'>('unknown')
+  const [debugScrollY, setDebugScrollY] = useState(() => (typeof window === 'undefined' ? 0 : Math.round(window.scrollY)))
   const sceneRef = useRef<SVGSVGElement | null>(null)
   const sceneWrapRef = useRef<HTMLDivElement | null>(null)
   const zoomRef = useRef<ZoomBehavior<SVGSVGElement, unknown> | null>(null)
   const fitKeyRef = useRef(0)
   const lastViewportSizeRef = useRef(viewSize)
+  const viewportMeasurementsRef = useRef<Array<{ width: number; height: number; measuredAt: number }>>([])
+  const viewportStableTimerRef = useRef<number | null>(null)
+  const previousDataSignatureRef = useRef<string>('')
   const lastAppliedFitKeyRef = useRef<string | null>(null)
   const isInteractingRef = useRef(false)
+  const hasUserInteractedRef = useRef(false)
   const interactionEndTimerRef = useRef<number | null>(null)
-  const mountedRef = useRef(false)
+  const firstFitAppliedAtRef = useRef<number | null>(null)
   const debugEnabled = typeof window !== 'undefined' && window.localStorage.getItem('cc_debug') === '1'
 
-  const queueFit = useCallback((kind: 'ALL' | 'FOCUS', reason: string, force = false) => {
-    const key = force ? `${kind}:${reason}:manual:${Date.now()}:${fitKeyRef.current + 1}` : `${kind}:${reason}`
+  const queueFit = useCallback((kind: 'ALL' | 'FOCUS', reason: string, force = false, options?: { key?: string; source?: 'auto' | 'manual'; datasetSignatureChanged?: boolean }) => {
+    const key = options?.key ?? (force ? `${kind}:${reason}:manual:${Date.now()}:${fitKeyRef.current + 1}` : `${kind}:${reason}`)
     fitKeyRef.current += 1
     setFitRequest((current) => {
       if (!force && current?.key === key) return current
-      return { kind, key, requestedAt: Date.now(), reason }
+      return { kind, key, requestedAt: Date.now(), reason, source: options?.source ?? (force ? 'manual' : 'auto'), datasetSignatureChanged: options?.datasetSignatureChanged }
     })
   }, [])
 
@@ -240,14 +247,33 @@ export function GoalCellsStage({ goals, links, showLinks, selectedGoalId, select
         width: Math.max(320, Math.round(entry.contentRect.width)),
         height: Math.max(320, Math.round(entry.contentRect.height)),
       }
+      const measuredAt = Date.now()
+      const nextMeasurements = [...viewportMeasurementsRef.current, { ...next, measuredAt }].slice(-3)
+      viewportMeasurementsRef.current = nextMeasurements
+      setViewportStable(false)
+      if (viewportStableTimerRef.current !== null) window.clearTimeout(viewportStableTimerRef.current)
+      viewportStableTimerRef.current = window.setTimeout(() => {
+        const list = viewportMeasurementsRef.current
+        if (list.length < 2) return
+        const latest = list[list.length - 1]
+        const previous = list[list.length - 2]
+        const widthStable = Math.abs(latest.width - previous.width) <= 1
+        const heightStable = Math.abs(latest.height - previous.height) <= 1
+        setViewportStable(widthStable && heightStable)
+      }, 120)
       const prev = lastViewportSizeRef.current
       if (Math.abs(next.width - prev.width) < 2 && Math.abs(next.height - prev.height) < 2) return
       lastViewportSizeRef.current = next
       setViewSize(next)
-      queueFit('ALL', `resize:${next.width}x${next.height}`)
     })
     observer.observe(sceneWrapRef.current)
-    return () => observer.disconnect()
+    return () => {
+      observer.disconnect()
+      if (viewportStableTimerRef.current !== null) {
+        window.clearTimeout(viewportStableTimerRef.current)
+        viewportStableTimerRef.current = null
+      }
+    }
   }, [queueFit])
 
   useEffect(() => {
@@ -331,6 +357,7 @@ export function GoalCellsStage({ goals, links, showLinks, selectedGoalId, select
       ])
       .on('start', () => {
         isInteractingRef.current = true
+        hasUserInteractedRef.current = true
         if (interactionEndTimerRef.current !== null) {
           window.clearTimeout(interactionEndTimerRef.current)
           interactionEndTimerRef.current = null
@@ -360,17 +387,15 @@ export function GoalCellsStage({ goals, links, showLinks, selectedGoalId, select
   }, [viewSize.height, viewSize.width])
 
   useEffect(() => {
-    if (!mountedRef.current) {
-      mountedRef.current = true
-      requestAnimationFrame(() => {
-        queueFit('ALL', `mount:${dataSignature}`)
-      })
-      return
-    }
+    const previousSignature = previousDataSignatureRef.current
+    const datasetSignatureChanged = previousSignature.length > 0 && previousSignature !== dataSignature
+    previousDataSignatureRef.current = dataSignature
+    if (!viewportStable || dataSignature.length === 0) return
+    const initialFitKey = `sig:${dataSignature}:${viewSize.width}x${viewSize.height}`
     requestAnimationFrame(() => {
-      queueFit('ALL', `dataset:${dataSignature}`)
+      queueFit('ALL', `dataset:${dataSignature}`, false, { key: initialFitKey, source: 'auto', datasetSignatureChanged })
     })
-  }, [dataSignature, queueFit])
+  }, [dataSignature, queueFit, viewSize.height, viewSize.width, viewportStable])
 
   useEffect(() => {
     if (resetSignal <= 0) return
@@ -393,12 +418,24 @@ export function GoalCellsStage({ goals, links, showLinks, selectedGoalId, select
       if (fitRequest.kind === 'FOCUS') {
         applied = runFocusSelected(undefined, 260)
       } else {
+        const lockedByInitialFit = fitRequest.source === 'auto'
+          && firstFitAppliedAtRef.current !== null
+          && Date.now() - firstFitAppliedAtRef.current < 1500
+          && !(fitRequest.datasetSignatureChanged && !hasUserInteractedRef.current)
+        if (lockedByInitialFit) {
+          setFitRequest(null)
+          return
+        }
         applied = runFitToView(260)
       }
       if (!applied) return
+      if (fitRequest.kind === 'ALL' && fitRequest.source === 'auto' && firstFitAppliedAtRef.current === null) {
+        firstFitAppliedAtRef.current = Date.now()
+      }
       lastAppliedFitKeyRef.current = fitRequest.key
       setFitApplyCount((current) => current + 1)
       setLastFitReason(fitRequest.reason)
+      setLastAutoMoveCause(fitRequest.kind === 'FOCUS' ? 'focus' : 'fit')
       if (debugEnabled) {
         console.debug('[GoalCellsStage] fit applied', {
           key: fitRequest.key,
@@ -414,6 +451,28 @@ export function GoalCellsStage({ goals, links, showLinks, selectedGoalId, select
       setFitRequest(null)
     })
   }, [debugEnabled, fitApplyCount, fitRequest, interactionRevision, runFitToView, runFocusSelected, transform.k, transform.x, transform.y])
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !debugEnabled) return
+    const onScroll = () => setDebugScrollY(Math.round(window.scrollY))
+    window.addEventListener('scroll', onScroll, { passive: true })
+    const sync = window.requestAnimationFrame(onScroll)
+    return () => {
+      window.cancelAnimationFrame(sync)
+      window.removeEventListener('scroll', onScroll)
+    }
+  }, [debugEnabled])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const onAutoMoveCause = (event: Event) => {
+      const custom = event as CustomEvent<{ cause?: 'fit' | 'focus' | 'scrollIntoView' | 'scrollRestoration' | 'unknown' | 'scroll-lock' }>
+      if (!custom.detail?.cause) return
+      setLastAutoMoveCause(custom.detail.cause)
+    }
+    window.addEventListener('cc:auto-move-cause', onAutoMoveCause as EventListener)
+    return () => window.removeEventListener('cc:auto-move-cause', onAutoMoveCause as EventListener)
+  }, [])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -440,7 +499,14 @@ export function GoalCellsStage({ goals, links, showLinks, selectedGoalId, select
         <div className="goal-cells-stage__floating-controls" role="toolbar" aria-label="Управление сценой">
           <button type="button" className="filter-button goal-cells-stage__hud-chip" onClick={() => queueFit('ALL', 'button:reset', true)}>{isMobile ? '↺' : resetLabel}</button>
           <button type="button" className="filter-button goal-cells-stage__hud-chip" onClick={() => queueFit('FOCUS', `button:focus:${selectedGoalId ?? 'none'}`, true)} disabled={!selectedGoalId}>{isMobile ? '◎' : focusLabel}</button>
-          {debugEnabled ? <span className="goal-cells-stage__hud-chip" aria-live="polite">fit:{fitApplyCount} · {lastFitReason} · k:{transform.k.toFixed(2)} x:{transform.x.toFixed(0)} y:{transform.y.toFixed(0)}</span> : null}
+          {debugEnabled ? (
+            <div className="goal-cells-stage__debug-hud" aria-live="polite">
+              <span className="goal-cells-stage__hud-chip">scrollY:{debugScrollY}</span>
+              <span className="goal-cells-stage__hud-chip">fit:{fitApplyCount} · {lastFitReason}</span>
+              <span className="goal-cells-stage__hud-chip">k:{transform.k.toFixed(2)} x:{transform.x.toFixed(0)} y:{transform.y.toFixed(0)}</span>
+              <span className="goal-cells-stage__hud-chip">auto:{lastAutoMoveCause} · stable:{viewportStable ? '1' : '0'}</span>
+            </div>
+          ) : null}
         </div>
         <svg ref={sceneRef} viewBox={`0 0 ${viewSize.width} ${viewSize.height}`} role="img" aria-label="Сцена целей">
           <rect className="goal-cells-stage__catcher" x={0} y={0} width={viewSize.width} height={viewSize.height} fill="transparent" onClick={onClearBranch} />

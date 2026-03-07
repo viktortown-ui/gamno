@@ -4116,6 +4116,11 @@ button.danger { background: color-mix(in srgb, #e45959 30%, var(--panel) 70%); b
   font-size: 12px;
 }
 
+.goal-cells-stage__debug-hud {
+  display: grid;
+  gap: 4px;
+}
+
 .goal-cells-stage__shell--hot { fill: url(#goalCellHot); }
 .goal-cells-stage__shell--cold { fill: url(#goalCellCold); }
 .goal-cells-stage__shell--neutral { fill: url(#goalCellNeutral); }

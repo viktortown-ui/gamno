@@ -316,6 +316,9 @@ export function GoalsPage() {
   const [isForgeOpen, setIsForgeOpen] = useState(false)
   const [showDebugNumbers, setShowDebugNumbers] = useState(false)
   const [devUnlocked, setDevUnlocked] = useState(false)
+  const lastUserInputAtRef = useRef(0)
+  const lastAutoMoveCauseRef = useRef<'fit' | 'focus' | 'scrollIntoView' | 'scrollRestoration' | 'unknown' | 'scroll-lock'>('unknown')
+  const autoMoveEventsRef = useRef<Array<{ method: string; args: unknown[]; stack?: string; at: number }>>([])
   useEffect(() => {
     if (typeof window === 'undefined') return
     const syncDebug = () => setDevUnlocked(window.localStorage.getItem('cc_debug') === '1')
@@ -334,6 +337,106 @@ export function GoalsPage() {
       window.removeEventListener('storage', syncDebug)
     }
   }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const markUserInput = () => {
+      lastUserInputAtRef.current = Date.now()
+    }
+    const events: Array<keyof WindowEventMap> = ['wheel', 'touchstart', 'keydown', 'mousedown']
+    events.forEach((name) => window.addEventListener(name, markUserInput, { passive: true }))
+    return () => events.forEach((name) => window.removeEventListener(name, markUserInput))
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (!window.location.pathname.includes('/goals')) return
+    const scrollY0 = window.scrollY
+    const startedAt = Date.now()
+    const timer = window.setInterval(() => {
+      const now = Date.now()
+      if (now - startedAt > 2000) return
+      const scrollDelta = Math.abs(window.scrollY - scrollY0)
+      const likelyAuto = scrollDelta > 1 && now - lastUserInputAtRef.current > 120
+      if (!likelyAuto) return
+      window.scrollTo(0, scrollY0)
+      lastAutoMoveCauseRef.current = 'scroll-lock'
+      window.dispatchEvent(new CustomEvent('cc:auto-move-cause', { detail: { cause: 'scroll-lock' } }))
+    }, 100)
+    return () => window.clearInterval(timer)
+  }, [])
+
+  useEffect(() => {
+    if (!devUnlocked || typeof window === 'undefined') return
+    const win = window as Window & {
+      __ccAutoMovePatched?: boolean
+      __ccAutoMoveRestore?: () => void
+    }
+    if (win.__ccAutoMovePatched) return
+    const originals = {
+      focus: HTMLElement.prototype.focus,
+      scrollIntoView: Element.prototype.scrollIntoView,
+      windowScrollTo: window.scrollTo,
+      elementScrollTo: Element.prototype.scrollTo,
+      elementScroll: Element.prototype.scroll,
+    }
+    const recent = autoMoveEventsRef.current
+    const pushEvent = (method: string, args: unknown[]) => {
+      const event = { method, args, stack: new Error().stack, at: Date.now() }
+      recent.push(event)
+      while (recent.length > 5) recent.shift()
+      const now = Date.now()
+      const userInitiated = now - lastUserInputAtRef.current <= 120
+      if (!userInitiated) {
+        const cause = method === 'scrollIntoView'
+          ? 'scrollIntoView'
+          : method === 'focus'
+            ? 'focus'
+            : method === 'window.scrollTo'
+              ? 'scrollRestoration'
+              : 'unknown'
+        lastAutoMoveCauseRef.current = cause
+        window.dispatchEvent(new CustomEvent('cc:auto-move-cause', { detail: { cause } }))
+      }
+      console.debug('[AUTO-MOVE]', recent.map((item) => ({ method: item.method, at: item.at, args: item.args, stack: item.stack })))
+    }
+
+    HTMLElement.prototype.focus = function patchedFocus(...args: Parameters<HTMLElement['focus']>) {
+      pushEvent('focus', args as unknown[])
+      return originals.focus.apply(this, args)
+    }
+    Element.prototype.scrollIntoView = function patchedScrollIntoView(...args: Parameters<Element['scrollIntoView']>) {
+      pushEvent('scrollIntoView', args as unknown[])
+      return originals.scrollIntoView.apply(this, args)
+    }
+    window.scrollTo = function patchedWindowScrollTo(...args: unknown[]) {
+      pushEvent('window.scrollTo', args as unknown[])
+      return Reflect.apply(originals.windowScrollTo as (...params: unknown[]) => void, window, args)
+    } as typeof window.scrollTo
+    Element.prototype.scrollTo = function patchedElementScrollTo(this: Element, ...args: unknown[]) {
+      pushEvent('element.scrollTo', args)
+      return Reflect.apply(originals.elementScrollTo as (...params: unknown[]) => void, this, args)
+    } as typeof Element.prototype.scrollTo
+    Element.prototype.scroll = function patchedElementScroll(this: Element, ...args: unknown[]) {
+      pushEvent('element.scroll', args)
+      return Reflect.apply(originals.elementScroll as (...params: unknown[]) => void, this, args)
+    } as typeof Element.prototype.scroll
+
+    win.__ccAutoMovePatched = true
+    win.__ccAutoMoveRestore = () => {
+      HTMLElement.prototype.focus = originals.focus
+      Element.prototype.scrollIntoView = originals.scrollIntoView
+      window.scrollTo = originals.windowScrollTo
+      Element.prototype.scrollTo = originals.elementScrollTo
+      Element.prototype.scroll = originals.elementScroll
+      win.__ccAutoMovePatched = false
+    }
+
+    return () => {
+      win.__ccAutoMoveRestore?.()
+      delete win.__ccAutoMoveRestore
+    }
+  }, [devUnlocked])
   const forgeOpenButtonRef = useRef<HTMLButtonElement | null>(null)
   const [nextMissionDuration, setNextMissionDuration] = useState<1 | 3>(3)
   const [missionSuggestionSalt, setMissionSuggestionSalt] = useState(0)
