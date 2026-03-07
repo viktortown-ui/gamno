@@ -25,8 +25,8 @@ export function ForgeSheet({ open, title, onClose, children }: ForgeSheetProps) 
 
     const panel = panelRef.current
     const focusable = panel ? Array.from(panel.querySelectorAll<HTMLElement>(focusableSelectors)) : []
-    if (focusable[0]) focusable[0].focus()
-    else panel?.focus()
+    if (focusable[0]) focusable[0].focus({ preventScroll: true })
+    else panel?.focus({ preventScroll: true })
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (!open) return
@@ -45,10 +45,10 @@ export function ForgeSheet({ open, title, onClose, children }: ForgeSheetProps) 
       const active = document.activeElement
       if (!event.shiftKey && active === last) {
         event.preventDefault()
-        first.focus()
+        first.focus({ preventScroll: true })
       } else if (event.shiftKey && active === first) {
         event.preventDefault()
-        last.focus()
+        last.focus({ preventScroll: true })
       }
     }
 

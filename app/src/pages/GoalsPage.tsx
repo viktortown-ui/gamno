@@ -685,7 +685,7 @@ export function GoalsPage() {
   const closeSeedModal = () => {
     setSeedModalOpen(false)
     setDuplicateCandidate(null)
-    requestAnimationFrame(() => seedButtonRef.current?.focus())
+    requestAnimationFrame(() => seedButtonRef.current?.focus({ preventScroll: true }))
   }
 
   useEffect(() => {
@@ -703,7 +703,7 @@ export function GoalsPage() {
 
     const node = seedDialogRef.current
     const focusable = node ? Array.from(node.querySelectorAll<HTMLElement>(focusableSelectors)) : []
-    focusable[0]?.focus()
+    focusable[0]?.focus({ preventScroll: true })
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (!seedModalOpen) return
@@ -722,10 +722,10 @@ export function GoalsPage() {
       const active = document.activeElement
       if (!event.shiftKey && active === last) {
         event.preventDefault()
-        first.focus()
+        first.focus({ preventScroll: true })
       } else if (event.shiftKey && active === first) {
         event.preventDefault()
-        last.focus()
+        last.focus({ preventScroll: true })
       }
     }
 
@@ -873,7 +873,7 @@ export function GoalsPage() {
 
   const closeForge = () => {
     setIsForgeOpen(false)
-    requestAnimationFrame(() => forgeOpenButtonRef.current?.focus())
+    requestAnimationFrame(() => forgeOpenButtonRef.current?.focus({ preventScroll: true }))
   }
 
   useEffect(() => {
@@ -1071,7 +1071,7 @@ export function GoalsPage() {
 
   const closeMissionConfirm = () => {
     setMissionConfirmOpen(false)
-    requestAnimationFrame(() => missionDoneButtonRef.current?.focus())
+    requestAnimationFrame(() => missionDoneButtonRef.current?.focus({ preventScroll: true }))
   }
 
   useEffect(() => {
@@ -1089,7 +1089,7 @@ export function GoalsPage() {
 
     const node = missionConfirmDialogRef.current
     const focusable = node ? Array.from(node.querySelectorAll<HTMLElement>(focusableSelectors)) : []
-    focusable[0]?.focus()
+    focusable[0]?.focus({ preventScroll: true })
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (!missionConfirmOpen) return
@@ -1108,10 +1108,10 @@ export function GoalsPage() {
       const active = document.activeElement
       if (!event.shiftKey && active === last) {
         event.preventDefault()
-        first.focus()
+        first.focus({ preventScroll: true })
       } else if (event.shiftKey && active === first) {
         event.preventDefault()
-        last.focus()
+        last.focus({ preventScroll: true })
       }
     }
 
@@ -1296,7 +1296,7 @@ export function GoalsPage() {
     setForestMenuStyle(null)
     if (restoreFocus && goalId) {
       requestAnimationFrame(() => {
-        forestMenuTriggerRefs.current[goalId]?.focus()
+        forestMenuTriggerRefs.current[goalId]?.focus({ preventScroll: true })
       })
     }
   }, [forestMenuGoalId])
@@ -1371,7 +1371,7 @@ export function GoalsPage() {
     if (!forestMenuGoalId) return
     const timer = window.setTimeout(() => {
       const firstEnabledItem = forestMenuItemRefs.current.find((item) => item && !item.disabled)
-      firstEnabledItem?.focus()
+      firstEnabledItem?.focus({ preventScroll: true })
     }, 0)
     return () => window.clearTimeout(timer)
   }, [forestMenuGoalId])
@@ -1419,7 +1419,7 @@ export function GoalsPage() {
     if (!submenuOpen) return
     const trigger = submenuTriggerRefs.current[submenuOpen]
     setSubmenuOpen(null)
-    trigger?.focus()
+    trigger?.focus({ preventScroll: true })
   }, [submenuOpen])
 
 
@@ -1704,7 +1704,7 @@ export function GoalsPage() {
                 const nextIndex = (fromIndex + direction * offset + flatItems.length) % flatItems.length
                 const candidate = forestMenuItemRefs.current[nextIndex]
                 if (candidate && !candidate.disabled) {
-                  candidate.focus()
+                  candidate.focus({ preventScroll: true })
                   return
                 }
               }
@@ -1713,7 +1713,7 @@ export function GoalsPage() {
             const focusBoundary = (target: 'first' | 'last') => {
               const ordered = target === 'first' ? forestMenuItemRefs.current : [...forestMenuItemRefs.current].reverse()
               const nextItem = ordered.find((item) => item && !item.disabled)
-              nextItem?.focus()
+              nextItem?.focus({ preventScroll: true })
             }
 
             return (
