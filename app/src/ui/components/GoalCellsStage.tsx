@@ -204,26 +204,48 @@ export function GoalCellsStage({ goals, links, showLinks, selectedGoalId, select
   const [viewSize, setViewSize] = useState({ width: DEFAULT_SCENE_WIDTH, height: DEFAULT_SCENE_HEIGHT })
   const [transform, setTransform] = useState<ZoomTransform>(zoomIdentity)
   const [isMobile, setIsMobile] = useState(false)
-  const [fitRequest, setFitRequest] = useState<{ mode: 'all' | 'selected'; key: number } | null>(null)
+  const [fitRequest, setFitRequest] = useState<{ kind: 'ALL' | 'FOCUS'; key: string; requestedAt: number; reason: string } | null>(null)
+  const [interactionRevision, setInteractionRevision] = useState(0)
+  const [fitApplyCount, setFitApplyCount] = useState(0)
+  const [lastFitReason, setLastFitReason] = useState('none')
   const sceneRef = useRef<SVGSVGElement | null>(null)
   const sceneWrapRef = useRef<HTMLDivElement | null>(null)
   const zoomRef = useRef<ZoomBehavior<SVGSVGElement, unknown> | null>(null)
   const fitKeyRef = useRef(0)
+  const lastViewportSizeRef = useRef(viewSize)
+  const lastAppliedFitKeyRef = useRef<string | null>(null)
+  const isInteractingRef = useRef(false)
+  const interactionEndTimerRef = useRef<number | null>(null)
   const mountedRef = useRef(false)
+  const debugEnabled = typeof window !== 'undefined' && window.localStorage.getItem('cc_debug') === '1'
+
+  const queueFit = useCallback((kind: 'ALL' | 'FOCUS', reason: string, force = false) => {
+    const key = force ? `${kind}:${reason}:manual:${Date.now()}:${fitKeyRef.current + 1}` : `${kind}:${reason}`
+    fitKeyRef.current += 1
+    setFitRequest((current) => {
+      if (!force && current?.key === key) return current
+      return { kind, key, requestedAt: Date.now(), reason }
+    })
+  }, [])
 
   useEffect(() => {
     if (!sceneWrapRef.current || typeof ResizeObserver === 'undefined') return
     const observer = new ResizeObserver((entries) => {
       const entry = entries[0]
       if (!entry) return
-      setViewSize({
+      const next = {
         width: Math.max(320, Math.round(entry.contentRect.width)),
         height: Math.max(320, Math.round(entry.contentRect.height)),
-      })
+      }
+      const prev = lastViewportSizeRef.current
+      if (Math.abs(next.width - prev.width) < 2 && Math.abs(next.height - prev.height) < 2) return
+      lastViewportSizeRef.current = next
+      setViewSize(next)
+      queueFit('ALL', `resize:${next.width}x${next.height}`)
     })
     observer.observe(sceneWrapRef.current)
     return () => observer.disconnect()
-  }, [])
+  }, [queueFit])
 
   useEffect(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
@@ -264,10 +286,11 @@ export function GoalCellsStage({ goals, links, showLinks, selectedGoalId, select
   const dataSignature = useMemo(() => goals.map((goal) => goal.id).sort().join('|'), [goals])
 
   const applyTransform = useCallback((target: ZoomTransform, durationMs = 240) => {
-    if (!sceneRef.current || !zoomRef.current) return
+    if (!sceneRef.current || !zoomRef.current) return false
     const selection = select(sceneRef.current)
     void durationMs
     selection.call(zoomRef.current.transform, target)
+    return true
   }, [])
 
   const computeFitTransform = useCallback((nodes: Array<{ x: number; y: number; r: number }>): ZoomTransform => {
@@ -283,21 +306,17 @@ export function GoalCellsStage({ goals, links, showLinks, selectedGoalId, select
   }, [viewSize.height, viewSize.width])
 
   const runFitToView = useCallback((durationMs = 260) => {
-    applyTransform(computeFitTransform(layoutGoals), durationMs)
+    if (layoutGoals.length === 0) return false
+    return applyTransform(computeFitTransform(layoutGoals), durationMs)
   }, [applyTransform, computeFitTransform, layoutGoals])
 
   const runFocusSelected = useCallback((goalId?: string, durationMs = 260) => {
     const targetId = goalId ?? selectedGoalId
-    if (!targetId) return
+    if (!targetId) return false
     const targetGoal = goalById.get(targetId)
-    if (!targetGoal) return
-    applyTransform(computeFitTransform([{ x: targetGoal.x, y: targetGoal.y, r: Math.max(targetGoal.r + 28, targetGoal.r * 1.2) }]), durationMs)
+    if (!targetGoal) return false
+    return applyTransform(computeFitTransform([{ x: targetGoal.x, y: targetGoal.y, r: Math.max(targetGoal.r + 28, targetGoal.r * 1.2) }]), durationMs)
   }, [applyTransform, computeFitTransform, goalById, selectedGoalId])
-
-  const queueFit = useCallback((mode: 'all' | 'selected') => {
-    fitKeyRef.current += 1
-    setFitRequest({ mode, key: fitKeyRef.current })
-  }, [])
 
   useEffect(() => {
     if (!sceneRef.current) return
@@ -307,14 +326,32 @@ export function GoalCellsStage({ goals, links, showLinks, selectedGoalId, select
         [-viewSize.width * 0.35, -viewSize.height * 0.35],
         [viewSize.width * 1.35, viewSize.height * 1.35],
       ])
+      .on('start', () => {
+        isInteractingRef.current = true
+        if (interactionEndTimerRef.current !== null) {
+          window.clearTimeout(interactionEndTimerRef.current)
+          interactionEndTimerRef.current = null
+        }
+      })
       .on('zoom', (event) => {
         setTransform(event.transform)
+      })
+      .on('end', () => {
+        if (interactionEndTimerRef.current !== null) window.clearTimeout(interactionEndTimerRef.current)
+        interactionEndTimerRef.current = window.setTimeout(() => {
+          isInteractingRef.current = false
+          setInteractionRevision((current) => current + 1)
+        }, 200)
       })
 
     zoomRef.current = behavior
     const selection = select(sceneRef.current)
     selection.call(behavior)
     return () => {
+      if (interactionEndTimerRef.current !== null) {
+        window.clearTimeout(interactionEndTimerRef.current)
+        interactionEndTimerRef.current = null
+      }
       selection.on('.zoom', null)
     }
   }, [viewSize.height, viewSize.width])
@@ -322,38 +359,70 @@ export function GoalCellsStage({ goals, links, showLinks, selectedGoalId, select
   useEffect(() => {
     if (!mountedRef.current) {
       mountedRef.current = true
-      queueFit('all')
+      requestAnimationFrame(() => {
+        queueFit('ALL', `mount:${dataSignature}`)
+      })
       return
     }
-    queueFit('all')
+    requestAnimationFrame(() => {
+      queueFit('ALL', `dataset:${dataSignature}`)
+    })
   }, [dataSignature, queueFit])
 
   useEffect(() => {
-    if (resetSignal > 0) queueFit('all')
+    if (resetSignal <= 0) return
+    requestAnimationFrame(() => {
+      queueFit('ALL', `reset:${resetSignal}`, true)
+    })
   }, [queueFit, resetSignal])
 
   useEffect(() => {
     if (!fitRequest) return
+    if (isInteractingRef.current) return
+    if (fitRequest.key === lastAppliedFitKeyRef.current) {
+      requestAnimationFrame(() => {
+        setFitRequest(null)
+      })
+      return
+    }
     requestAnimationFrame(() => {
-      if (fitRequest.mode === 'selected') {
-        runFocusSelected(undefined, 260)
+      let applied = false
+      if (fitRequest.kind === 'FOCUS') {
+        applied = runFocusSelected(undefined, 260)
       } else {
-        runFitToView(260)
+        applied = runFitToView(260)
       }
+      if (!applied) return
+      lastAppliedFitKeyRef.current = fitRequest.key
+      setFitApplyCount((current) => current + 1)
+      setLastFitReason(fitRequest.reason)
+      if (debugEnabled) {
+        console.debug('[GoalCellsStage] fit applied', {
+          key: fitRequest.key,
+          reason: fitRequest.reason,
+          count: fitApplyCount + 1,
+          transform: {
+            k: transform.k,
+            x: transform.x,
+            y: transform.y,
+          },
+        })
+      }
+      setFitRequest(null)
     })
-  }, [fitRequest, runFitToView, runFocusSelected])
+  }, [debugEnabled, fitApplyCount, fitRequest, interactionRevision, runFitToView, runFocusSelected, transform.k, transform.x, transform.y])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault()
-        queueFit('all')
+        queueFit('ALL', 'key:escape', true)
       } else if (event.key.toLowerCase() === 'r') {
         event.preventDefault()
-        queueFit('all')
+        queueFit('ALL', 'key:r', true)
       } else if (event.key.toLowerCase() === 'f' && selectedGoalId) {
         event.preventDefault()
-        queueFit('selected')
+        queueFit('FOCUS', `key:f:${selectedGoalId}`, true)
       }
     }
     document.addEventListener('keydown', onKeyDown)
@@ -366,8 +435,9 @@ export function GoalCellsStage({ goals, links, showLinks, selectedGoalId, select
         <div className="goal-cells-stage__overlay-label">{overlayLabel}</div>
         {tooFewGoalsHint ? <p className="goal-cells-stage__inline-hint">{tooFewGoalsHint}</p> : null}
         <div className="goal-cells-stage__floating-controls" role="toolbar" aria-label="Управление сценой">
-          <button type="button" className="filter-button goal-cells-stage__hud-chip" onClick={() => queueFit('all')}>{isMobile ? '↺' : resetLabel}</button>
-          <button type="button" className="filter-button goal-cells-stage__hud-chip" onClick={() => queueFit('selected')} disabled={!selectedGoalId}>{isMobile ? '◎' : focusLabel}</button>
+          <button type="button" className="filter-button goal-cells-stage__hud-chip" onClick={() => queueFit('ALL', 'button:reset', true)}>{isMobile ? '↺' : resetLabel}</button>
+          <button type="button" className="filter-button goal-cells-stage__hud-chip" onClick={() => queueFit('FOCUS', `button:focus:${selectedGoalId ?? 'none'}`, true)} disabled={!selectedGoalId}>{isMobile ? '◎' : focusLabel}</button>
+          {debugEnabled ? <span className="goal-cells-stage__hud-chip" aria-live="polite">fit:{fitApplyCount} · {lastFitReason} · k:{transform.k.toFixed(2)} x:{transform.x.toFixed(0)} y:{transform.y.toFixed(0)}</span> : null}
         </div>
         <svg ref={sceneRef} viewBox={`0 0 ${viewSize.width} ${viewSize.height}`} role="img" aria-label="Сцена целей">
           <rect className="goal-cells-stage__catcher" x={0} y={0} width={viewSize.width} height={viewSize.height} fill="transparent" onClick={onClearBranch} />
