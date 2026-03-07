@@ -315,6 +315,7 @@ code,
 
 .content { min-width: 0; height: 100vh; overflow: auto; padding: var(--page-gutter); padding-left: var(--space-3); }
 .content:has(.start-page) { overflow: hidden; }
+.content:has(.goals-surface) { overflow: hidden; }
 .page { padding: var(--space-4); text-align: left; display: grid; gap: var(--space-3); }
 .page h1 { font-size: 24px; }
 .page h2 { font-size: 18px; }
