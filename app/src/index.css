@@ -4037,7 +4037,33 @@ button.danger { background: color-mix(in srgb, #e45959 30%, var(--panel) 70%); b
   border: 0;
   border-radius: 0;
   overflow: hidden;
-  background: radial-gradient(circle at 28% 16%, rgba(72, 98, 164, 0.2), rgba(13, 18, 30, 0.88));
+  background:
+    radial-gradient(120% 90% at 20% 10%, rgba(104, 138, 214, 0.2), transparent 58%),
+    radial-gradient(90% 70% at 80% 80%, rgba(91, 61, 146, 0.22), transparent 62%),
+    linear-gradient(180deg, #08101d 0%, #050914 55%, #03060f 100%);
+}
+
+.goal-cells-stage__scene::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.26;
+  background-image:
+    radial-gradient(2px 2px at 20% 30%, rgba(214, 231, 255, 0.6), transparent),
+    radial-gradient(1.4px 1.4px at 70% 40%, rgba(214, 231, 255, 0.55), transparent),
+    radial-gradient(1.6px 1.6px at 45% 70%, rgba(214, 231, 255, 0.48), transparent),
+    radial-gradient(1.2px 1.2px at 85% 20%, rgba(214, 231, 255, 0.4), transparent);
+  background-size: 220px 220px;
+  mix-blend-mode: screen;
+}
+
+.goal-cells-stage__scene::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(120% 100% at 50% 55%, transparent 45%, rgba(2, 5, 10, 0.6) 100%);
 }
 
 .goal-cells-stage__overlay-label {
@@ -4047,10 +4073,10 @@ button.danger { background: color-mix(in srgb, #e45959 30%, var(--panel) 70%); b
   z-index: 2;
   font-size: 11px;
   letter-spacing: 0.04em;
-  text-transform: uppercase;
-  padding: 2px 6px;
-  border: 1px solid color-mix(in srgb, var(--line) 30%, transparent);
-  background: color-mix(in srgb, var(--panel) 58%, transparent);
+  padding: 2px 7px;
+  border: 1px solid color-mix(in srgb, #b9cdfa 35%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, #111b2c 62%, transparent);
 }
 
 .goal-cells-stage__inline-hint {
@@ -4078,7 +4104,16 @@ button.danger { background: color-mix(in srgb, #e45959 30%, var(--panel) 70%); b
 }
 
 .goal-cells-stage__floating-controls .filter-button {
-  border-radius: 0;
+  border-radius: 999px;
+}
+
+.goal-cells-stage__hud-chip {
+  min-height: 28px;
+  padding: 4px 10px;
+  border: 1px solid color-mix(in srgb, #b9cdfa 32%, transparent);
+  background: color-mix(in srgb, #12213b 56%, transparent);
+  backdrop-filter: blur(6px);
+  font-size: 12px;
 }
 
 .goal-cells-stage__shell--hot { fill: url(#goalCellHot); }

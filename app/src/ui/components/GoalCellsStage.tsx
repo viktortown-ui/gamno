@@ -360,13 +360,13 @@ export function GoalCellsStage({ goals, links, showLinks, selectedGoalId, select
   return (
     <div className="goal-cells-stage">
       <div className="goal-cells-stage__scene" ref={sceneWrapRef} aria-label="Сцена всех целей и рычагов">
-        <div className="goal-cells-stage__overlay-label">Universe Stage</div>
+        <div className="goal-cells-stage__overlay-label">Сцена</div>
         {tooFewGoalsHint ? <p className="goal-cells-stage__inline-hint">{tooFewGoalsHint}</p> : null}
         <div className="goal-cells-stage__floating-controls" role="toolbar" aria-label="Управление сценой">
-          <button type="button" className="filter-button" onClick={() => queueFit('all')}>{isMobile ? '↺' : 'Сброс вида (R)'}</button>
-          <button type="button" className="filter-button" onClick={() => queueFit('selected')} disabled={!selectedGoalId}>{isMobile ? '◎' : 'Фокус выбранной (F)'}</button>
+          <button type="button" className="filter-button goal-cells-stage__hud-chip" onClick={() => queueFit('all')}>{isMobile ? '↺' : 'Сброс вида (R)'}</button>
+          <button type="button" className="filter-button goal-cells-stage__hud-chip" onClick={() => queueFit('selected')} disabled={!selectedGoalId}>{isMobile ? '◎' : 'Фокус выбранной (F)'}</button>
         </div>
-        <svg ref={sceneRef} viewBox={`0 0 ${viewSize.width} ${viewSize.height}`} role="img" aria-label="Вселенная целей">
+        <svg ref={sceneRef} viewBox={`0 0 ${viewSize.width} ${viewSize.height}`} role="img" aria-label="Сцена целей">
           <rect className="goal-cells-stage__catcher" x={0} y={0} width={viewSize.width} height={viewSize.height} fill="transparent" onClick={onClearBranch} />
           <g transform={transform.toString()}>
             <g className="goal-cells-stage__links-layer" aria-hidden="true">
@@ -423,8 +423,8 @@ export function GoalCellsStage({ goals, links, showLinks, selectedGoalId, select
                   </g>
                 ))}
 
-                <text className="goal-cells-stage__goal-title" x={goal.x} y={goal.y - goal.r + 18}>{goal.title.slice(0, 26)}</text>
-                {!isMobile ? goal.leversLayout.map((lever) => <text key={`label-${lever.id}`} className="goal-cells-stage__lever-title" x={lever.x} y={lever.y + 4}>{lever.title.slice(0, 10)}</text>) : null}
+                {goal.isSelected ? <text className="goal-cells-stage__goal-title" x={goal.x} y={goal.y - goal.r + 18}>{goal.title.slice(0, 26)}</text> : null}
+                {!isMobile && goal.isSelected ? goal.leversLayout.filter((lever) => lever.isSelected || selectedBranchId === lever.id).map((lever) => <text key={`label-${lever.id}`} className="goal-cells-stage__lever-title" x={lever.x} y={lever.y + 4}>{lever.title.slice(0, 10)}</text>) : null}
                 {isMobile ? goal.leversLayout.filter((lever) => lever.isSelected).map((lever) => <text key={`label-${lever.id}`} className="goal-cells-stage__lever-title" x={lever.x} y={lever.y + 4}>{lever.title.slice(0, 10)}</text>) : null}
                 {goal.levers.length > goal.visibleLeverCount ? (
                   <text className="goal-cells-stage__more" x={goal.x - 16} y={goal.y + goal.r - 10}>{`+${goal.levers.length - goal.visibleLeverCount}`}</text>

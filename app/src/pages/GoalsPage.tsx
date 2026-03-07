@@ -128,9 +128,9 @@ const forestTabLabels: Record<ForestTab, string> = {
 }
 
 const goalStatusBadgeLabel: Record<GoalRecord['status'], string> = {
-  active: 'Active',
-  archived: 'Archive',
-  trashed: 'Trash',
+  active: 'Активна',
+  archived: 'Архив',
+  trashed: 'Корзина',
 }
 
 const linkTypeLabels: Record<GoalLinkType, string> = {
@@ -150,56 +150,56 @@ const UNIVERSE_SEED_BLUEPRINTS: Array<{
 }> = [
   {
     id: 'goal-universe-01-north-star',
-    title: 'Universe · Северная звезда',
-    description: 'Демо-цель для плотной карты Universe.',
+    title: 'Демо · Северная звезда',
+    description: 'Демо-цель для плотной карты сцены.',
     objective: 'Держу долгий курс без потери темпа.',
     weights: { focus: 0.8, productivity: 0.7, stress: -0.5, energy: 0.45, sleepHours: 0.3 },
     leverMetrics: ['focus', 'productivity', 'stress', 'energy', 'sleepHours'],
   },
   {
     id: 'goal-universe-02-energy-loop',
-    title: 'Universe · Энергоконтур',
-    description: 'Демо-цель для плотной карты Universe.',
+    title: 'Демо · Энергоконтур',
+    description: 'Демо-цель для плотной карты сцены.',
     objective: 'Стабилизирую энергию и сон на дистанции.',
     weights: { energy: 0.9, sleepHours: 0.85, stress: -0.7, mood: 0.35 },
     leverMetrics: ['energy', 'sleepHours', 'stress', 'mood'],
   },
   {
     id: 'goal-universe-03-finance-grid',
-    title: 'Universe · Финконтур',
-    description: 'Демо-цель для плотной карты Universe.',
+    title: 'Демо · Финконтур',
+    description: 'Демо-цель для плотной карты сцены.',
     objective: 'Укрепляю денежный поток без хаоса.',
     weights: { cashFlow: 0.95, focus: 0.45, productivity: 0.5, stress: -0.35 },
     leverMetrics: ['cashFlow', 'focus', 'productivity', 'stress'],
   },
   {
     id: 'goal-universe-04-social-shield',
-    title: 'Universe · Соцщит',
-    description: 'Демо-цель для плотной карты Universe.',
+    title: 'Демо · Соцщит',
+    description: 'Демо-цель для плотной карты сцены.',
     objective: 'Поддерживаю контакт и ресурс команды.',
     weights: { social: 0.9, mood: 0.8, stress: -0.45, energy: 0.35 },
     leverMetrics: ['social', 'mood', 'stress', 'energy'],
   },
   {
     id: 'goal-universe-05-deep-work',
-    title: 'Universe · Deep Work',
-    description: 'Демо-цель для плотной карты Universe.',
+    title: 'Демо · Глубокая работа',
+    description: 'Демо-цель для плотной карты сцены.',
     objective: 'Создаю блоки глубокой работы каждый день.',
     weights: { focus: 0.95, productivity: 0.8, social: -0.2, stress: -0.3 },
     leverMetrics: ['focus', 'productivity', 'stress', 'sleepHours'],
   },
   {
     id: 'goal-universe-06-recovery',
-    title: 'Universe · Восстановление',
-    description: 'Демо-цель для плотной карты Universe.',
+    title: 'Демо · Восстановление',
+    description: 'Демо-цель для плотной карты сцены.',
     objective: 'Восстанавливаюсь и держу шторм ниже порога.',
     weights: { health: 0.8, sleepHours: 0.9, energy: 0.7, stress: -0.9, mood: 0.4 },
     leverMetrics: ['health', 'sleepHours', 'energy', 'stress', 'mood'],
   },
   {
     id: 'goal-universe-07-balance-grid',
-    title: 'Universe · Баланс системы',
-    description: 'Демо-цель для плотной карты Universe.',
+    title: 'Демо · Баланс системы',
+    description: 'Демо-цель для плотной карты сцены.',
     objective: 'Собираю баланс по ключевым метрикам.',
     weights: { energy: 0.55, focus: 0.55, productivity: 0.55, stress: -0.55, cashFlow: 0.35, social: 0.35 },
     leverMetrics: ['energy', 'focus', 'productivity', 'stress', 'cashFlow', 'social'],
@@ -290,11 +290,7 @@ export function GoalsPage() {
   const [historyTrend, setHistoryTrend] = useState<'up' | 'down' | null>(null)
   const [selectedKrId, setSelectedKrId] = useState<string | null>(null)
   const [stageResetSignal, setStageResetSignal] = useState(0)
-  const [goalsStageMode, setGoalsStageMode] = useState<'cells' | 'tree'>(() => {
-    if (typeof window === 'undefined') return 'cells'
-    const stored = window.localStorage.getItem('gamno.goalsStageMode')
-    return stored === 'tree' ? 'tree' : 'cells'
-  })
+  const goalsStageMode = 'cells' as const
   const [seedModalOpen, setSeedModalOpen] = useState(false)
   const [seedTemplate, setSeedTemplate] = useState<GoalTemplateId>('growth')
   const [seedTitle, setSeedTitle] = useState('')
@@ -321,6 +317,25 @@ export function GoalsPage() {
   const [linkTypeDraft, setLinkTypeDraft] = useState<GoalLinkType>('supports')
   const [isForgeOpen, setIsForgeOpen] = useState(false)
   const [showDebugNumbers, setShowDebugNumbers] = useState(false)
+  const [devUnlocked, setDevUnlocked] = useState(false)
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const syncDebug = () => setDevUnlocked(window.localStorage.getItem('cc_debug') === '1')
+    syncDebug()
+    const onKey = (event: KeyboardEvent) => {
+      if (event.altKey && event.key.toLowerCase() === 'd') {
+        const next = window.localStorage.getItem('cc_debug') === '1' ? '0' : '1'
+        window.localStorage.setItem('cc_debug', next)
+        setDevUnlocked(next === '1')
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    window.addEventListener('storage', syncDebug)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('storage', syncDebug)
+    }
+  }, [])
   const forgeOpenButtonRef = useRef<HTMLButtonElement | null>(null)
   const [nextMissionDuration, setNextMissionDuration] = useState<1 | 3>(3)
   const [missionSuggestionSalt, setMissionSuggestionSalt] = useState(0)
@@ -609,10 +624,6 @@ export function GoalsPage() {
     return { label: 'Стоит', toneClass: 'status-badge--high' }
   }, [scoring])
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    window.localStorage.setItem('gamno.goalsStageMode', goalsStageMode)
-  }, [goalsStageMode])
 
   useEffect(() => {
     let cancelled = false
@@ -645,7 +656,7 @@ export function GoalsPage() {
       const keyResults = blueprint.leverMetrics.map((metricId, metricIndex) => {
         const weight = blueprint.weights[metricId] ?? 0
         return {
-          ...createKrFromMetric(metricId, weight >= 0 ? 'up' : 'down', metricIndex, 'Детерминированный рычаг Seed Universe.'),
+          ...createKrFromMetric(metricId, weight >= 0 ? 'up' : 'down', metricIndex, 'Детерминированный рычаг демо-засева.'),
           id: `kr-universe-${index + 1}-${metricId}`,
         }
       })
@@ -661,7 +672,7 @@ export function GoalsPage() {
         modePresetId: 'balance' as const,
         isManualTuning: false,
         manualTuning: { weights: blueprint.weights, horizonDays: 14 as const },
-        groveId: 'Universe Demo',
+        groveId: 'Демо-роща',
       }
 
       const existing = existingById.get(blueprint.id)
@@ -887,7 +898,7 @@ export function GoalsPage() {
   }, [])
 
   const trunkHealth = useMemo(() => {
-    if (!scoring) return { label: 'N/A', stateKind: 'na' as const, value01: null }
+    if (!scoring) return { label: '—', stateKind: 'na' as const, value01: null }
     if (scoring.goalGap <= -5) return { label: 'Норма', stateKind: 'good' as const, value01: 0.8 }
     if (scoring.goalGap <= 2) return { label: 'Под риском', stateKind: 'warn' as const, value01: 0.5 }
     return { label: 'Критично', stateKind: 'bad' as const, value01: 0.2 }
@@ -895,7 +906,7 @@ export function GoalsPage() {
 
   const stormStatus = useMemo(() => {
     if (typeof goalState?.pCollapse !== 'number') {
-      return { label: 'N/A', stateKind: 'na' as const, value01: null }
+      return { label: '—', stateKind: 'na' as const, value01: null }
     }
     const collapse = goalState.pCollapse
     if (collapse < 0.18) return { label: 'Штиль', stateKind: 'good' as const, value01: 0.84 }
@@ -1428,6 +1439,21 @@ export function GoalsPage() {
     trigger?.focus()
   }, [submenuOpen])
 
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || import.meta.env.PROD) return
+    if (!window.location.pathname.includes('/goals')) return
+    const holder = document.querySelector('.goals-page')
+    if (!holder) return
+    const text = holder.textContent ?? ''
+    const latinChunks = text.match(/[A-Za-z]{3,}/g) ?? []
+    const allowed = new Set(['id', 'KR'])
+    const violations = latinChunks.filter((item) => !allowed.has(item))
+    if (violations.length > 0) {
+      console.warn('[Goals RU-only] Найдена латиница:', Array.from(new Set(violations)).slice(0, 12))
+    }
+  })
+
   useEffect(() => {
     if (!submenuOpen) return
     const onPointerDown = (event: MouseEvent) => {
@@ -1452,14 +1478,14 @@ export function GoalsPage() {
 
   return (
     <section className="goals-page goals-surface">
-      <div className="goals-surface__submenu" role="menubar" aria-label="Goals submenu">
+      <div className="goals-surface__submenu" role="menubar" aria-label="Подменю целей">
         {([
-          ['search', 'Search'],
-          ['sort', 'Sort'],
-          ['filter', 'Filter'],
-          ['roots', 'Roots'],
-          ['autolinks', 'Auto-links'],
-          ['forge', 'Forge'],
+          ['search', 'Поиск'],
+          ['sort', 'Сортировка'],
+          ['filter', 'Фильтры'],
+          ['roots', 'Корни'],
+          ['autolinks', 'Автосвязи'],
+          ['forge', 'Кузница'],
         ] as const).map(([id, label]) => {
           const isOpen = submenuOpen === id
           return (
@@ -1482,20 +1508,20 @@ export function GoalsPage() {
                   }
                 }}
               >
-                {label}{id === 'roots' ? <span className="goals-surface__submenu-muted">{rootsStageEnabled ? 'ON' : 'OFF'}</span> : null}{id === 'autolinks' ? <span className="goals-surface__submenu-muted">OFF</span> : null}
+                {label}{id === 'roots' ? <span className="goals-surface__submenu-muted">{rootsStageEnabled ? 'ВКЛ' : 'ВЫКЛ'}</span> : null}{id === 'autolinks' ? <span className="goals-surface__submenu-muted">ВЫКЛ</span> : null}
               </button>
               {isOpen ? (
                 <div ref={(node) => { submenuPopoverRef.current = node }} className="goals-surface__submenu-popover" role="menu">
                   {id === 'roots' ? (
                     <div className="goals-surface__submenu-roots">
-                      <p>Показывать связи только от выбранной цели на Stage.</p>
+                      <p>Показывать на сцене связи только от выбранной цели.</p>
                       <button type="button" className={rootsStageEnabled ? 'filter-button filter-button--active' : 'filter-button'} onClick={() => setRootsStageEnabled((value) => !value)}>
-                        Roots: {rootsStageEnabled ? 'ON' : 'OFF'}
+                        Корни: {rootsStageEnabled ? 'ВКЛ' : 'ВЫКЛ'}
                       </button>
                     </div>
-                  ) : <p>{label} menu placeholder</p>}
+                  ) : <p>Раздел «{label}» в разработке.</p>}
                   {id === 'forge' ? <button ref={seedButtonRef} type="button" onClick={startSeed}>Посадить семя</button> : null}
-                  {id === 'forge' ? <button type="button" onClick={() => { void seedUniverse() }}>Seed Universe (x7)</button> : null}
+                  {id === 'forge' && devUnlocked ? <button type="button" onClick={() => { void seedUniverse() }}>Засеять демо (×7)</button> : null}
                   {id === 'forge' ? <button type="button" onClick={() => {
                     if (!selected) return
                     const focus = Object.entries(selectedWeights).sort((a, b) => Math.abs((b[1] ?? 0)) - Math.abs((a[1] ?? 0))).slice(0, 3)
@@ -1518,11 +1544,11 @@ export function GoalsPage() {
 
       <div className="goals-surface__body">
         <article className={leftPanelCollapsed ? "goals-surface__left goals-pane goals-forest goals-surface__left--collapsed" : "goals-surface__left goals-pane goals-forest"}>
-          <div className="goals-surface__section-head"><h2>Лес целей</h2><button type="button" onClick={() => setLeftPanelCollapsed((value) => !value)}>{leftPanelCollapsed ? "Expand" : "Collapse"}</button></div>
+          <div className="goals-surface__section-head"><h2>Лес целей</h2><button type="button" onClick={() => setLeftPanelCollapsed((value) => !value)}>{leftPanelCollapsed ? "Развернуть" : "Свернуть"}</button></div>
           <p className="goals-pane__hint">Портфель целей: активные, архив и корзина.</p>{leftPanelCollapsed ? null : <>
           <div className="goals-surface__seed-actions">
             <button type="button" onClick={startSeed}>Посадить семя</button>
-            <button type="button" onClick={() => { void seedUniverse() }}>Seed Universe (x7)</button>
+            {devUnlocked ? <button type="button" onClick={() => { void seedUniverse() }}>Засеять демо (×7)</button> : null}
           </div>
           <div className="settings-actions">
             <button type="button" className={forestViewMode === 'forest' ? 'filter-button filter-button--active' : 'filter-button'} onClick={() => setForestViewMode('forest')}>Лес</button>
@@ -1865,7 +1891,7 @@ export function GoalsPage() {
                 onSelectBranch={setSelectedKrId}
                 onClearBranch={() => setSelectedKrId(null)}
                 resetSignal={stageResetSignal}
-                tooFewGoalsHint={forestTab === 'active' && universeStageGoals.length < 3 ? 'Добавь ещё цели / Seed Universe' : null}
+                tooFewGoalsHint={forestTab === 'active' && universeStageGoals.length < 3 ? 'Добавьте ещё цели или откройте скрытый демо-режим.' : null}
               />
             ) : selected ? (
               <GoalYggdrasilTree
@@ -1880,15 +1906,10 @@ export function GoalsPage() {
                 <p><strong>Выберите цель, чтобы увидеть дерево.</strong></p>
                 <div className="goals-surface__seed-actions">
                 <button type="button" onClick={startSeed}>Посадить семя</button>
-                <button type="button" onClick={() => { void seedUniverse() }}>Seed Universe (x7)</button>
+                {devUnlocked ? <button type="button" onClick={() => { void seedUniverse() }}>Засеять демо (×7)</button> : null}
               </div>
               </div>
             )}
-            <div className="goals-stage-mode-toggle">
-              <button type="button" onClick={() => setGoalsStageMode((value) => value === 'cells' ? 'tree' : 'cells')}>
-                Stage mode: {goalsStageMode === 'cells' ? 'cells' : 'tree'}
-              </button>
-            </div>
             {selected && goals.some((item) => item.parentGoalId === selected.id && item.status === 'active') ? (
               <section className="goals-stage-children">
                 <h3>Дочерние деревья супер-цели</h3>
@@ -1917,20 +1938,20 @@ export function GoalsPage() {
 
         <article className="goals-surface__cockpit goals-pane goals-tree-state">
           <section className="goals-surface__cockpit-floor goals-surface__cockpit-floor--summary">
-            <h2>Cockpit summary</h2>
-            <p>Goals: {goals.length} · Active roots: {activeRoots.length}</p>
-            <div className="goals-surface__dial-row"><span>Dial A</span><span>Dial B</span><span>Dial C</span></div>
-            <p className="goals-pane__hint">Selected goal: {selectedUniverseGoal ? `${selectedUniverseGoal.title} (${selectedUniverseGoal.id})` : '—'}</p>
-            <p className="goals-pane__hint">Selected lever: {selectedUniverseLever ? `${selectedUniverseLever.title} (${selectedUniverseLever.id})` : '—'}</p>
+            <h2>Кокпит</h2>
+            <p>Целей: {goals.length} · Активных корней: {activeRoots.length}</p>
+            <div className="goals-surface__dial-row"><span>Ритм</span><span>Устойчивость</span><span>Импульс</span></div>
+            <p className="goals-pane__hint">Выбранная цель: {selectedUniverseGoal ? selectedUniverseGoal.title : '—'}</p>
+            <p className="goals-pane__hint">Выбранный рычаг: {selectedUniverseLever ? selectedUniverseLever.title : '—'}</p>
             <div className="goals-pane__hint">
-              Links: supports {selectedLinksByType.supports.length} · depends {selectedLinksByType.depends_on.length} · conflicts {selectedLinksByType.conflicts.length}
+              Связи: поддержка {selectedLinksByType.supports.length} · зависимости {selectedLinksByType.depends_on.length} · конфликты {selectedLinksByType.conflicts.length}
             </div>
             <ul className="goals-stage-links-list">
               {selectedLinkedTargets.length ? selectedLinkedTargets.map((link) => (
                 <li key={`${link.type}-${link.toGoalId}`}>
-                  <strong>{linkTypeLabels[link.type]}:</strong> {link.title} ({link.toGoalId})
+                  <strong>{linkTypeLabels[link.type]}:</strong> {link.title}
                 </li>
-              )) : <li>No linked targets for selected goal.</li>}
+              )) : <li>Для выбранной цели пока нет связанных целей.</li>}
             </ul>
           </section>
           <section className="goals-surface__cockpit-floor goals-surface__cockpit-floor--inspector">
@@ -1941,7 +1962,7 @@ export function GoalsPage() {
                 <p>
                   Статус дерева:{' '}
                   <span className={`status-badge ${treeState?.toneClass ?? 'status-badge--mid'}`}>
-                    {treeState?.label ?? 'N/A'}
+                    {treeState?.label ?? '—'}
                   </span>
                 </p>
                 <div className="goals-druid-mode-row">
@@ -2052,7 +2073,7 @@ export function GoalsPage() {
                   <button type="button" className="ghost-button" onClick={() => { void rerollMission() }} disabled={!canReroll}>
                     Другая миссия
                   </button>
-                  <p className="goals-pane__hint">Reroll: {Math.max(0, MISSION_REROLL_LIMIT_PER_DAY - rerollsUsedToday)}/{MISSION_REROLL_LIMIT_PER_DAY} сегодня{rerollCooldownLeftMs > 0 ? ` · пауза ${Math.ceil(rerollCooldownLeftMs / 1000)}с` : ''}</p>
+                  <p className="goals-pane__hint">Повторы: {Math.max(0, MISSION_REROLL_LIMIT_PER_DAY - rerollsUsedToday)}/{MISSION_REROLL_LIMIT_PER_DAY} сегодня{rerollCooldownLeftMs > 0 ? ` · пауза ${Math.ceil(rerollCooldownLeftMs / 1000)}с` : ''}</p>
                 </div>
               ) : (
                 <div className="goals-druid-mission">
@@ -2108,7 +2129,7 @@ export function GoalsPage() {
         <ForgeSheet open={isForgeOpen} onClose={closeForge} title="Кузница: настройка режима">
           <header className="forge-sheet__header">
             <div>
-              <p className="forge-sheet__eyebrow">Forge Cockpit</p>
+              <p className="forge-sheet__eyebrow">Кузница режимов</p>
               <h2>Кузница</h2>
             </div>
             <button type="button" onClick={closeForge} aria-label="Закрыть кузницу">✕</button>
@@ -2170,7 +2191,7 @@ export function GoalsPage() {
           <article className="summary-card panel forge-sheet__editor">
             <h3>Параметры цели</h3>
             <label>Название<input value={editor.title} onChange={(e) => setEditor({ ...editor, title: e.target.value })} /></label>
-            <label>Objective<input value={editor.okr.objective} onChange={(e) => setEditor({ ...editor, okr: { ...editor.okr, objective: e.target.value } })} /></label>
+            <label>Цель<input value={editor.okr.objective} onChange={(e) => setEditor({ ...editor, okr: { ...editor.okr, objective: e.target.value } })} /></label>
             <label>Описание<textarea value={editor.description ?? ''} onChange={(e) => setEditor({ ...editor, description: e.target.value })} /></label>
             <label>
               Горизонт

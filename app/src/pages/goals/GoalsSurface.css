@@ -3,7 +3,7 @@
   grid-template-rows: auto minmax(0, 1fr);
   height: 100%;
   gap: 0;
-  background: var(--panel-bg, #101418);
+  background: linear-gradient(180deg, #0b1018 0%, #090d14 100%);
   border: 1px solid color-mix(in srgb, var(--line, #ffffff) 14%, transparent);
 }
 
@@ -18,7 +18,7 @@
 .goals-surface__submenu-item { position: relative; }
 .goals-surface__submenu-trigger {
   border: 0;
-  background: transparent;
+  background: color-mix(in srgb, #0f1724 82%, transparent);
   color: inherit;
   padding: 6px 10px;
 }
@@ -31,7 +31,7 @@
   left: 0;
   min-width: 200px;
   z-index: 10;
-  background: var(--panel-bg, #101418);
+  background: linear-gradient(180deg, #0b1018 0%, #090d14 100%);
   border: 1px solid color-mix(in srgb, var(--line, #ffffff) 16%, transparent);
   padding: 10px;
 }
@@ -123,4 +123,30 @@
   margin-top: 10px;
   padding-top: 8px;
   border-top: 1px solid color-mix(in srgb, var(--line, #ffffff) 16%, transparent);
+}
+
+
+.goals-surface__left,
+.goals-surface__cockpit {
+  background: linear-gradient(180deg, rgba(22, 32, 49, 0.78), rgba(13, 19, 30, 0.72));
+  backdrop-filter: blur(8px);
+}
+
+.goals-surface__stage {
+  background: linear-gradient(180deg, rgba(8, 13, 22, 0.96), rgba(5, 8, 14, 0.98));
+}
+
+.goals-surface .summary-card,
+.goals-surface .panel,
+.goals-surface .goals-tree-state__top-layer,
+.goals-surface .goals-druid-mission,
+.goals-surface .goals-stage-krs ul,
+.goals-surface .goals-yggdrasil__branches {
+  background: transparent;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.goals-surface .chip {
+  background: color-mix(in srgb, rgba(70, 95, 148, 0.45) 70%, transparent);
 }
