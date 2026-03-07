@@ -4237,3 +4237,34 @@ button.danger { background: color-mix(in srgb, #e45959 30%, var(--panel) 70%); b
   fill: rgba(209, 223, 255, 0.86);
   font-size: 12px;
 }
+
+.goal-cells-stage__kr-halo--mission-weak {
+  animation: goalMissionPulse 1.8s ease-in-out infinite;
+}
+
+.goal-cells-stage__kr-core--mission-weak {
+  stroke: rgba(137, 240, 255, 0.95);
+  stroke-width: 2.8;
+  animation: goalMissionBreath 1.8s ease-in-out infinite;
+}
+
+.goal-cells-stage__mission-hud rect {
+  fill: rgba(12, 22, 38, 0.85);
+  stroke: rgba(130, 218, 255, 0.65);
+}
+
+.goal-cells-stage__mission-hud text {
+  fill: rgba(220, 240, 255, 0.95);
+  font-size: 11px;
+  pointer-events: none;
+}
+
+@keyframes goalMissionPulse {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 0.9; }
+}
+
+@keyframes goalMissionBreath {
+  0%, 100% { filter: drop-shadow(0 0 2px rgba(130, 218, 255, 0.35)); }
+  50% { filter: drop-shadow(0 0 8px rgba(130, 218, 255, 0.8)); }
+}

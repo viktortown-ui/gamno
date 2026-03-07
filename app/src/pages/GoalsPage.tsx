@@ -338,6 +338,7 @@ export function GoalsPage() {
   const [nextMissionDuration, setNextMissionDuration] = useState<1 | 3>(3)
   const [missionSuggestionSalt, setMissionSuggestionSalt] = useState(0)
   const [missionDetailsOpen, setMissionDetailsOpen] = useState(false)
+  const [cockpitMissionFlash, setCockpitMissionFlash] = useState(false)
   const [missionConfirmOpen, setMissionConfirmOpen] = useState(false)
   const [missionAwardDraft, setMissionAwardDraft] = useState(5)
   const [submenuOpen, setSubmenuOpen] = useState<'search' | 'filter' | 'roots' | 'forge' | null>(null)
@@ -483,8 +484,6 @@ export function GoalsPage() {
     setSupportsExpanded(false)
   }, [selected?.id])
 
-  useEffect(() => {
-  }, [selected?.id])
 
   const selectedPreset = useMemo(() => {
     const presetId = selected?.modePresetId ?? 'balance'
@@ -889,6 +888,12 @@ export function GoalsPage() {
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [])
 
+
+  const focusCockpitMission = () => {
+    setCockpitMissionFlash(true)
+    window.setTimeout(() => setCockpitMissionFlash(false), 1000)
+  }
+
   const trunkHealth = useMemo(() => {
     if (!scoring) return { label: '—', stateKind: 'na' as const, value01: null }
     if (scoring.goalGap <= -5) return { label: 'Норма', stateKind: 'good' as const, value01: 0.8 }
@@ -1206,6 +1211,7 @@ export function GoalsPage() {
           priorityBand,
           isWeak: kr.id === weakestKrId,
           hasActiveMission: goal.activeMission?.krKey === kr.id,
+          isMissionWeakSpot: selectedGoalId === goal.id && kr.id === weakestKrId,
         }
       })
 
@@ -1219,9 +1225,13 @@ export function GoalsPage() {
         sizeScore,
         temperature,
         levers,
+        missionHud: selectedGoalId === goal.id ? {
+          title: goal.activeMission?.title ?? nextMissionTitle,
+          costLabel: `${goal.activeMission?.timeBandMinutes ?? nextMissionTemplate?.timeBandMinutes ?? 15} мин`,
+        } : undefined,
       }
     })
-  }, [goalProgressMap, goalState, visibleForestGoals])
+  }, [goalProgressMap, goalState, nextMissionTemplate?.timeBandMinutes, nextMissionTitle, selectedGoalId, visibleForestGoals])
 
   const universeStageLinks = useMemo<UniverseStageLink[]>(() => {
     const visibleIds = new Set(universeStageGoals.map((goal) => goal.id))
@@ -1592,6 +1602,7 @@ export function GoalsPage() {
                       </button>
                       <div className="goals-forest__badges" aria-label="Метки цели">
                         <span className="chip">{goalStatusBadgeLabel[goal.status]}</span>
+                        {goal.activeMission ? <span className="chip">{goalsCopyRu.cockpit.missionInWork}</span> : <span className="chip">{goalsCopyRu.cockpit.missionHasStep}</span>}
                       </div>
                       <div className="goals-forest__menu-wrap">
                         <button
@@ -1801,6 +1812,7 @@ export function GoalsPage() {
                 overlayLabel={goalsCopyRu.stage.hint}
                 resetLabel={goalsCopyRu.stage.resetView}
                 focusLabel={goalsCopyRu.stage.focus}
+                onMissionHudClick={focusCockpitMission}
               />
             ) : selected ? (
               <GoalYggdrasilTree
@@ -1855,17 +1867,23 @@ export function GoalsPage() {
             </div>
             <p className="goals-pane__hint"><strong>{goalsCopyRu.cockpit.warnings}:</strong> {conflictLinkedGoals.length > 0 ? `конфликты: ${conflictLinkedGoals.length}` : 'критичных конфликтов нет'}{dependsLinkedGoals.length > 0 ? ` · зависимостей: ${dependsLinkedGoals.length}` : ''}</p>
           </section>
-          <section className="goals-surface__cockpit-floor goals-surface__cockpit-floor--inspector">
+          <section className={cockpitMissionFlash ? 'goals-surface__cockpit-floor goals-surface__cockpit-floor--inspector goals-cockpit-next-step--flash' : 'goals-surface__cockpit-floor goals-surface__cockpit-floor--inspector'}>
             <h2>{goalsCopyRu.cockpit.selectedGoal}</h2>
             {selected ? (
               <div className="goals-cockpit-next-step">
                 <p><strong>{goalsCopyRu.cockpit.weakSpot}:</strong> {weakestKr ? METRICS.find((item) => item.id === weakestKr.kr.metricId)?.labelRu ?? weakestKr.kr.metricId : 'не определено'}</p>
-                <p><strong>{goalsCopyRu.cockpit.whyNow}:</strong> {nextMissionTemplate?.why ?? 'Чтобы удержать траекторию выбранной цели.'}</p>
                 <div className="summary-card goals-cockpit-next-step__card">
                   <h3>{goalsCopyRu.cockpit.nextStep}</h3>
                   <p><strong>{activeMission?.title ?? nextMissionTitle}</strong></p>
-                  <p className="goals-pane__hint">Эффект: {activeMission ? `+${activeMission.expectedMin}…${activeMission.expectedMax} ядер` : nextMissionEffect ? `+${nextMissionEffect.min}…${nextMissionEffect.max} ядер` : 'уточняется'}</p>
-                  <p className="goals-pane__hint">Стоимость времени: {activeMission?.timeBandMinutes ?? nextMissionTemplate?.timeBandMinutes ?? 15} минут.</p>
+                  <p className="goals-pane__hint">{goalsCopyRu.cockpit.missionEffect}: {activeMission ? `${activeMission.expectedMin}…${activeMission.expectedMax} ед.` : nextMissionEffect ? `${nextMissionEffect.min}…${nextMissionEffect.max} ед.` : 'уточняется'}</p>
+                  <p className="goals-pane__hint">{goalsCopyRu.cockpit.missionCost}: {activeMission?.timeBandMinutes ?? nextMissionTemplate?.timeBandMinutes ?? 15} мин.</p>
+                  <div className="settings-actions">
+                    {!activeMission ? <button type="button" onClick={async () => { await acceptMission() }}>{goalsCopyRu.cockpit.missionAccept}</button> : null}
+                    <button type="button" className="ghost-button" onClick={async () => { await rerollMission() }}>{goalsCopyRu.cockpit.missionDefer}</button>
+                    {activeMission ? <button type="button" ref={missionDoneButtonRef} onClick={openMissionConfirm}>{goalsCopyRu.cockpit.missionDone}</button> : null}
+                  </div>
+                  <button type="button" className="ghost-button" onClick={() => setMissionDetailsOpen((value) => !value)}>{goalsCopyRu.cockpit.missionWhyToggle}</button>
+                  {missionDetailsOpen ? <p className="goals-pane__hint"><strong>{goalsCopyRu.cockpit.whyNow}:</strong> {nextMissionTemplate?.why ?? 'Чтобы удержать траекторию выбранной цели.'}</p> : null}
                 </div>
               </div>
             ) : (

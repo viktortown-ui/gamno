@@ -61,6 +61,23 @@ export interface GoalMissionControl {
   lastSuggestions?: Array<{ krKey: string; templateId: string; ts: number }>
 }
 
+export type GoalMissionStatus = 'предложена' | 'принята' | 'выполнена' | 'отложена'
+
+export interface GoalMission {
+  id: string
+  goalId: string
+  leverId: string | null
+  title: string
+  why: string
+  effect: { min: number; max: number; unit: 'ед.' }
+  costMinutes: 15 | 30 | 45 | 60
+  status: GoalMissionStatus
+  createdAt: number
+  updatedAt: number
+  startedAt?: number
+  doneAt?: number
+}
+
 export interface GoalRecord {
   id: string
   createdAt: number
@@ -77,6 +94,7 @@ export interface GoalRecord {
   activeMission?: GoalActiveMission
   missionHistory?: GoalMissionHistoryItem[]
   missionControl?: GoalMissionControl
+  missions?: GoalMission[]
   modePresetId?: GoalModePresetId
   isManualTuning?: boolean
   manualTuning?: GoalManualTuning

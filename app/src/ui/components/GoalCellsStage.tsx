@@ -15,6 +15,7 @@ interface StageLever {
   priorityBand: 'low' | 'medium' | 'high'
   isWeak: boolean
   hasActiveMission: boolean
+  isMissionWeakSpot?: boolean
 }
 
 export interface UniverseStageGoal {
@@ -24,6 +25,7 @@ export interface UniverseStageGoal {
   sizeScore: number
   temperature: 'hot' | 'neutral' | 'cold'
   levers: StageLever[]
+  missionHud?: { title: string; costLabel: string }
 }
 
 export interface UniverseStageLink {
@@ -47,6 +49,7 @@ interface GoalCellsStageProps {
   overlayLabel?: string
   resetLabel?: string
   focusLabel?: string
+  onMissionHudClick?: () => void
 }
 
 interface GoalLinkPath {
@@ -200,7 +203,7 @@ function buildLinkPath(source: { x: number; y: number; r: number }, target: { x:
   }
 }
 
-export function GoalCellsStage({ goals, links, showLinks, selectedGoalId, selectedBranchId, onSelectGoal, onSelectBranch, onClearBranch, resetSignal = 0, tooFewGoalsHint = null, overlayLabel = 'Сцена', resetLabel = 'Сброс вида (R)', focusLabel = 'Фокус (F)' }: GoalCellsStageProps) {
+export function GoalCellsStage({ goals, links, showLinks, selectedGoalId, selectedBranchId, onSelectGoal, onSelectBranch, onClearBranch, resetSignal = 0, tooFewGoalsHint = null, overlayLabel = 'Сцена', resetLabel = 'Сброс вида (R)', focusLabel = 'Фокус (F)', onMissionHudClick }: GoalCellsStageProps) {
   const [viewSize, setViewSize] = useState({ width: DEFAULT_SCENE_WIDTH, height: DEFAULT_SCENE_HEIGHT })
   const [transform, setTransform] = useState<ZoomTransform>(zoomIdentity)
   const [isMobile, setIsMobile] = useState(false)
@@ -485,8 +488,8 @@ export function GoalCellsStage({ goals, links, showLinks, selectedGoalId, select
                       onSelectBranch(lever.id)
                     }}
                   >
-                    <circle className={`goal-cells-stage__kr-halo goal-cells-stage__kr-halo--${lever.priorityBand}`} cx={lever.x} cy={lever.y} r={Math.max(lever.r + 6, 11)} />
-                    <circle className="goal-cells-stage__kr-core" cx={lever.x} cy={lever.y} r={lever.r} />
+                    <circle className={`goal-cells-stage__kr-halo goal-cells-stage__kr-halo--${lever.priorityBand}${lever.isMissionWeakSpot ? ' goal-cells-stage__kr-halo--mission-weak' : ''}`} cx={lever.x} cy={lever.y} r={Math.max(lever.r + 6, 11)} />
+                    <circle className={`goal-cells-stage__kr-core${lever.isMissionWeakSpot ? ' goal-cells-stage__kr-core--mission-weak' : ''}`} cx={lever.x} cy={lever.y} r={lever.r} />
                     {lever.isWeak ? (
                       <g className="goal-cells-stage__weak-crack">
                         <path d={`M ${lever.x - lever.r * 0.35} ${lever.y - lever.r * 0.3} L ${lever.x - lever.r * 0.08} ${lever.y - lever.r * 0.06} L ${lever.x + lever.r * 0.2} ${lever.y + lever.r * 0.06} L ${lever.x + lever.r * 0.06} ${lever.y + lever.r * 0.24}`} />
@@ -499,6 +502,13 @@ export function GoalCellsStage({ goals, links, showLinks, selectedGoalId, select
                 {goal.isSelected ? <text className="goal-cells-stage__goal-title" x={goal.x} y={goal.y - goal.r + 18}>{goal.title.slice(0, 26)}</text> : null}
                 {!isMobile && goal.isSelected ? goal.leversLayout.filter((lever) => lever.isSelected || selectedBranchId === lever.id).map((lever) => <text key={`label-${lever.id}`} className="goal-cells-stage__lever-title" x={lever.x} y={lever.y + 4}>{lever.title.slice(0, 10)}</text>) : null}
                 {isMobile ? goal.leversLayout.filter((lever) => lever.isSelected).map((lever) => <text key={`label-${lever.id}`} className="goal-cells-stage__lever-title" x={lever.x} y={lever.y + 4}>{lever.title.slice(0, 10)}</text>) : null}
+                {goal.isSelected && goal.missionHud ? (
+                  <g className="goal-cells-stage__mission-hud" role="button" tabIndex={0} onClick={(event) => { event.stopPropagation(); onMissionHudClick?.() }}>
+                    <rect x={goal.x + goal.r * 0.2} y={goal.y - goal.r * 0.95} rx={10} ry={10} width={190} height={50} />
+                    <text x={goal.x + goal.r * 0.2 + 10} y={goal.y - goal.r * 0.95 + 18}>{`Шаг: ${goal.missionHud.title.slice(0, 18)}`}</text>
+                    <text x={goal.x + goal.r * 0.2 + 10} y={goal.y - goal.r * 0.95 + 37}>{goal.missionHud.costLabel}</text>
+                  </g>
+                ) : null}
                 {goal.levers.length > goal.visibleLeverCount ? (
                   <text className="goal-cells-stage__more" x={goal.x - 16} y={goal.y + goal.r - 10}>{`+${goal.levers.length - goal.visibleLeverCount}`}</text>
                 ) : null}

@@ -1,95 +1,116 @@
 import type { MetricId } from '../../core/metrics'
-import type { GoalModePresetId } from '../../core/models/goal'
+import type { GoalMission, GoalModePresetId, GoalRecord } from '../../core/models/goal'
 
-export type MissionEffectProfile = 'small' | 'medium' | 'large'
-export type MissionTimeBand = 5 | 15 | 30
 export type MissionTag = 'energy' | 'sleep' | 'focus' | 'money' | 'social' | 'stress'
 
 export interface MissionTemplate {
   id: string
   title: string
   why: string
-  timeBandMinutes: MissionTimeBand
+  costMinutes: 15 | 30 | 45 | 60
+  effect: { min: number; max: number; unit: 'ед.' }
   tags?: MissionTag[]
-  effectProfile: MissionEffectProfile
   ifThenPlan?: string
 }
 
-const metricMissionTemplates: Record<MetricId, MissionTemplate[]> = {
+const fallbackTemplate: MissionTemplate = {
+  id: 'fallback-checkin',
+  title: 'Калибровка / чек-ин',
+  why: 'Данных для точного шага пока мало, поэтому короткая калибровка стабилизирует курс и проясняет следующее действие.',
+  costMinutes: 15,
+  effect: { min: 2, max: 4, unit: 'ед.' },
+}
+
+const templatesByMetric: Partial<Record<MetricId, MissionTemplate[]>> = {
   energy: [
-    { id: 'energy-light-reset', title: 'Свет + вода перед стартом', why: 'Чтобы усилить ветвь Энергия, потому что утренний ритм быстрее поднимает тонус.', timeBandMinutes: 5, tags: ['energy'], effectProfile: 'small', ifThenPlan: 'Если тянет залипнуть в ленте, то сначала выпей воду и выйди на свет на 5 минут.' },
-    { id: 'energy-walk', title: '15 минут прогулки без экрана', why: 'Чтобы усилить ветвь Энергия, потому что движение снимает вялость лучше кофе.', timeBandMinutes: 15, tags: ['energy', 'stress'], effectProfile: 'medium' },
-    { id: 'energy-deep-reset', title: 'Глубокий reset: движение + дыхание', why: 'Чтобы усилить ветвь Энергия, потому что длинный reset снижает усталость до конца дня.', timeBandMinutes: 30, tags: ['energy', 'stress'], effectProfile: 'large', ifThenPlan: 'Если чувствуешь спад после обеда, то сделай 20 минут ходьбы и 10 минут спокойного дыхания.' },
+    { id: 'energy-reset', title: 'Глубокий ресет', why: 'Энергия просела: короткий цикл восстановления вернёт управляемость и снимет вялость.', costMinutes: 30, effect: { min: 6, max: 10, unit: 'ед.' }, tags: ['energy', 'stress'] },
+    { id: 'energy-walk', title: 'Прогулка без экрана', why: 'Движение и свет поднимают тонус и дают чистый старт следующему блоку.', costMinutes: 45, effect: { min: 5, max: 8, unit: 'ед.' }, tags: ['energy'] },
   ],
   sleepHours: [
-    { id: 'sleep-cut-caffeine', title: 'Стоп-кофеин по таймеру', why: 'Чтобы усилить ветвь Сон, потому что вечерний стимул чаще всего срывает засыпание.', timeBandMinutes: 5, tags: ['sleep'], effectProfile: 'small' },
-    { id: 'sleep-evening-ritual', title: 'Вечерний ритуал засыпания', why: 'Чтобы усилить ветвь Сон, потому что стабильный ритуал ускоряет засыпание.', timeBandMinutes: 15, tags: ['sleep'], effectProfile: 'medium', ifThenPlan: 'Если в 22:30 ещё работаешь, то закрой ноутбук и включи 15-минутный ритуал без экрана.' },
-    { id: 'sleep-room-reset', title: 'Подготовить комнату ко сну', why: 'Чтобы усилить ветвь Сон, потому что тишина и прохлада повышают качество ночи.', timeBandMinutes: 30, tags: ['sleep'], effectProfile: 'large' },
+    { id: 'sleep-evening', title: 'Вечерний протокол сна', why: 'Сон — базовый рычаг: стабильный ритуал снижает шум и ускоряет засыпание.', costMinutes: 30, effect: { min: 4, max: 7, unit: 'ед.' }, tags: ['sleep'] },
   ],
   stress: [
-    { id: 'stress-breath-5', title: '5 минут дыхания 4-6', why: 'Чтобы усилить ветвь Стресс, потому что дыхание быстро сбивает перегруз.', timeBandMinutes: 5, tags: ['stress'], effectProfile: 'small' },
-    { id: 'stress-boundary', title: 'Одна граница против шума', why: 'Чтобы усилить ветвь Стресс, потому что один стоп-фактор сразу снижает давление.', timeBandMinutes: 15, tags: ['stress', 'focus'], effectProfile: 'medium' },
-    { id: 'stress-unload', title: 'Полный разгрузочный слот', why: 'Чтобы усилить ветвь Стресс, потому что длинная пауза возвращает контроль.', timeBandMinutes: 30, tags: ['stress'], effectProfile: 'large', ifThenPlan: 'Если начинается внутренний шторм, то отмени одну несрочную задачу и сделай 30-минутный разгрузочный слот.' },
+    { id: 'stress-unload', title: 'Разгрузочный слот', why: 'Стресс стал узким местом: контролируемая пауза снижает перегрев и возвращает фокус.', costMinutes: 45, effect: { min: 5, max: 9, unit: 'ед.' }, tags: ['stress'] },
   ],
   focus: [
-    { id: 'focus-single-task', title: 'Один фокус-блок без отвлечений', why: 'Чтобы усилить ветвь Фокус, потому что один чистый блок даёт ощутимый прогресс.', timeBandMinutes: 15, tags: ['focus'], effectProfile: 'medium' },
-    { id: 'focus-clarify-next', title: 'Сформулировать следующий шаг', why: 'Чтобы усилить ветвь Фокус, потому что ясный шаг убирает прокрастинацию.', timeBandMinutes: 5, tags: ['focus'], effectProfile: 'small' },
-    { id: 'focus-two-cycles', title: 'Два цикла глубокого внимания', why: 'Чтобы усилить ветвь Фокус, потому что серия циклов закрепляет концентрацию.', timeBandMinutes: 30, tags: ['focus', 'stress'], effectProfile: 'large' },
+    { id: 'focus-deep', title: 'Один глубокий блок', why: 'Фокус ослаб: один завершённый блок создаст тягу и уменьшит прокрастинацию.', costMinutes: 60, effect: { min: 6, max: 10, unit: 'ед.' }, tags: ['focus'] },
   ],
   productivity: [
-    { id: 'prod-top-1', title: 'Закрыть задачу №1 дня', why: 'Чтобы усилить ветвь Продуктивность, потому что главный результат снижает хаос.', timeBandMinutes: 30, tags: ['focus', 'energy', 'stress'], effectProfile: 'large' },
-    { id: 'prod-clean-backlog', title: 'Разобрать хвост из 3 задач', why: 'Чтобы усилить ветвь Продуктивность, потому что чистый хвост освобождает внимание.', timeBandMinutes: 15, tags: ['focus'], effectProfile: 'medium' },
-    { id: 'prod-plan-5', title: 'План на день в 3 шага', why: 'Чтобы усилить ветвь Продуктивность, потому что короткий план повышает завершения.', timeBandMinutes: 5, tags: ['focus'], effectProfile: 'small', ifThenPlan: 'Если не знаешь с чего начать, то сначала запиши три шага и только потом открывай чат.' },
-  ],
-  mood: [
-    { id: 'mood-gratitude', title: 'Три хорошие вещи дня', why: 'Чтобы усилить ветвь Настроение, потому что фиксация позитива поднимает базовый фон.', timeBandMinutes: 5, tags: ['social'], effectProfile: 'small' },
-    { id: 'mood-light-walk', title: 'Прогулка на свету', why: 'Чтобы усилить ветвь Настроение, потому что свет и движение быстро стабилизируют фон.', timeBandMinutes: 15, tags: ['energy', 'stress'], effectProfile: 'medium' },
-    { id: 'mood-recovery-hour', title: 'Большой слот восстановления', why: 'Чтобы усилить ветвь Настроение, потому что глубокий отдых снижает эмоциональный шум.', timeBandMinutes: 30, tags: ['stress', 'sleep'], effectProfile: 'large' },
-  ],
-  social: [
-    { id: 'social-support-msg', title: 'Сообщение поддержки', why: 'Чтобы усилить ветвь Социальность, потому что короткий контакт возвращает опору.', timeBandMinutes: 5, tags: ['social'], effectProfile: 'small' },
-    { id: 'social-live-call', title: 'Короткий живой звонок', why: 'Чтобы усилить ветвь Социальность, потому что голосовой контакт укрепляет связь.', timeBandMinutes: 15, tags: ['social'], effectProfile: 'medium' },
-    { id: 'social-meet-plan', title: 'Запланировать личную встречу', why: 'Чтобы усилить ветвь Социальность, потому что офлайн-связь держит ресурс надолго.', timeBandMinutes: 30, tags: ['social'], effectProfile: 'large' },
-  ],
-  health: [
-    { id: 'health-mobility', title: 'Мягкая мобилизация тела', why: 'Чтобы усилить ветвь Здоровье, потому что микро-движение снимает зажимы.', timeBandMinutes: 15, tags: ['energy'], effectProfile: 'medium' },
-    { id: 'health-water', title: 'Контроль воды на день', why: 'Чтобы усилить ветвь Здоровье, потому что гидратация поддерживает ясность и выносливость.', timeBandMinutes: 5, tags: ['energy'], effectProfile: 'small' },
-    { id: 'health-training-lite', title: 'Полу-час активности', why: 'Чтобы усилить ветвь Здоровье, потому что длинная активность улучшает самочувствие.', timeBandMinutes: 30, tags: ['energy', 'stress'], effectProfile: 'large' },
+    { id: 'productivity-top1', title: 'Закрыть задачу №1', why: 'Главный результат дня убирает хаос и даёт сильный прирост по цели.', costMinutes: 60, effect: { min: 7, max: 10, unit: 'ед.' }, tags: ['focus'] },
   ],
   cashFlow: [
-    { id: 'cashflow-check', title: 'Проверить денежный поток', why: 'Чтобы усилить ветвь Cashflow, потому что ежедневный контроль уменьшает утечки.', timeBandMinutes: 5, tags: ['money'], effectProfile: 'small' },
-    { id: 'cashflow-one-action', title: 'Одно действие на доход', why: 'Чтобы усилить ветвь Cashflow, потому что регулярный шаг ускоряет рост потока.', timeBandMinutes: 15, tags: ['money', 'focus'], effectProfile: 'medium' },
-    { id: 'cashflow-deep-review', title: 'Разбор расходов и обязательств', why: 'Чтобы усилить ветвь Cashflow, потому что глубокий разбор снижает финансовый шум.', timeBandMinutes: 30, tags: ['money', 'stress'], effectProfile: 'large' },
+    { id: 'money-review', title: 'Финансовый мини-разбор', why: 'Контроль денежного контура снижает неопределённость и убирает утечки.', costMinutes: 30, effect: { min: 4, max: 8, unit: 'ед.' }, tags: ['money'] },
+  ],
+  social: [
+    { id: 'social-call', title: 'Опорный контакт', why: 'Короткий живой контакт возвращает опору и снижает риск изоляции.', costMinutes: 15, effect: { min: 3, max: 5, unit: 'ед.' }, tags: ['social'] },
+  ],
+  mood: [
+    { id: 'mood-reset', title: 'Перезапуск состояния', why: 'Нейтрализация эмоционального шума помогает удержать темп без срыва.', costMinutes: 30, effect: { min: 4, max: 7, unit: 'ед.' }, tags: ['energy', 'stress'] },
+  ],
+  health: [
+    { id: 'health-mobility', title: 'Мобилизация тела', why: 'Снятие зажимов возвращает ресурс и поддерживает устойчивость на дистанции.', costMinutes: 30, effect: { min: 4, max: 7, unit: 'ед.' }, tags: ['energy'] },
   ],
 }
 
-const presetPreferredBands: Record<GoalModePresetId, MissionTimeBand[]> = {
-  balance: [15, 5, 30],
-  recovery: [15, 30, 5],
-  sprint: [30, 15, 5],
-  finance: [15, 30, 5],
-  'social-shield': [15, 5, 30],
+const presetFallbackMetric: Record<GoalModePresetId, MetricId> = {
+  balance: 'energy',
+  recovery: 'sleepHours',
+  sprint: 'focus',
+  finance: 'cashFlow',
+  'social-shield': 'social',
 }
 
-const durationBandPreference: Record<1 | 3, MissionTimeBand[]> = {
-  1: [5, 15, 30],
-  3: [15, 30, 5],
+export function resolveWeakLever(goal: GoalRecord): { leverId: string | null; metricId: MetricId | null } {
+  const rows = goal.okr.keyResults
+  if (rows.length === 0) return { leverId: null, metricId: null }
+  const sorted = [...rows].sort((a, b) => {
+    const ap = typeof a.progress === 'number' ? a.progress : 0.5
+    const bp = typeof b.progress === 'number' ? b.progress : 0.5
+    return ap - bp
+  })
+  const weak = sorted[0]
+  return { leverId: weak.id, metricId: weak.metricId }
 }
 
-const effectByBand: Record<MissionTimeBand, MissionEffectProfile> = {
-  5: 'small',
-  15: 'medium',
-  30: 'large',
+export function pickMissionTemplate(goal: GoalRecord): MissionTemplate {
+  const weak = resolveWeakLever(goal)
+  const metricId = weak.metricId ?? presetFallbackMetric[goal.modePresetId ?? 'balance']
+  const pool = templatesByMetric[metricId] ?? []
+  if (!pool.length) return fallbackTemplate
+
+  const history = (goal.missions ?? []).map((item) => item.id).join('|')
+  const saltBase = `${goal.id}:${metricId}:${history.length}:${history}`
+  let hash = 0
+  for (let i = 0; i < saltBase.length; i += 1) hash = (hash * 31 + saltBase.charCodeAt(i)) >>> 0
+  return pool[hash % pool.length]
 }
 
-export function missionEffectRange(durationDays: 1 | 3, effectProfile: MissionEffectProfile): { min: number; max: number; expected: number } {
-  if (durationDays === 1) {
-    if (effectProfile === 'small') return { min: 1, max: 3, expected: 2 }
-    if (effectProfile === 'medium') return { min: 2, max: 4, expected: 3 }
-    return { min: 3, max: 5, expected: 4 }
+export function buildProposedMission(goal: GoalRecord, now = Date.now()): GoalMission {
+  const template = pickMissionTemplate(goal)
+  const weak = resolveWeakLever(goal)
+  return {
+    id: `mission-${goal.id}-${now}`,
+    goalId: goal.id,
+    leverId: weak.leverId,
+    title: template.title,
+    why: template.why,
+    effect: template.effect,
+    costMinutes: template.costMinutes,
+    status: 'предложена',
+    createdAt: now,
+    updatedAt: now,
   }
-  if (effectProfile === 'small') return { min: 3, max: 6, expected: 4 }
-  if (effectProfile === 'medium') return { min: 4, max: 8, expected: 6 }
+}
+
+export function getActiveMission(goal: GoalRecord): GoalMission | undefined {
+  return (goal.missions ?? []).find((item) => item.status === 'предложена' || item.status === 'принята')
+}
+
+export type MissionEffectProfile = 'small' | 'medium' | 'large'
+
+export function missionEffectRange(_durationDays: 1 | 3, effectProfile: MissionEffectProfile): { min: number; max: number; expected: number } {
+  if (effectProfile === 'small') return { min: 2, max: 4, expected: 3 }
+  if (effectProfile === 'medium') return { min: 4, max: 7, expected: 5 }
   return { min: 6, max: 10, expected: 8 }
 }
 
@@ -100,33 +121,42 @@ export function buildMissionSuggestion(options: {
   excludedTemplateIds: string[]
   avoidTags?: MissionTag[]
   salt: number
-}): MissionTemplate {
-  const pool = metricMissionTemplates[options.metricId] ?? []
-  if (pool.length === 0) {
-    const fallbackBand = durationBandPreference[options.durationDays][0]
-    return {
-      id: `${options.metricId}-fallback-${fallbackBand}`,
-      title: `Ритуал по ветви ${options.metricId}`,
-      why: `Чтобы усилить ветвь ${options.metricId}, потому что регулярный ритуал создаёт устойчивый прогресс.`,
-      timeBandMinutes: fallbackBand,
-      effectProfile: effectByBand[fallbackBand],
-    }
+}): {
+  id: string
+  title: string
+  why: string
+  timeBandMinutes: 5 | 15 | 30
+  effectProfile: MissionEffectProfile
+  tags?: MissionTag[]
+  ifThenPlan?: string
+} {
+  const goal: GoalRecord = {
+    id: `compat-${options.metricId}`,
+    createdAt: 0,
+    updatedAt: 0,
+    title: 'compat',
+    horizonDays: 14,
+    active: true,
+    weights: {},
+    okr: { objective: '', keyResults: [{ id: `kr-${options.metricId}`, metricId: options.metricId, direction: 'up', progress: 0.2 }] },
+    modePresetId: options.presetId,
+    status: 'active',
+    missions: options.excludedTemplateIds.map((id, idx) => ({
+      id,
+      goalId: 'compat',
+      leverId: null,
+      title: 'x',
+      why: 'x',
+      effect: { min: 1, max: 1, unit: 'ед.' },
+      costMinutes: 15,
+      status: 'выполнена',
+      createdAt: idx,
+      updatedAt: idx,
+      doneAt: idx,
+    })),
   }
-
-  const excluded = new Set(options.excludedTemplateIds)
-  const durationOrder = durationBandPreference[options.durationDays]
-  const presetOrder = presetPreferredBands[options.presetId]
-  const avoidTags = new Set(options.avoidTags ?? [])
-  const score = (template: MissionTemplate) => {
-    const durationRank = durationOrder.indexOf(template.timeBandMinutes)
-    const presetRank = presetOrder.indexOf(template.timeBandMinutes)
-    const conflictPenalty = (template.tags ?? []).reduce((acc, tag) => acc + (avoidTags.has(tag) ? 20 : 0), 0)
-    return (durationRank < 0 ? 9 : durationRank) + (presetRank < 0 ? 9 : presetRank) + conflictPenalty
-  }
-
-  const ranked = [...pool].sort((a, b) => score(a) - score(b))
-  const eligible = ranked.filter((template) => !excluded.has(template.id))
-  const source = eligible.length > 0 ? eligible : ranked
-  const index = Math.abs(options.salt) % source.length
-  return source[index]
+  const picked = pickMissionTemplate(goal)
+  const timeBandMinutes: 5 | 15 | 30 = picked.costMinutes <= 15 ? 15 : picked.costMinutes <= 30 ? 30 : 30
+  const effectProfile: MissionEffectProfile = picked.effect.max >= 8 ? 'large' : picked.effect.max >= 6 ? 'medium' : 'small'
+  return { id: picked.id, title: picked.title, why: picked.why, timeBandMinutes, effectProfile, tags: picked.tags, ifThenPlan: undefined }
 }
