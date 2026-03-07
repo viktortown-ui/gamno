@@ -38,7 +38,7 @@
 
 .goals-surface__body {
   display: grid;
-  grid-template-columns: minmax(220px, 320px) minmax(0, 1fr) minmax(280px, 360px);
+  grid-template-columns: minmax(210px, 280px) minmax(0, 1.35fr) minmax(260px, 340px);
   min-height: 0;
   height: 100%;
   gap: 0;
@@ -149,4 +149,27 @@
 
 .goals-surface .chip {
   background: color-mix(in srgb, rgba(70, 95, 148, 0.45) 70%, transparent);
+}
+
+
+.goals-nav-filters {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0 10px;
+}
+
+.goals-pane__empty--compact {
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.goals-cockpit-next-step__card {
+  margin-top: 8px;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--line, #ffffff) 14%, transparent);
+}
+
+.goal-cells-stage__floating-controls .goal-cells-stage__hud-chip {
+  border-radius: 999px;
+  background: color-mix(in srgb, rgba(118, 151, 217, 0.22) 72%, transparent);
 }

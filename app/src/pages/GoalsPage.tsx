@@ -25,6 +25,7 @@ import { PresetSelector } from './goals/components/PresetSelector'
 import { RuneDial } from './goals/components/RuneDial'
 import { ForgePreview } from './goals/components/ForgePreview'
 import { AdvancedTuning } from './goals/components/AdvancedTuning'
+import { goalsCopyRu } from './goals/goals.copy.ru'
 import { dayKeyFromTs } from '../core/utils/dayKey'
 import { buildMissionSuggestion, missionEffectRange, type MissionTag } from './goals/missionPlanner'
 import { buildGoalAutoLinkSuggestions } from '../core/engines/goal/autoLinkSuggestions'
@@ -119,8 +120,6 @@ const modePresets: Array<{
 const modePresetsMap = Object.fromEntries(modePresets.map((preset) => [preset.id, preset])) as Record<GoalModePresetId, (typeof modePresets)[number]>
 
 type ForestTab = 'active' | 'archived' | 'trashed'
-type ForestSort = 'recent' | 'progress' | 'preset'
-
 const forestTabLabels: Record<ForestTab, string> = {
   active: 'Активные',
   archived: 'Архив',
@@ -298,8 +297,7 @@ export function GoalsPage() {
   const [duplicateCandidate, setDuplicateCandidate] = useState<GoalRecord | null>(null)
   const [forestTab, setForestTab] = useState<ForestTab>('active')
   const [forestSearch, setForestSearch] = useState('')
-  const [forestSort, setForestSort] = useState<ForestSort>('recent')
-  const [forestViewMode, setForestViewMode] = useState<'forest' | 'roots'>('forest')
+  const [forestGroveFilter, setForestGroveFilter] = useState<string>('all')
   const [rootsStageEnabled, setRootsStageEnabled] = useState(false)
   const [forestMenuGoalId, setForestMenuGoalId] = useState<string | null>(null)
   const [forestMenuStyle, setForestMenuStyle] = useState<CSSProperties | null>(null)
@@ -309,7 +307,7 @@ export function GoalsPage() {
   useEffect(() => {
     setForestMenuGoalId(null)
     setForestMenuStyle(null)
-  }, [forestTab, forestViewMode, goals])
+  }, [forestTab, goals])
 
   const [linkModalOpen, setLinkModalOpen] = useState(false)
   const [linkSearch, setLinkSearch] = useState('')
@@ -342,19 +340,15 @@ export function GoalsPage() {
   const [missionDetailsOpen, setMissionDetailsOpen] = useState(false)
   const [missionConfirmOpen, setMissionConfirmOpen] = useState(false)
   const [missionAwardDraft, setMissionAwardDraft] = useState(5)
-  const [submenuOpen, setSubmenuOpen] = useState<'search' | 'sort' | 'filter' | 'roots' | 'autolinks' | 'forge' | null>(null)
-  const submenuTriggerRefs = useRef<Record<'search' | 'sort' | 'filter' | 'roots' | 'autolinks' | 'forge', HTMLButtonElement | null>>({
+  const [submenuOpen, setSubmenuOpen] = useState<'search' | 'filter' | 'roots' | 'forge' | null>(null)
+  const submenuTriggerRefs = useRef<Record<'search' | 'filter' | 'roots' | 'forge', HTMLButtonElement | null>>({
     search: null,
-    sort: null,
     filter: null,
     roots: null,
-    autolinks: null,
     forge: null,
   })
   const submenuPopoverRef = useRef<HTMLDivElement | null>(null)
-  const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false)
   const [supportsExpanded, setSupportsExpanded] = useState(false)
-  const [showAutoLinkSuggestions, setShowAutoLinkSuggestions] = useState(false)
   const [hiddenAutoSuggestionKeys, setHiddenAutoSuggestionKeys] = useState<Record<string, true>>({})
   const [suggestionTypeDraftByGoalId, setSuggestionTypeDraftByGoalId] = useState<Record<string, GoalLinkType>>({})
   const [hiddenConflictDayKeyByGoal, setHiddenConflictDayKeyByGoal] = useState<Record<string, string>>({})
@@ -490,7 +484,6 @@ export function GoalsPage() {
   }, [selected?.id])
 
   useEffect(() => {
-    setShowAutoLinkSuggestions(false)
   }, [selected?.id])
 
   const selectedPreset = useMemo(() => {
@@ -686,7 +679,6 @@ export function GoalsPage() {
     await setActiveGoal(UNIVERSE_SEED_BLUEPRINTS[0].id)
     setSelectedGoalId(UNIVERSE_SEED_BLUEPRINTS[0].id)
     setForestTab('active')
-    setForestViewMode('forest')
     await reload()
   }
 
@@ -1176,21 +1168,21 @@ export function GoalsPage() {
     return map
   }, [goals, goalState])
 
+  const groveOptions = useMemo(() => {
+    const values = Array.from(new Set(goals
+      .filter((goal) => goal.status === forestTab)
+      .map((goal) => goal.groveId?.trim() || 'Без рощи')))
+    return ['all', ...values]
+  }, [forestTab, goals])
+
   const visibleForestGoals = useMemo(() => {
     const query = forestSearch.trim().toLowerCase()
     return goals
       .filter((goal) => goal.status === forestTab)
+      .filter((goal) => forestGroveFilter === 'all' || (goal.groveId?.trim() || 'Без рощи') === forestGroveFilter)
       .filter((goal) => (query ? goal.title.toLowerCase().includes(query) : true))
-      .sort((a, b) => {
-        if (forestSort === 'progress') {
-          return (goalProgressMap.get(b.id) ?? -Infinity) - (goalProgressMap.get(a.id) ?? -Infinity)
-        }
-        if (forestSort === 'preset') {
-          return String(a.modePresetId ?? '').localeCompare(String(b.modePresetId ?? ''), 'ru')
-        }
-        return b.updatedAt - a.updatedAt
-      })
-  }, [forestSearch, forestSort, forestTab, goalProgressMap, goals])
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+  }, [forestGroveFilter, forestSearch, forestTab, goals])
 
   const universeStageGoals = useMemo<UniverseStageGoal[]>(() => {
     return visibleForestGoals.map((goal) => {
@@ -1249,15 +1241,6 @@ export function GoalsPage() {
     return selectedUniverseGoal.levers.find((lever) => lever.id === selectedKrId) ?? null
   }, [selectedKrId, selectedUniverseGoal])
 
-
-  const groves = useMemo(() => {
-    const map = new Map<string, GoalRecord[]>()
-    visibleForestGoals.forEach((goal) => {
-      const key = goal.groveId?.trim() || 'Без рощи'
-      map.set(key, [...(map.get(key) ?? []), goal])
-    })
-    return [['Все рощи', visibleForestGoals], ...Array.from(map.entries())] as Array<[string, GoalRecord[]]>
-  }, [visibleForestGoals])
 
   const activeRoots = useMemo(() => goals.filter((goal) => goal.status === 'active' && !goal.parentGoalId), [goals])
 
@@ -1476,16 +1459,38 @@ export function GoalsPage() {
     }
   }, [closeSubmenu, submenuOpen])
 
+  void [
+    linkTypeLabels,
+    setNextMissionDuration,
+    missionDetailsOpen,
+    supportsExpanded,
+    setSuggestionTypeDraftByGoalId,
+    setHiddenConflictDayKeyByGoal,
+    selectedLinkedTargets,
+    supportsLinkedGoals,
+    autoLinkSuggestions,
+    treeState,
+    isConflictHiddenToday,
+    missionHistory,
+    rerollMission,
+    acceptMission,
+    replaceMission,
+    openMissionConfirm,
+    selectedUniverseLever,
+    openLinkModal,
+    removeGoalLink,
+    confirmAutoSuggestion,
+    hideAutoSuggestion,
+  ]
+
   return (
     <section className="goals-page goals-surface">
       <div className="goals-surface__submenu" role="menubar" aria-label="Подменю целей">
         {([
-          ['search', 'Поиск'],
-          ['sort', 'Сортировка'],
-          ['filter', 'Фильтры'],
-          ['roots', 'Корни'],
-          ['autolinks', 'Автосвязи'],
-          ['forge', 'Кузница'],
+          ['search', goalsCopyRu.submenu.search],
+          ['filter', goalsCopyRu.submenu.filters],
+          ['roots', goalsCopyRu.submenu.roots],
+          ['forge', goalsCopyRu.submenu.forge],
         ] as const).map(([id, label]) => {
           const isOpen = submenuOpen === id
           return (
@@ -1508,7 +1513,7 @@ export function GoalsPage() {
                   }
                 }}
               >
-                {label}{id === 'roots' ? <span className="goals-surface__submenu-muted">{rootsStageEnabled ? 'ВКЛ' : 'ВЫКЛ'}</span> : null}{id === 'autolinks' ? <span className="goals-surface__submenu-muted">ВЫКЛ</span> : null}
+                {label}{id === 'roots' ? <span className="goals-surface__submenu-muted">{rootsStageEnabled ? 'ВКЛ' : 'ВЫКЛ'}</span> : null}
               </button>
               {isOpen ? (
                 <div ref={(node) => { submenuPopoverRef.current = node }} className="goals-surface__submenu-popover" role="menu">
@@ -1519,9 +1524,8 @@ export function GoalsPage() {
                         Корни: {rootsStageEnabled ? 'ВКЛ' : 'ВЫКЛ'}
                       </button>
                     </div>
-                  ) : <p>Раздел «{label}» в разработке.</p>}
+) : id === 'search' ? <p>Поиск доступен в навигаторе слева.</p> : id === 'filter' ? <p>Фильтры доступны в навигаторе слева.</p> : <p>Кузница открывается для выбранной цели.</p>}
                   {id === 'forge' ? <button ref={seedButtonRef} type="button" onClick={startSeed}>Посадить семя</button> : null}
-                  {id === 'forge' && devUnlocked ? <button type="button" onClick={() => { void seedUniverse() }}>Засеять демо (×7)</button> : null}
                   {id === 'forge' ? <button type="button" onClick={() => {
                     if (!selected) return
                     const focus = Object.entries(selectedWeights).sort((a, b) => Math.abs((b[1] ?? 0)) - Math.abs((a[1] ?? 0))).slice(0, 3)
@@ -1543,177 +1547,81 @@ export function GoalsPage() {
       </div>
 
       <div className="goals-surface__body">
-        <article className={leftPanelCollapsed ? "goals-surface__left goals-pane goals-forest goals-surface__left--collapsed" : "goals-surface__left goals-pane goals-forest"}>
-          <div className="goals-surface__section-head"><h2>Лес целей</h2><button type="button" onClick={() => setLeftPanelCollapsed((value) => !value)}>{leftPanelCollapsed ? "Развернуть" : "Свернуть"}</button></div>
-          <p className="goals-pane__hint">Портфель целей: активные, архив и корзина.</p>{leftPanelCollapsed ? null : <>
+        <article className="goals-surface__left goals-pane goals-forest">
+          <div className="goals-surface__section-head"><h2>{goalsCopyRu.left.title}</h2></div>
           <div className="goals-surface__seed-actions">
-            <button type="button" onClick={startSeed}>Посадить семя</button>
-            {devUnlocked ? <button type="button" onClick={() => { void seedUniverse() }}>Засеять демо (×7)</button> : null}
+            <button type="button" className="ghost-button" onClick={startSeed}>{goalsCopyRu.left.addGoal}</button>
           </div>
-          <div className="settings-actions">
-            <button type="button" className={forestViewMode === 'forest' ? 'filter-button filter-button--active' : 'filter-button'} onClick={() => setForestViewMode('forest')}>Лес</button>
-            <button type="button" className={forestViewMode === 'roots' ? 'filter-button filter-button--active' : 'filter-button'} onClick={() => setForestViewMode('roots')}>Корни</button>
-          </div>
-          {forestViewMode === 'forest' ? (
+          <div className="goals-nav-filters">
             <div className="settings-actions">
               {(['active', 'archived', 'trashed'] as ForestTab[]).map((tab) => (
                 <button key={tab} type="button" className={forestTab === tab ? 'filter-button filter-button--active' : 'filter-button'} onClick={() => setForestTab(tab)}>{forestTabLabels[tab]}</button>
               ))}
             </div>
-          ) : null}
-          {forestViewMode === 'forest' ? (
-            <>
-              <label>
-                Поиск
-                <input value={forestSearch} onChange={(event) => setForestSearch(event.target.value)} placeholder="Название цели" />
-              </label>
-              <label>
-                Сортировка
-                <select value={forestSort} onChange={(event) => setForestSort(event.target.value as ForestSort)}>
-                  <option value="recent">Недавние</option>
-                  <option value="progress">По прогрессу</option>
-                  <option value="preset">По режиму</option>
-                </select>
-              </label>
-              <div className="goals-forest__list" ref={forestListRef}>
-                {visibleForestGoals.length === 0 ? (
-                  <div className="goals-pane__empty">
-                    <p><strong>В этой вкладке пока пусто.</strong></p>
-                  </div>
-                ) : (
-                  groves.map(([groveTitle, groveGoals]) => (
-                    <details key={groveTitle} open>
-                      <summary>{groveTitle} · {groveGoals.length}</summary>
-                      <ul>
-                        {groveGoals.map((goal) => {
-                          const children = goals.filter((item) => item.parentGoalId === goal.id && item.status === forestTab)
-                          const progress = goalProgressMap.get(goal.id)
-                          return (
-                            <li key={goal.id}>
-                              <div className={selectedGoalId === goal.id ? 'goals-forest__goal-row goals-forest__goal-row--selected' : 'goals-forest__goal-row'}>
-                                <button
-                                  type="button"
-                                  className={selectedGoalId === goal.id ? 'filter-button filter-button--active' : 'filter-button'}
-                                  onClick={() => {
-                                    setSelectedGoalId(goal.id)
-                                    setEditor(goal)
-                                  }}
-                                >
-                                  {goal.title}
-                                </button>
-                                <div className="goals-forest__badges" aria-label="Метки цели">
-                                  <span className="chip">{goalStatusBadgeLabel[goal.status]}</span>
-                                  <span className="chip">Роща: {goal.groveId?.trim() || 'Без рощи'}</span>
-                                  {goal.modePresetId ? <span className="chip">Режим: {modePresetsMap[goal.modePresetId].title}</span> : null}
-                                </div>
-                                <div className="goals-forest__meta" aria-label="Дополнительно">
-                                  {goal.parentGoalId ? <span>Дочерняя цель</span> : null}
-                                  {children.length ? <span>Супер-цель: {children.length}</span> : null}
-                                  {typeof progress === 'number' ? <span>{Math.round(progress)}%</span> : null}
-                                </div>
-                                <div className="goals-forest__menu-wrap">
-                                  <button
-                                    type="button"
-                                    className="filter-button"
-                                    ref={(node) => {
-                                      forestMenuTriggerRefs.current[goal.id] = node
-                                    }}
-                                    aria-label={`Открыть меню: ${goal.title}`}
-                                    aria-haspopup="menu"
-                                    aria-expanded={forestMenuGoalId === goal.id}
-                                    aria-controls={`forest-menu-${goal.id}`}
-                                    onClick={() => {
-                                      setForestMenuGoalId((prev) => {
-                                        if (prev === goal.id) {
-                                          setForestMenuStyle(null)
-                                          return null
-                                        }
-                                        return goal.id
-                                      })
-                                    }}
-                                  >
-                                    ⋯
-                                  </button>
-                                </div>
-                              </div>
-                            </li>
-                          )
-                        })}
-                      </ul>
-                    </details>
-                  ))
-                )}
+            <label>
+              Роща
+              <select value={forestGroveFilter} onChange={(event) => setForestGroveFilter(event.target.value)}>
+                {groveOptions.map((grove) => <option key={grove} value={grove}>{grove === 'all' ? 'Все рощи' : grove}</option>)}
+              </select>
+            </label>
+            <label>
+              Поиск
+              <input value={forestSearch} onChange={(event) => setForestSearch(event.target.value)} placeholder={goalsCopyRu.left.searchPlaceholder} />
+            </label>
+          </div>
+          <div className="goals-forest__list" ref={forestListRef}>
+            {visibleForestGoals.length === 0 ? (
+              <div className="goals-pane__empty goals-pane__empty--compact">
+                <p>{goalsCopyRu.left.noGoals}</p>
+                <button type="button" className="ghost-button" onClick={startSeed}>{goalsCopyRu.left.addGoal}</button>
               </div>
-            </>
-          ) : (
-            <div className="goals-roots-map" aria-label="Карта корней">
-              {!selected ? <p>Выберите цель в лесу, чтобы увидеть карту корней.</p> : null}
-              {selected ? (
-                <>
-                  <h3>Карта корней: {selected.title}</h3>
-                  <div className="goals-roots-map__hint-block">
-                    <p className="goals-pane__hint">Связано по данным, не причина.</p>
-                    <label className="goals-roots-map__toggle">
-                      <input
-                        type="checkbox"
-                        checked={showAutoLinkSuggestions}
-                        onChange={(event) => setShowAutoLinkSuggestions(event.target.checked)}
-                      />
-                      Подсказки
-                    </label>
-                  </div>
-                  <div className="goals-roots-map__center">{selected.title}</div>
-                  <div className="goals-roots-map__groups">
-                    {(['depends_on', 'supports', 'conflicts'] as GoalLinkType[]).map((type) => (
-                      <section key={type}>
-                        <h4>{linkTypeLabels[type]}</h4>
-                        <ul>
-                          {selectedLinksByType[type].length ? selectedLinksByType[type].map((link) => (
-                            <li key={`${type}-${link.toGoalId}`}>{goalTitleMap.get(link.toGoalId) ?? link.toGoalId}</li>
-                          )) : <li>—</li>}
-                        </ul>
-                      </section>
-                    ))}
-                  </div>
-                  {showAutoLinkSuggestions ? (
-                    <section>
-                      <h4>Подозреваемые связи</h4>
-                      {autoLinkSuggestions.length === 0 ? <p className="goals-pane__hint">Недостаточно данных или сильных корреляций.</p> : null}
-                      <ul className="goals-roots-suggestions">
-                        {autoLinkSuggestions.map((item) => {
-                          const relation = item.r >= 0 ? 'движутся вместе' : 'движутся в разные стороны'
-                          return (
-                            <li key={`${item.sourceGoalId}-${item.targetGoalId}`} className="goals-roots-suggestion-item">
-                              <div>
-                                <strong>{goalTitleMap.get(item.targetGoalId) ?? item.targetGoalId}</strong>
-                                <p className="goals-pane__hint">r={item.r.toFixed(2)} · N={item.sampleSize} · {relation}</p>
-                              </div>
-                              <div className="goals-roots-suggestion-actions">
-                                <span className="chip">Уверенность: {item.confidence}</span>
-                                <select
-                                  value={suggestionTypeDraftByGoalId[item.targetGoalId] ?? 'supports'}
-                                  onChange={(event) => {
-                                    const value = event.target.value as GoalLinkType
-                                    setSuggestionTypeDraftByGoalId((current) => ({ ...current, [item.targetGoalId]: value }))
-                                  }}
-                                >
-                                  <option value="supports">Помогает</option>
-                                  <option value="depends_on">Зависит от</option>
-                                  <option value="conflicts">Конфликтует</option>
-                                </select>
-                                <button type="button" onClick={async () => { await confirmAutoSuggestion(item.targetGoalId) }}>Подтвердить</button>
-                                <button type="button" className="ghost-button" onClick={() => hideAutoSuggestion(item.targetGoalId)}>Скрыть</button>
-                              </div>
-                            </li>
-                          )
-                        })}
-                      </ul>
-                    </section>
-                  ) : null}
-                </>
-              ) : null}
-            </div>
-          )}
+            ) : (
+              <ul>
+                {visibleForestGoals.map((goal) => (
+                  <li key={goal.id}>
+                    <div className={selectedGoalId === goal.id ? 'goals-forest__goal-row goals-forest__goal-row--selected' : 'goals-forest__goal-row'}>
+                      <button
+                        type="button"
+                        className={selectedGoalId === goal.id ? 'filter-button filter-button--active' : 'filter-button'}
+                        onClick={() => {
+                          setSelectedGoalId(goal.id)
+                          setEditor(goal)
+                        }}
+                      >
+                        {goal.title}
+                      </button>
+                      <div className="goals-forest__badges" aria-label="Метки цели">
+                        <span className="chip">{goalStatusBadgeLabel[goal.status]}</span>
+                      </div>
+                      <div className="goals-forest__menu-wrap">
+                        <button
+                          type="button"
+                          className="filter-button"
+                          aria-haspopup="menu"
+                          aria-expanded={forestMenuGoalId === goal.id}
+                          aria-controls={forestMenuGoalId === goal.id ? `forest-menu-${goal.id}` : undefined}
+                          onClick={(event) => {
+                            const button = event.currentTarget
+                            const rect = button.getBoundingClientRect()
+                            setForestMenuStyle({ top: rect.bottom + window.scrollY + 6, left: rect.right + window.scrollX - 180 })
+                            setForestMenuGoalId((prev) => {
+                              if (prev === goal.id) {
+                                setForestMenuStyle(null)
+                                return null
+                              }
+                              return goal.id
+                            })
+                          }}
+                        >
+                          ⋯
+                        </button>
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
           {forestMenuGoalId && forestMenuStyle ? createPortal((() => {
             const menuGoal = goals.find((item) => item.id === forestMenuGoalId)
             if (!menuGoal) return null
@@ -1872,7 +1780,6 @@ export function GoalsPage() {
               </div>
             )
           })(), document.body) : null}
-          </>}
         </article>
 
         <article className="goals-surface__stage goals-pane">
@@ -1886,12 +1793,14 @@ export function GoalsPage() {
                 selectedBranchId={selectedKrId}
                 onSelectGoal={(goalId) => {
                   setSelectedGoalId(goalId)
-                  setForestViewMode('forest')
-                }}
+                              }}
                 onSelectBranch={setSelectedKrId}
                 onClearBranch={() => setSelectedKrId(null)}
                 resetSignal={stageResetSignal}
-                tooFewGoalsHint={forestTab === 'active' && universeStageGoals.length < 3 ? 'Добавьте ещё цели или откройте скрытый демо-режим.' : null}
+                tooFewGoalsHint={forestTab === 'active' && universeStageGoals.length < 3 ? 'Добавьте ещё цели.' : null}
+                overlayLabel={goalsCopyRu.stage.hint}
+                resetLabel={goalsCopyRu.stage.resetView}
+                focusLabel={goalsCopyRu.stage.focus}
               />
             ) : selected ? (
               <GoalYggdrasilTree
@@ -1938,188 +1847,30 @@ export function GoalsPage() {
 
         <article className="goals-surface__cockpit goals-pane goals-tree-state">
           <section className="goals-surface__cockpit-floor goals-surface__cockpit-floor--summary">
-            <h2>Кокпит</h2>
-            <p>Целей: {goals.length} · Активных корней: {activeRoots.length}</p>
-            <div className="goals-surface__dial-row"><span>Ритм</span><span>Устойчивость</span><span>Импульс</span></div>
-            <p className="goals-pane__hint">Выбранная цель: {selectedUniverseGoal ? selectedUniverseGoal.title : '—'}</p>
-            <p className="goals-pane__hint">Выбранный рычаг: {selectedUniverseLever ? selectedUniverseLever.title : '—'}</p>
-            <div className="goals-pane__hint">
-              Связи: поддержка {selectedLinksByType.supports.length} · зависимости {selectedLinksByType.depends_on.length} · конфликты {selectedLinksByType.conflicts.length}
+            <h2>{goalsCopyRu.cockpit.summary}</h2>
+            <div className="goals-druid-gauges" aria-label="Состояние">
+              <DruidGauge label="Здоровье" value01={trunkHealth.value01} stateLabel={trunkHealth.label} stateKind={trunkHealth.stateKind} />
+              <DruidGauge label="Шторм" value01={stormStatus.value01} stateLabel={stormStatus.label} stateKind={stormStatus.stateKind} />
+              <DruidGauge label="Импульс" value01={impulseStatus.value01} stateLabel={impulseStatus.label} stateKind={impulseStatus.stateKind} />
             </div>
-            <ul className="goals-stage-links-list">
-              {selectedLinkedTargets.length ? selectedLinkedTargets.map((link) => (
-                <li key={`${link.type}-${link.toGoalId}`}>
-                  <strong>{linkTypeLabels[link.type]}:</strong> {link.title}
-                </li>
-              )) : <li>Для выбранной цели пока нет связанных целей.</li>}
-            </ul>
+            <p className="goals-pane__hint"><strong>{goalsCopyRu.cockpit.warnings}:</strong> {conflictLinkedGoals.length > 0 ? `конфликты: ${conflictLinkedGoals.length}` : 'критичных конфликтов нет'}{dependsLinkedGoals.length > 0 ? ` · зависимостей: ${dependsLinkedGoals.length}` : ''}</p>
           </section>
           <section className="goals-surface__cockpit-floor goals-surface__cockpit-floor--inspector">
-          <h2>Друид</h2>
-          {selected ? (
-            <>
-              <div className="goals-druid-headline">
-                <p>
-                  Статус дерева:{' '}
-                  <span className={`status-badge ${treeState?.toneClass ?? 'status-badge--mid'}`}>
-                    {treeState?.label ?? '—'}
-                  </span>
-                </p>
-                <div className="goals-druid-mode-row">
-                  <button ref={forgeOpenButtonRef} type="button" onClick={() => setIsForgeOpen(true)}>
-                    Кузница / Настроить режим
-                  </button>
-                  <span className="chip">Режим: {selected.isManualTuning ? 'Ручной' : selectedPreset.title}</span>
+            <h2>{goalsCopyRu.cockpit.selectedGoal}</h2>
+            {selected ? (
+              <div className="goals-cockpit-next-step">
+                <p><strong>{goalsCopyRu.cockpit.weakSpot}:</strong> {weakestKr ? METRICS.find((item) => item.id === weakestKr.kr.metricId)?.labelRu ?? weakestKr.kr.metricId : 'не определено'}</p>
+                <p><strong>{goalsCopyRu.cockpit.whyNow}:</strong> {nextMissionTemplate?.why ?? 'Чтобы удержать траекторию выбранной цели.'}</p>
+                <div className="summary-card goals-cockpit-next-step__card">
+                  <h3>{goalsCopyRu.cockpit.nextStep}</h3>
+                  <p><strong>{activeMission?.title ?? nextMissionTitle}</strong></p>
+                  <p className="goals-pane__hint">Эффект: {activeMission ? `+${activeMission.expectedMin}…${activeMission.expectedMax} ядер` : nextMissionEffect ? `+${nextMissionEffect.min}…${nextMissionEffect.max} ядер` : 'уточняется'}</p>
+                  <p className="goals-pane__hint">Стоимость времени: {activeMission?.timeBandMinutes ?? nextMissionTemplate?.timeBandMinutes ?? 15} минут.</p>
                 </div>
               </div>
-              <div className="goals-druid-gauges" aria-label="Приборка состояния дерева">
-                <DruidGauge label="Здоровье" value01={trunkHealth.value01} stateLabel={trunkHealth.label} stateKind={trunkHealth.stateKind} />
-                <DruidGauge label="Шторм" value01={stormStatus.value01} stateLabel={stormStatus.label} stateKind={stormStatus.stateKind} />
-                <DruidGauge label="Импульс" value01={impulseStatus.value01} stateLabel={impulseStatus.label} stateKind={impulseStatus.stateKind} />
-              </div>
-              <p><strong>Слабая ветвь:</strong> {weakestKr ? `🕸 Трещина: ${METRICS.find((item) => item.id === weakestKr.kr.metricId)?.labelRu ?? weakestKr.kr.metricId}` : 'Выберите ветвь'}</p>
-              <p className="goals-pane__hint">{selected.isManualTuning ? 'Ручная настройка активна: Друид опирается на ваш профиль.' : selectedPreset.druidHint}</p>
-              <p><strong>Выбранная ветвь:</strong> {selectedKrMetricLabel ?? 'Выберите ветвь'}</p>
-              {supportsLinkedGoals.length > 0 ? (
-                <div className="goals-inline-chip-wrap">
-                  <button type="button" className="chip goals-inline-chip-button" onClick={() => setSupportsExpanded((value) => !value)}>
-                    Поддержка: {supportsLinkedGoals.length}
-                  </button>
-                  {supportsExpanded ? (
-                    <ul className="goals-inline-chip-list">
-                      {supportsLinkedGoals.map((goal) => <li key={goal.id}>{goal.title}</li>)}
-                    </ul>
-                  ) : null}
-                </div>
-              ) : null}
-              {conflictLinkedGoals.length > 0 && !isConflictHiddenToday ? (
-                <div className="goals-inline-warning" role="status">
-                  <strong>Конфликт ресурсов.</strong>{' '}
-                  <span>Конфликтует с: {conflictLinkedGoals.map((goal) => goal.title).join(', ')}</span>
-                  <div className="settings-actions">
-                    <button type="button" onClick={() => { setSelectedGoalId(conflictLinkedGoals[0].id); setForestViewMode('forest') }}>Открыть</button>
-                    <button
-                      type="button"
-                      className="ghost-button"
-                      onClick={() => setHiddenConflictDayKeyByGoal((value) => ({ ...value, [selected.id]: currentDayKey }))}
-                    >
-                      Скрыть на сегодня
-                    </button>
-                  </div>
-                </div>
-              ) : null}
-              {dependsLinkedGoals.length > 0 ? (
-                <div className="goals-inline-depends">
-                  {dependsLinkedGoals.map((goal) => (
-                    <div key={goal.id} className="goals-inline-depends__row">
-                      <span>
-                        <strong>{goal.title}:</strong>{' '}
-                        {goal.status === 'active' ? 'Зависимость активна' : 'Зависимость не активна'}
-                      </span>
-                      <div className="settings-actions">
-                        <button type="button" onClick={() => { setSelectedGoalId(goal.id); setForestViewMode('forest') }}>Открыть</button>
-                        {goal.status !== 'active' ? <button type="button" onClick={async () => { await restoreGoal(goal) }}>Восстановить</button> : null}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-              <section className="summary-card goals-roots-block">
-                <div className="settings-actions">
-                  <h3>Корни</h3>
-                  <button type="button" onClick={openLinkModal}>Добавить связь</button>
-                </div>
-                {(['supports', 'depends_on', 'conflicts'] as GoalLinkType[]).map((type) => (
-                  <div key={type}>
-                    <strong>{linkTypeLabels[type]}</strong>
-                    <ul>
-                      {selectedLinksByType[type].length ? selectedLinksByType[type].map((link) => (
-                        <li key={`${type}-${link.toGoalId}`} className="goals-roots-item">
-                          <span>{goalTitleMap.get(link.toGoalId) ?? link.toGoalId}</span>
-                          <div className="settings-actions">
-                            <button type="button" onClick={() => { setSelectedGoalId(link.toGoalId); setForestViewMode('forest') }}>Открыть</button>
-                            <button type="button" aria-label="Удалить связь" onClick={async () => { await removeGoalLink(link.toGoalId, type) }}>×</button>
-                          </div>
-                        </li>
-                      )) : <li>—</li>}
-                    </ul>
-                  </div>
-                ))}
-              </section>
-              {!activeMission ? (
-                <div className="goals-tree-state__top-layer">
-                  <h3>Следующая миссия</h3>
-                  <label>
-                    Длительность
-                    <select value={nextMissionDuration} onChange={(event) => setNextMissionDuration(Number(event.target.value) as 1 | 3)}>
-                      <option value={1}>1 день</option>
-                      <option value={3}>3 дня</option>
-                    </select>
-                  </label>
-                  <p><strong>Миссия:</strong> {nextMissionTitle}</p>
-                  <div className="goals-mission-chips">
-                    <span className="chip">⏱ {nextMissionTemplate?.timeBandMinutes ?? 15} мин</span>
-                    {nextMissionEffect ? <span className="chip">Ядра: +{nextMissionEffect.min}…{nextMissionEffect.max} (обычно +{nextMissionEffect.expected})</span> : null}
-                  </div>
-                  <p className="goals-pane__hint">{nextMissionTemplate?.why ?? 'Чтобы усилить выбранную ветвь.'}</p>
-                  {conflictAvoidTags.length > 0 ? <p className="goals-pane__hint">Автопилот избегает теги конфликта: {conflictAvoidTags.join(', ')}.</p> : null}
-                  {nextMissionTemplate?.ifThenPlan ? (
-                    <details open={missionDetailsOpen} onToggle={(event) => setMissionDetailsOpen((event.target as HTMLDetailsElement).open)}>
-                      <summary>Как сделать</summary>
-                      <p>{nextMissionTemplate.ifThenPlan}</p>
-                    </details>
-                  ) : null}
-                  <button type="button" onClick={acceptMission} disabled={!missionTargetKr}>Принять миссию</button>
-                  <button type="button" className="ghost-button" onClick={() => { void rerollMission() }} disabled={!canReroll}>
-                    Другая миссия
-                  </button>
-                  <p className="goals-pane__hint">Повторы: {Math.max(0, MISSION_REROLL_LIMIT_PER_DAY - rerollsUsedToday)}/{MISSION_REROLL_LIMIT_PER_DAY} сегодня{rerollCooldownLeftMs > 0 ? ` · пауза ${Math.ceil(rerollCooldownLeftMs / 1000)}с` : ''}</p>
-                </div>
-              ) : (
-                <div className="goals-druid-mission">
-                  <h3>Активная миссия</h3>
-                  <p><strong>{activeMission.title}</strong></p>
-                  <p className="goals-pane__hint">{activeMission.why ?? 'Чтобы усилить выбранную ветвь.'}</p>
-                  <div className="goals-mission-chips">
-                    <span className="chip">⏱ {activeMission.timeBandMinutes ?? 15} мин</span>
-                    <span className="chip">Ядра: +{activeMission.expectedMin}…{activeMission.expectedMax} (обычно +{activeMission.expectedDefault})</span>
-                  </div>
-                  <p>Прогресс по дням: {missionProgress}</p>
-                  {activeMission.ifThenPlan ? (
-                    <details>
-                      <summary>Как сделать</summary>
-                      <p>{activeMission.ifThenPlan}</p>
-                    </details>
-                  ) : null}
-                  {missionProgress === 'День 1/3' ? (
-                    <button type="button" className="ghost-button" onClick={() => { void replaceMission() }}>Заменить миссию</button>
-                  ) : null}
-                  <button ref={missionDoneButtonRef} type="button" onClick={openMissionConfirm}>Засчитать выполнение</button>
-                </div>
-              )}
-
-              <div className="goals-druid-mission">
-                <h3>Последние плоды</h3>
-                {missionHistory.filter((item) => item.coresAwarded > 0).length === 0 ? <p className="goals-pane__hint">Плодов пока нет.</p> : null}
-                {missionHistory.filter((item) => item.coresAwarded > 0).length > 0 ? (
-                  <ul>
-                    {missionHistory.filter((item) => item.coresAwarded > 0).map((item) => (
-                      <li key={item.id}>
-                        {item.title} · {item.durationDays} дн. · +{item.coresAwarded} ядер
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-              </div>
-            </>
-          ) : (
-            <div className="goals-pane__empty">
-              <p><strong>Друид ждёт выбранную цель.</strong></p>
-              <p>Выберите цель в Лесу или посадите семя, чтобы получить миссию на 3 дня.</p>
-              <button type="button" onClick={startSeed}>Посадить семя</button>
-              <button type="button" disabled title="Создайте цель, чтобы настраивать режим">Кузница / Настроить режим</button>
-            </div>
-          )}
+            ) : (
+              <p className="goals-pane__hint">{goalsCopyRu.cockpit.selectHint}</p>
+            )}
           </section>
         </article>
       </div>

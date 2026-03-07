@@ -44,6 +44,9 @@ interface GoalCellsStageProps {
   onClearBranch: () => void
   resetSignal?: number
   tooFewGoalsHint?: string | null
+  overlayLabel?: string
+  resetLabel?: string
+  focusLabel?: string
 }
 
 interface GoalLinkPath {
@@ -197,7 +200,7 @@ function buildLinkPath(source: { x: number; y: number; r: number }, target: { x:
   }
 }
 
-export function GoalCellsStage({ goals, links, showLinks, selectedGoalId, selectedBranchId, onSelectGoal, onSelectBranch, onClearBranch, resetSignal = 0, tooFewGoalsHint = null }: GoalCellsStageProps) {
+export function GoalCellsStage({ goals, links, showLinks, selectedGoalId, selectedBranchId, onSelectGoal, onSelectBranch, onClearBranch, resetSignal = 0, tooFewGoalsHint = null, overlayLabel = 'Сцена', resetLabel = 'Сброс вида (R)', focusLabel = 'Фокус (F)' }: GoalCellsStageProps) {
   const [viewSize, setViewSize] = useState({ width: DEFAULT_SCENE_WIDTH, height: DEFAULT_SCENE_HEIGHT })
   const [transform, setTransform] = useState<ZoomTransform>(zoomIdentity)
   const [isMobile, setIsMobile] = useState(false)
@@ -360,11 +363,11 @@ export function GoalCellsStage({ goals, links, showLinks, selectedGoalId, select
   return (
     <div className="goal-cells-stage">
       <div className="goal-cells-stage__scene" ref={sceneWrapRef} aria-label="Сцена всех целей и рычагов">
-        <div className="goal-cells-stage__overlay-label">Сцена</div>
+        <div className="goal-cells-stage__overlay-label">{overlayLabel}</div>
         {tooFewGoalsHint ? <p className="goal-cells-stage__inline-hint">{tooFewGoalsHint}</p> : null}
         <div className="goal-cells-stage__floating-controls" role="toolbar" aria-label="Управление сценой">
-          <button type="button" className="filter-button goal-cells-stage__hud-chip" onClick={() => queueFit('all')}>{isMobile ? '↺' : 'Сброс вида (R)'}</button>
-          <button type="button" className="filter-button goal-cells-stage__hud-chip" onClick={() => queueFit('selected')} disabled={!selectedGoalId}>{isMobile ? '◎' : 'Фокус выбранной (F)'}</button>
+          <button type="button" className="filter-button goal-cells-stage__hud-chip" onClick={() => queueFit('all')}>{isMobile ? '↺' : resetLabel}</button>
+          <button type="button" className="filter-button goal-cells-stage__hud-chip" onClick={() => queueFit('selected')} disabled={!selectedGoalId}>{isMobile ? '◎' : focusLabel}</button>
         </div>
         <svg ref={sceneRef} viewBox={`0 0 ${viewSize.width} ${viewSize.height}`} role="img" aria-label="Сцена целей">
           <rect className="goal-cells-stage__catcher" x={0} y={0} width={viewSize.width} height={viewSize.height} fill="transparent" onClick={onClearBranch} />
