@@ -43,6 +43,7 @@ interface GoalCellsStageProps {
   onSelectBranch: (branchId: string) => void
   onClearBranch: () => void
   resetSignal?: number
+  tooFewGoalsHint?: string | null
 }
 
 interface GoalLinkPath {
@@ -196,7 +197,7 @@ function buildLinkPath(source: { x: number; y: number; r: number }, target: { x:
   }
 }
 
-export function GoalCellsStage({ goals, links, showLinks, selectedGoalId, selectedBranchId, onSelectGoal, onSelectBranch, onClearBranch, resetSignal = 0 }: GoalCellsStageProps) {
+export function GoalCellsStage({ goals, links, showLinks, selectedGoalId, selectedBranchId, onSelectGoal, onSelectBranch, onClearBranch, resetSignal = 0, tooFewGoalsHint = null }: GoalCellsStageProps) {
   const [viewSize, setViewSize] = useState({ width: DEFAULT_SCENE_WIDTH, height: DEFAULT_SCENE_HEIGHT })
   const [transform, setTransform] = useState<ZoomTransform>(zoomIdentity)
   const [isMobile, setIsMobile] = useState(false)
@@ -358,11 +359,9 @@ export function GoalCellsStage({ goals, links, showLinks, selectedGoalId, select
 
   return (
     <div className="goal-cells-stage">
-      <div className="goal-cells-stage__head">
-        <h2>Goal Cells Stage</h2>
-      </div>
-      <p className="goal-cells-stage__objective"><strong>Universe:</strong> все цели текущего фильтра Forest на одной сцене.</p>
       <div className="goal-cells-stage__scene" ref={sceneWrapRef} aria-label="Сцена всех целей и рычагов">
+        <div className="goal-cells-stage__overlay-label">Universe Stage</div>
+        {tooFewGoalsHint ? <p className="goal-cells-stage__inline-hint">{tooFewGoalsHint}</p> : null}
         <div className="goal-cells-stage__floating-controls" role="toolbar" aria-label="Управление сценой">
           <button type="button" className="filter-button" onClick={() => queueFit('all')}>{isMobile ? '↺' : 'Сброс вида (R)'}</button>
           <button type="button" className="filter-button" onClick={() => queueFit('selected')} disabled={!selectedGoalId}>{isMobile ? '◎' : 'Фокус выбранной (F)'}</button>

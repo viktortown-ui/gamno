@@ -460,6 +460,7 @@ async function ensureGoalsMigrated(): Promise<void> {
 }
 
 export interface CreateGoalInput {
+  id?: string
   title: string
   description?: string
   horizonDays?: 7 | 14 | 30
@@ -482,7 +483,7 @@ export interface CreateGoalInput {
 export async function createGoal(goal: CreateGoalInput): Promise<GoalRecord> {
   await ensureGoalsMigrated()
   const now = Date.now()
-  const id = createGoalId()
+  const id = goal.id ?? createGoalId()
   const hasActive = await getActiveGoal()
   const record: GoalRecord = {
     id,

@@ -139,6 +139,73 @@ const linkTypeLabels: Record<GoalLinkType, string> = {
   conflicts: 'Конфликтует',
 }
 
+
+const UNIVERSE_SEED_BLUEPRINTS: Array<{
+  id: string
+  title: string
+  description: string
+  objective: string
+  weights: GoalRecord['weights']
+  leverMetrics: MetricId[]
+}> = [
+  {
+    id: 'goal-universe-01-north-star',
+    title: 'Universe · Северная звезда',
+    description: 'Демо-цель для плотной карты Universe.',
+    objective: 'Держу долгий курс без потери темпа.',
+    weights: { focus: 0.8, productivity: 0.7, stress: -0.5, energy: 0.45, sleepHours: 0.3 },
+    leverMetrics: ['focus', 'productivity', 'stress', 'energy', 'sleepHours'],
+  },
+  {
+    id: 'goal-universe-02-energy-loop',
+    title: 'Universe · Энергоконтур',
+    description: 'Демо-цель для плотной карты Universe.',
+    objective: 'Стабилизирую энергию и сон на дистанции.',
+    weights: { energy: 0.9, sleepHours: 0.85, stress: -0.7, mood: 0.35 },
+    leverMetrics: ['energy', 'sleepHours', 'stress', 'mood'],
+  },
+  {
+    id: 'goal-universe-03-finance-grid',
+    title: 'Universe · Финконтур',
+    description: 'Демо-цель для плотной карты Universe.',
+    objective: 'Укрепляю денежный поток без хаоса.',
+    weights: { cashFlow: 0.95, focus: 0.45, productivity: 0.5, stress: -0.35 },
+    leverMetrics: ['cashFlow', 'focus', 'productivity', 'stress'],
+  },
+  {
+    id: 'goal-universe-04-social-shield',
+    title: 'Universe · Соцщит',
+    description: 'Демо-цель для плотной карты Universe.',
+    objective: 'Поддерживаю контакт и ресурс команды.',
+    weights: { social: 0.9, mood: 0.8, stress: -0.45, energy: 0.35 },
+    leverMetrics: ['social', 'mood', 'stress', 'energy'],
+  },
+  {
+    id: 'goal-universe-05-deep-work',
+    title: 'Universe · Deep Work',
+    description: 'Демо-цель для плотной карты Universe.',
+    objective: 'Создаю блоки глубокой работы каждый день.',
+    weights: { focus: 0.95, productivity: 0.8, social: -0.2, stress: -0.3 },
+    leverMetrics: ['focus', 'productivity', 'stress', 'sleepHours'],
+  },
+  {
+    id: 'goal-universe-06-recovery',
+    title: 'Universe · Восстановление',
+    description: 'Демо-цель для плотной карты Universe.',
+    objective: 'Восстанавливаюсь и держу шторм ниже порога.',
+    weights: { health: 0.8, sleepHours: 0.9, energy: 0.7, stress: -0.9, mood: 0.4 },
+    leverMetrics: ['health', 'sleepHours', 'energy', 'stress', 'mood'],
+  },
+  {
+    id: 'goal-universe-07-balance-grid',
+    title: 'Universe · Баланс системы',
+    description: 'Демо-цель для плотной карты Universe.',
+    objective: 'Собираю баланс по ключевым метрикам.',
+    weights: { energy: 0.55, focus: 0.55, productivity: 0.55, stress: -0.55, cashFlow: 0.35, social: 0.35 },
+    leverMetrics: ['energy', 'focus', 'productivity', 'stress', 'cashFlow', 'social'],
+  },
+]
+
 function buildPresetKrs(presetId: GoalModePresetId): GoalKeyResult[] {
   const preset = modePresetsMap[presetId]
   return preset.keyMetrics.map((metricId, index) => createKrFromMetric(metricId, (preset.weights[metricId] ?? 0) >= 0 ? 'up' : 'down', index, `Ключевая ветвь режима «${preset.title}».`))
@@ -568,6 +635,48 @@ export function GoalsPage() {
     setSeedTitle('')
     setSeedHorizon(14)
     setDuplicateCandidate(null)
+  }
+
+
+  const seedUniverse = async () => {
+    const existingById = new Map(goals.map((goal) => [goal.id, goal]))
+
+    for (const [index, blueprint] of UNIVERSE_SEED_BLUEPRINTS.entries()) {
+      const keyResults = blueprint.leverMetrics.map((metricId, metricIndex) => {
+        const weight = blueprint.weights[metricId] ?? 0
+        return {
+          ...createKrFromMetric(metricId, weight >= 0 ? 'up' : 'down', metricIndex, 'Детерминированный рычаг Seed Universe.'),
+          id: `kr-universe-${index + 1}-${metricId}`,
+        }
+      })
+
+      const patch = {
+        title: blueprint.title,
+        description: blueprint.description,
+        horizonDays: 14 as const,
+        status: 'active' as const,
+        template: 'growth' as const,
+        weights: blueprint.weights,
+        okr: { objective: blueprint.objective, keyResults },
+        modePresetId: 'balance' as const,
+        isManualTuning: false,
+        manualTuning: { weights: blueprint.weights, horizonDays: 14 as const },
+        groveId: 'Universe Demo',
+      }
+
+      const existing = existingById.get(blueprint.id)
+      if (existing) {
+        await updateGoal(existing.id, patch)
+      } else {
+        await createGoal({ id: blueprint.id, ...patch })
+      }
+    }
+
+    await setActiveGoal(UNIVERSE_SEED_BLUEPRINTS[0].id)
+    setSelectedGoalId(UNIVERSE_SEED_BLUEPRINTS[0].id)
+    setForestTab('active')
+    setForestViewMode('forest')
+    await reload()
   }
 
   const closeSeedModal = () => {
@@ -1386,6 +1495,7 @@ export function GoalsPage() {
                     </div>
                   ) : <p>{label} menu placeholder</p>}
                   {id === 'forge' ? <button ref={seedButtonRef} type="button" onClick={startSeed}>Посадить семя</button> : null}
+                  {id === 'forge' ? <button type="button" onClick={() => { void seedUniverse() }}>Seed Universe (x7)</button> : null}
                   {id === 'forge' ? <button type="button" onClick={() => {
                     if (!selected) return
                     const focus = Object.entries(selectedWeights).sort((a, b) => Math.abs((b[1] ?? 0)) - Math.abs((a[1] ?? 0))).slice(0, 3)
@@ -1410,7 +1520,10 @@ export function GoalsPage() {
         <article className={leftPanelCollapsed ? "goals-surface__left goals-pane goals-forest goals-surface__left--collapsed" : "goals-surface__left goals-pane goals-forest"}>
           <div className="goals-surface__section-head"><h2>Лес целей</h2><button type="button" onClick={() => setLeftPanelCollapsed((value) => !value)}>{leftPanelCollapsed ? "Expand" : "Collapse"}</button></div>
           <p className="goals-pane__hint">Портфель целей: активные, архив и корзина.</p>{leftPanelCollapsed ? null : <>
-          <button type="button" onClick={startSeed}>Посадить семя</button>
+          <div className="goals-surface__seed-actions">
+            <button type="button" onClick={startSeed}>Посадить семя</button>
+            <button type="button" onClick={() => { void seedUniverse() }}>Seed Universe (x7)</button>
+          </div>
           <div className="settings-actions">
             <button type="button" className={forestViewMode === 'forest' ? 'filter-button filter-button--active' : 'filter-button'} onClick={() => setForestViewMode('forest')}>Лес</button>
             <button type="button" className={forestViewMode === 'roots' ? 'filter-button filter-button--active' : 'filter-button'} onClick={() => setForestViewMode('roots')}>Корни</button>
@@ -1752,6 +1865,7 @@ export function GoalsPage() {
                 onSelectBranch={setSelectedKrId}
                 onClearBranch={() => setSelectedKrId(null)}
                 resetSignal={stageResetSignal}
+                tooFewGoalsHint={forestTab === 'active' && universeStageGoals.length < 3 ? 'Добавь ещё цели / Seed Universe' : null}
               />
             ) : selected ? (
               <GoalYggdrasilTree
@@ -1764,7 +1878,10 @@ export function GoalsPage() {
             ) : (
               <div className="goals-pane__empty goals-pane__empty--stage">
                 <p><strong>Выберите цель, чтобы увидеть дерево.</strong></p>
+                <div className="goals-surface__seed-actions">
                 <button type="button" onClick={startSeed}>Посадить семя</button>
+                <button type="button" onClick={() => { void seedUniverse() }}>Seed Universe (x7)</button>
+              </div>
               </div>
             )}
             <div className="goals-stage-mode-toggle">
@@ -1773,7 +1890,7 @@ export function GoalsPage() {
               </button>
             </div>
             {selected && goals.some((item) => item.parentGoalId === selected.id && item.status === 'active') ? (
-              <section className="summary-card">
+              <section className="goals-stage-children">
                 <h3>Дочерние деревья супер-цели</h3>
                 <ul>
                   {goals.filter((item) => item.parentGoalId === selected.id && item.status === 'active').map((child) => <li key={child.id}>{child.title}</li>)}

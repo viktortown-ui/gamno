@@ -4028,21 +4028,39 @@ button.danger { background: color-mix(in srgb, #e45959 30%, var(--panel) 70%); b
 
 .goal-cells-stage {
   display: grid;
-  gap: 8px;
-}
-
-.goal-cells-stage__head h2,
-.goal-cells-stage__objective {
-  margin: 0;
+  gap: 0;
 }
 
 .goal-cells-stage__scene {
   position: relative;
   min-height: clamp(340px, 52vh, 620px);
-  border: 1px solid rgba(114, 134, 188, 0.35);
-  border-radius: 16px;
+  border: 0;
+  border-radius: 0;
   overflow: hidden;
-  background: radial-gradient(circle at 28% 16%, rgba(72, 98, 164, 0.24), rgba(13, 18, 30, 0.92));
+  background: radial-gradient(circle at 28% 16%, rgba(72, 98, 164, 0.2), rgba(13, 18, 30, 0.88));
+}
+
+.goal-cells-stage__overlay-label {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 2;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border: 1px solid color-mix(in srgb, var(--line) 30%, transparent);
+  background: color-mix(in srgb, var(--panel) 58%, transparent);
+}
+
+.goal-cells-stage__inline-hint {
+  position: absolute;
+  top: 34px;
+  left: 10px;
+  margin: 0;
+  z-index: 2;
+  font-size: 12px;
+  color: color-mix(in srgb, var(--text) 74%, var(--muted) 26%);
 }
 
 .goal-cells-stage__scene svg {
@@ -4057,6 +4075,10 @@ button.danger { background: color-mix(in srgb, #e45959 30%, var(--panel) 70%); b
   z-index: 2;
   display: flex;
   gap: 8px;
+}
+
+.goal-cells-stage__floating-controls .filter-button {
+  border-radius: 0;
 }
 
 .goal-cells-stage__shell--hot { fill: url(#goalCellHot); }
