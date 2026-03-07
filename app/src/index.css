@@ -4104,7 +4104,7 @@ button.danger { background: color-mix(in srgb, #e45959 30%, var(--panel) 70%); b
 }
 
 .goal-cells-stage__kr-core { fill: rgba(224, 235, 255, 0.9); stroke: rgba(84, 113, 178, 0.85); stroke-width: 1.8; }
-.goal-cells-stage__kr text { font-size: 10px; text-anchor: middle; fill: rgba(232, 239, 255, 0.95); pointer-events: none; }
+.goal-cells-stage__lever-title { font-size: 10px; text-anchor: middle; fill: rgba(232, 239, 255, 0.95); pointer-events: none; }
 .goal-cells-stage__kr--selected .goal-cells-stage__kr-core { stroke: rgba(255, 215, 133, 0.95); stroke-width: 2.6; }
 
 .goal-cells-stage__mission-dot {
@@ -4113,15 +4113,15 @@ button.danger { background: color-mix(in srgb, #e45959 30%, var(--panel) 70%); b
   stroke-width: 1;
 }
 
-.goal-cells-stage__link {
-  fill: none;
-  stroke-width: 2;
-  opacity: 0.84;
+.goal-cells-stage__links-layer {
+  pointer-events: none;
 }
 
-.goal-cells-stage__link--suggested {
-  stroke-dasharray: 5 4;
-  opacity: 0.74;
+.goal-cells-stage__link {
+  fill: none;
+  stroke-width: 2.2;
+  opacity: 0.9;
+  pointer-events: none;
 }
 
 .goal-cells-stage__weak-crack path {
@@ -4145,9 +4145,36 @@ button.danger { background: color-mix(in srgb, #e45959 30%, var(--panel) 70%); b
   fill: rgba(121, 238, 168, 0.95);
 }
 
-.goal-cells-stage__link--supports { stroke: rgba(121, 238, 168, 0.9); }
-.goal-cells-stage__link--depends_on { stroke: rgba(132, 184, 255, 0.9); }
-.goal-cells-stage__link--conflicts { stroke: rgba(255, 128, 128, 0.92); }
+.goal-cells-stage__link--supports {
+  stroke: rgba(121, 238, 168, 0.9);
+  filter: drop-shadow(0 0 5px rgba(121, 238, 168, 0.45));
+}
+
+.goal-cells-stage__link--depends_on {
+  stroke: rgba(132, 184, 255, 0.9);
+  stroke-dasharray: 7 5;
+}
+
+.goal-cells-stage__link--conflicts {
+  stroke: rgba(255, 128, 128, 0.95);
+  stroke-width: 3.1;
+}
+
+.goal-cells-stage__link-zig {
+  fill: none;
+  stroke: rgba(255, 187, 82, 0.95);
+  stroke-width: 2;
+  stroke-linecap: round;
+  pointer-events: none;
+}
+
+.goals-stage-links-list {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+}
+
 
 .goal-cells-stage__more {
   fill: rgba(209, 223, 255, 0.86);

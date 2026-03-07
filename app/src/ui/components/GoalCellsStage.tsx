@@ -26,14 +26,33 @@ export interface UniverseStageGoal {
   levers: StageLever[]
 }
 
+export interface UniverseStageLink {
+  id: string
+  sourceGoalId: string
+  targetGoalId: string
+  type: 'supports' | 'depends_on' | 'conflicts'
+}
+
 interface GoalCellsStageProps {
   goals: UniverseStageGoal[]
+  links: UniverseStageLink[]
+  showLinks: boolean
   selectedGoalId: string | null
   selectedBranchId: string | null
   onSelectGoal: (goalId: string) => void
   onSelectBranch: (branchId: string) => void
   onClearBranch: () => void
   resetSignal?: number
+}
+
+interface GoalLinkPath {
+  id: string
+  sourceGoalId: string
+  targetGoalId: string
+  type: UniverseStageLink['type']
+  d: string
+  midX: number
+  midY: number
 }
 
 interface LayoutLever extends StageLever {
@@ -137,7 +156,47 @@ function computeUniverseLayout(width: number, height: number, goals: UniverseSta
   })
 }
 
-export function GoalCellsStage({ goals, selectedGoalId, selectedBranchId, onSelectGoal, onSelectBranch, onClearBranch, resetSignal = 0 }: GoalCellsStageProps) {
+function boundaryPoint(from: { x: number; y: number; r: number }, to: { x: number; y: number; r: number }, offset: number) {
+  const dx = to.x - from.x
+  const dy = to.y - from.y
+  const dist = Math.hypot(dx, dy) || 1
+  const ux = dx / dist
+  const uy = dy / dist
+  const distanceFromCenter = Math.max(0, from.r + offset)
+  return {
+    x: from.x + ux * distanceFromCenter,
+    y: from.y + uy * distanceFromCenter,
+  }
+}
+
+function buildLinkPath(source: { x: number; y: number; r: number }, target: { x: number; y: number; r: number }): { d: string; midX: number; midY: number } {
+  const linkPadding = 3
+  const sourceAnchor = boundaryPoint(source, target, linkPadding)
+  const targetAnchor = boundaryPoint(target, source, linkPadding)
+  const dx = targetAnchor.x - sourceAnchor.x
+  const dy = targetAnchor.y - sourceAnchor.y
+  const distance = Math.hypot(dx, dy)
+  const normalX = distance > 0 ? -dy / distance : 0
+  const normalY = distance > 0 ? dx / distance : 0
+  const bend = Math.min(58, Math.max(16, distance * 0.24))
+  const c1 = {
+    x: sourceAnchor.x + dx * 0.35 + normalX * bend,
+    y: sourceAnchor.y + dy * 0.35 + normalY * bend,
+  }
+  const c2 = {
+    x: sourceAnchor.x + dx * 0.65 + normalX * bend,
+    y: sourceAnchor.y + dy * 0.65 + normalY * bend,
+  }
+  const midX = sourceAnchor.x + dx * 0.5 + normalX * bend * 0.8
+  const midY = sourceAnchor.y + dy * 0.5 + normalY * bend * 0.8
+  return {
+    d: `M ${sourceAnchor.x} ${sourceAnchor.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${targetAnchor.x} ${targetAnchor.y}`,
+    midX,
+    midY,
+  }
+}
+
+export function GoalCellsStage({ goals, links, showLinks, selectedGoalId, selectedBranchId, onSelectGoal, onSelectBranch, onClearBranch, resetSignal = 0 }: GoalCellsStageProps) {
   const [viewSize, setViewSize] = useState({ width: DEFAULT_SCENE_WIDTH, height: DEFAULT_SCENE_HEIGHT })
   const [transform, setTransform] = useState<ZoomTransform>(zoomIdentity)
   const [isMobile, setIsMobile] = useState(false)
@@ -177,6 +236,27 @@ export function GoalCellsStage({ goals, selectedGoalId, selectedBranchId, onSele
   )
 
   const goalById = useMemo(() => new Map(layoutGoals.map((goal) => [goal.id, goal])), [layoutGoals])
+  const goalLinkPaths = useMemo<GoalLinkPath[]>(() => {
+    if (!showLinks || !selectedGoalId) return []
+    return links
+      .filter((link) => link.sourceGoalId === selectedGoalId)
+      .map((link) => {
+        const source = goalById.get(link.sourceGoalId)
+        const target = goalById.get(link.targetGoalId)
+        if (!source || !target) return null
+        const path = buildLinkPath(source, target)
+        return {
+          id: link.id,
+          sourceGoalId: link.sourceGoalId,
+          targetGoalId: link.targetGoalId,
+          type: link.type,
+          d: path.d,
+          midX: path.midX,
+          midY: path.midY,
+        }
+      })
+      .filter((link): link is GoalLinkPath => Boolean(link))
+  }, [goalById, links, selectedGoalId, showLinks])
   const dataSignature = useMemo(() => goals.map((goal) => goal.id).sort().join('|'), [goals])
 
   const applyTransform = useCallback((target: ZoomTransform, durationMs = 240) => {
@@ -290,6 +370,19 @@ export function GoalCellsStage({ goals, selectedGoalId, selectedBranchId, onSele
         <svg ref={sceneRef} viewBox={`0 0 ${viewSize.width} ${viewSize.height}`} role="img" aria-label="Вселенная целей">
           <rect className="goal-cells-stage__catcher" x={0} y={0} width={viewSize.width} height={viewSize.height} fill="transparent" onClick={onClearBranch} />
           <g transform={transform.toString()}>
+            <g className="goal-cells-stage__links-layer" aria-hidden="true">
+              {goalLinkPaths.map((link) => (
+                <g key={link.id}>
+                  <path className={`goal-cells-stage__link goal-cells-stage__link--${link.type}`} d={link.d} />
+                  {link.type === 'conflicts' ? (
+                    <path
+                      className="goal-cells-stage__link-zig"
+                      d={`M ${link.midX - 7} ${link.midY + 2} L ${link.midX - 2} ${link.midY - 3} L ${link.midX + 3} ${link.midY + 3} L ${link.midX + 8} ${link.midY - 2}`}
+                    />
+                  ) : null}
+                </g>
+              ))}
+            </g>
             {layoutGoals.map((goal) => (
               <g
                 key={goal.id}
@@ -307,7 +400,6 @@ export function GoalCellsStage({ goals, selectedGoalId, selectedBranchId, onSele
                 aria-label={`Цель: ${goal.title}`}
               >
                 <circle className={`goal-cells-stage__goal-shell goal-cells-stage__goal-shell--${goal.temperature}`} cx={goal.x} cy={goal.y} r={goal.r} />
-                <text className="goal-cells-stage__goal-title" x={goal.x} y={goal.y - goal.r + 18}>{goal.title.slice(0, 26)}</text>
 
                 {goal.leversLayout.map((lever) => (
                   <g
@@ -329,10 +421,12 @@ export function GoalCellsStage({ goals, selectedGoalId, selectedBranchId, onSele
                       </g>
                     ) : null}
                     {lever.hasActiveMission ? <circle className="goal-cells-stage__mission-dot" cx={lever.x + lever.r * 0.55} cy={lever.y - lever.r * 0.55} r={Math.max(3, lever.r * 0.18)} /> : null}
-                    {!isMobile || lever.isSelected ? <text x={lever.x} y={lever.y + 4}>{lever.title.slice(0, 10)}</text> : null}
                   </g>
                 ))}
 
+                <text className="goal-cells-stage__goal-title" x={goal.x} y={goal.y - goal.r + 18}>{goal.title.slice(0, 26)}</text>
+                {!isMobile ? goal.leversLayout.map((lever) => <text key={`label-${lever.id}`} className="goal-cells-stage__lever-title" x={lever.x} y={lever.y + 4}>{lever.title.slice(0, 10)}</text>) : null}
+                {isMobile ? goal.leversLayout.filter((lever) => lever.isSelected).map((lever) => <text key={`label-${lever.id}`} className="goal-cells-stage__lever-title" x={lever.x} y={lever.y + 4}>{lever.title.slice(0, 10)}</text>) : null}
                 {goal.levers.length > goal.visibleLeverCount ? (
                   <text className="goal-cells-stage__more" x={goal.x - 16} y={goal.y + goal.r - 10}>{`+${goal.levers.length - goal.visibleLeverCount}`}</text>
                 ) : null}

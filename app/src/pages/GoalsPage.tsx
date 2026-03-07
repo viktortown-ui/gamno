@@ -18,7 +18,7 @@ import {
 import { evaluateGoalScore, type GoalStateInput } from '../core/engines/goal'
 import { getLatestForecastRun } from '../repo/forecastRepo'
 import { GoalYggdrasilTree, type BranchStrength } from '../ui/components/GoalYggdrasilTree'
-import { GoalCellsStage, type UniverseStageGoal } from '../ui/components/GoalCellsStage'
+import { GoalCellsStage, type UniverseStageGoal, type UniverseStageLink } from '../ui/components/GoalCellsStage'
 import { DruidGauge } from './goals/components/DruidGauge'
 import { ForgeSheet } from './goals/components/ForgeSheet'
 import { PresetSelector } from './goals/components/PresetSelector'
@@ -237,6 +237,7 @@ export function GoalsPage() {
   const [forestSearch, setForestSearch] = useState('')
   const [forestSort, setForestSort] = useState<ForestSort>('recent')
   const [forestViewMode, setForestViewMode] = useState<'forest' | 'roots'>('forest')
+  const [rootsStageEnabled, setRootsStageEnabled] = useState(false)
   const [forestMenuGoalId, setForestMenuGoalId] = useState<string | null>(null)
   const [forestMenuStyle, setForestMenuStyle] = useState<CSSProperties | null>(null)
   const forestMenuTriggerRefs = useRef<Record<string, HTMLButtonElement | null>>({})
@@ -349,6 +350,15 @@ export function GoalsPage() {
       grouped[link.type].push(link)
     }
     return grouped
+  }, [goalTitleMap, selected?.links])
+
+  const selectedLinkedTargets = useMemo(() => {
+    return (selected?.links ?? [])
+      .map((link) => ({
+        ...link,
+        title: goalTitleMap.get(link.toGoalId) ?? null,
+      }))
+      .filter((item) => Boolean(item.title))
   }, [goalTitleMap, selected?.links])
 
   const linkCandidates = useMemo(() => {
@@ -1101,6 +1111,18 @@ export function GoalsPage() {
     })
   }, [goalProgressMap, goalState, visibleForestGoals])
 
+  const universeStageLinks = useMemo<UniverseStageLink[]>(() => {
+    const visibleIds = new Set(universeStageGoals.map((goal) => goal.id))
+    return goals.flatMap((goal) => (goal.links ?? [])
+      .filter((link) => visibleIds.has(goal.id) && visibleIds.has(link.toGoalId))
+      .map((link, index) => ({
+        id: `${goal.id}-${link.toGoalId}-${link.type}-${index}`,
+        sourceGoalId: goal.id,
+        targetGoalId: link.toGoalId,
+        type: link.type,
+      })))
+  }, [goals, universeStageGoals])
+
   const selectedUniverseGoal = useMemo(() => universeStageGoals.find((goal) => goal.id === selectedGoalId) ?? null, [selectedGoalId, universeStageGoals])
   const selectedUniverseLever = useMemo(() => {
     if (!selectedKrId || !selectedUniverseGoal) return null
@@ -1351,11 +1373,18 @@ export function GoalsPage() {
                   }
                 }}
               >
-                {label}{id === 'autolinks' ? <span className="goals-surface__submenu-muted">OFF</span> : null}
+                {label}{id === 'roots' ? <span className="goals-surface__submenu-muted">{rootsStageEnabled ? 'ON' : 'OFF'}</span> : null}{id === 'autolinks' ? <span className="goals-surface__submenu-muted">OFF</span> : null}
               </button>
               {isOpen ? (
                 <div ref={(node) => { submenuPopoverRef.current = node }} className="goals-surface__submenu-popover" role="menu">
-                  <p>{label} menu placeholder</p>
+                  {id === 'roots' ? (
+                    <div className="goals-surface__submenu-roots">
+                      <p>Показывать связи только от выбранной цели на Stage.</p>
+                      <button type="button" className={rootsStageEnabled ? 'filter-button filter-button--active' : 'filter-button'} onClick={() => setRootsStageEnabled((value) => !value)}>
+                        Roots: {rootsStageEnabled ? 'ON' : 'OFF'}
+                      </button>
+                    </div>
+                  ) : <p>{label} menu placeholder</p>}
                   {id === 'forge' ? <button ref={seedButtonRef} type="button" onClick={startSeed}>Посадить семя</button> : null}
                   {id === 'forge' ? <button type="button" onClick={() => {
                     if (!selected) return
@@ -1712,6 +1741,8 @@ export function GoalsPage() {
             {goalsStageMode === 'cells' ? (
               <GoalCellsStage
                 goals={universeStageGoals}
+                links={universeStageLinks}
+                showLinks={rootsStageEnabled && Boolean(selectedGoalId)}
                 selectedGoalId={selectedGoalId}
                 selectedBranchId={selectedKrId}
                 onSelectGoal={(goalId) => {
@@ -1774,6 +1805,16 @@ export function GoalsPage() {
             <div className="goals-surface__dial-row"><span>Dial A</span><span>Dial B</span><span>Dial C</span></div>
             <p className="goals-pane__hint">Selected goal: {selectedUniverseGoal ? `${selectedUniverseGoal.title} (${selectedUniverseGoal.id})` : '—'}</p>
             <p className="goals-pane__hint">Selected lever: {selectedUniverseLever ? `${selectedUniverseLever.title} (${selectedUniverseLever.id})` : '—'}</p>
+            <div className="goals-pane__hint">
+              Links: supports {selectedLinksByType.supports.length} · depends {selectedLinksByType.depends_on.length} · conflicts {selectedLinksByType.conflicts.length}
+            </div>
+            <ul className="goals-stage-links-list">
+              {selectedLinkedTargets.length ? selectedLinkedTargets.map((link) => (
+                <li key={`${link.type}-${link.toGoalId}`}>
+                  <strong>{linkTypeLabels[link.type]}:</strong> {link.title} ({link.toGoalId})
+                </li>
+              )) : <li>No linked targets for selected goal.</li>}
+            </ul>
           </section>
           <section className="goals-surface__cockpit-floor goals-surface__cockpit-floor--inspector">
           <h2>Друид</h2>
