@@ -4106,25 +4106,39 @@ button.danger { background: color-mix(in srgb, #e45959 30%, var(--panel) 70%); b
   opacity: 1;
 }
 
-.goal-cells-stage__load-gate {
+.goal-cells-stage__overlay {
   position: absolute;
   inset: 0;
   z-index: 4;
+  pointer-events: none;
+}
+
+.goal-cells-stage__load-gate {
+  position: absolute;
+  inset: 0;
   display: grid;
   place-items: center;
   font-size: 14px;
   letter-spacing: 0.02em;
   color: color-mix(in srgb, #e3ecff 92%, #8ea8dc 8%);
   background: linear-gradient(180deg, rgba(5, 10, 18, 0.9), rgba(4, 8, 14, 0.92));
+  opacity: 1;
+  transition: opacity 220ms ease;
+}
+
+.goal-cells-stage__load-gate--hidden {
+  opacity: 0;
+  visibility: hidden;
 }
 
 .goal-cells-stage__floating-controls {
   position: absolute;
   top: 10px;
   right: 10px;
-  z-index: 2;
+  z-index: 3;
   display: flex;
   gap: 8px;
+  pointer-events: auto;
 }
 
 .goal-cells-stage__floating-controls .filter-button {
