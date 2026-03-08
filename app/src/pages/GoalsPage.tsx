@@ -16,6 +16,7 @@ import {
   updateGoal,
 } from '../core/storage/repo'
 import { evaluateGoalScore, type GoalStateInput } from '../core/engines/goal'
+import { hardResetSiteAndReload } from '../core/cacheReset'
 import { getLatestForecastRun } from '../repo/forecastRepo'
 import { GoalYggdrasilTree, type BranchStrength } from '../ui/components/GoalYggdrasilTree'
 import { GoalCellsStage, type UniverseStageGoal, type UniverseStageLink } from '../ui/components/GoalCellsStage'
@@ -236,6 +237,14 @@ function getRiskLabel(levelAvg: number): 'Низкий' | 'Средний' | 'В
   return 'Высокий'
 }
 
+
+function formatBuildTime(value: string | undefined): string {
+  if (!value) return 'build-time:unknown'
+  const parsed = Number.isNaN(Date.parse(value)) ? null : new Date(value)
+  if (!parsed) return value
+  return parsed.toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'medium' })
+}
+
 const MISSION_REROLL_LIMIT_PER_DAY = 2
 const MISSION_REROLL_COOLDOWN_MS = 30_000
 
@@ -318,6 +327,7 @@ export function GoalsPage() {
   const [showDebugNumbers, setShowDebugNumbers] = useState(false)
   const [devUnlocked, setDevUnlocked] = useState(false)
   const forensicsEnabled = devUnlocked && !import.meta.env.PROD
+  const buildStamp = `Сборка: ${String(import.meta.env.VITE_COMMIT_SHA ?? 'dev').slice(0, 8)} • ${formatBuildTime(import.meta.env.VITE_BUILD_TIME)}`
   const lastUserInputAtRef = useRef(0)
   const lastAutoMoveCauseRef = useRef<'fit' | 'focus' | 'scrollIntoView' | 'scrollRestoration' | 'unknown'>('unknown')
   const autoMoveEventsRef = useRef<Array<{ method: string; args: unknown[]; stack?: string; at: number }>>([])
@@ -1944,6 +1954,7 @@ export function GoalsPage() {
                 <div className="goals-surface__seed-actions">
                 <button type="button" onClick={startSeed}>Посадить семя</button>
                 {devUnlocked ? <button type="button" onClick={() => { void seedUniverse() }}>Засеять демо (×7)</button> : null}
+                {devUnlocked ? <button type="button" className="ghost-button" onClick={() => { void hardResetSiteAndReload() }}>Сброс кэша</button> : null}
               </div>
               </div>
             )}
@@ -2009,6 +2020,7 @@ export function GoalsPage() {
         </article>
       </div>
 
+      <div className="goals-build-stamp" aria-label={buildStamp}>{buildStamp}</div>
 
       {editor ? (
         <ForgeSheet open={isForgeOpen} onClose={closeForge} title="Кузница: настройка режима">
