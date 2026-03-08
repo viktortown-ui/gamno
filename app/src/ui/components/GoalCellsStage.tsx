@@ -598,7 +598,17 @@ export function GoalCellsStage({ goals, goalsLoaded = true, links, showLinks, se
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [queueFit, selectedGoalId])
 
+
   const stageReady = goalsLoaded && viewportStable && initialApplied !== null
+
+  useEffect(() => {
+    if (!debugEnabled || !sceneWrapRef.current || typeof window === 'undefined') return
+    const loadingLabel = Array.from(sceneWrapRef.current.querySelectorAll('div')).find((node) => node.textContent?.includes('Загрузка сцены'))
+    if (!loadingLabel) return
+    if (loadingLabel.closest('svg') || loadingLabel.closest('.goal-cells-stage__zoom-root')) {
+      console.warn('Loading label must be in overlay, not zoomRoot')
+    }
+  }, [debugEnabled, stageReady])
   const cameraMode = cameraLocked ? 'pinned' : 'init'
   const initialMode = initialApplied
 
