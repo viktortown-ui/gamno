@@ -283,6 +283,7 @@ function ensureGoalKeyResults(goal: GoalRecord, goalState: GoalStateInput | null
 export function GoalsPage() {
   const navigate = useNavigate()
   const [goals, setGoals] = useState<GoalRecord[]>([])
+  const [goalsLoaded, setGoalsLoaded] = useState(false)
   const [selectedGoalId, setSelectedGoalId] = useState<string | null>(null)
   const [editor, setEditor] = useState<GoalRecord | null>(null)
   const [goalState, setGoalState] = useState<GoalStateInput | null>(null)
@@ -518,6 +519,8 @@ export function GoalsPage() {
       const rows = await listGoalEvents(picked.id, 2)
       setHistoryTrend(rows.length >= 2 && rows[0].goalScore >= rows[1].goalScore ? 'up' : rows.length >= 2 ? 'down' : null)
     }
+
+    setGoalsLoaded(true)
   }
 
   useEffect(() => {
@@ -1910,6 +1913,7 @@ export function GoalsPage() {
             {goalsStageMode === 'cells' ? (
               <GoalCellsStage
                 goals={universeStageGoals}
+                goalsLoaded={goalsLoaded}
                 links={universeStageLinks}
                 showLinks={rootsStageEnabled && Boolean(selectedGoalId)}
                 selectedGoalId={selectedGoalId}
