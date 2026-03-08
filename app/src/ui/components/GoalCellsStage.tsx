@@ -654,7 +654,7 @@ export function GoalCellsStage({ goals, goalsLoaded = true, links, showLinks, se
                 {goal.leversLayout.map((lever) => (
                   <g
                     key={lever.id}
-                    className={lever.isSelected ? 'goal-cells-stage__kr goal-cells-stage__kr--selected' : 'goal-cells-stage__kr'}
+                    className={`goal-cells-stage__kr${lever.isSelected ? ' goal-cells-stage__kr--selected' : ''}${lever.isWeak ? ' goal-cells-stage__kr--weak' : ''}`}
                     role="button"
                     tabIndex={0}
                     onClick={(event) => {

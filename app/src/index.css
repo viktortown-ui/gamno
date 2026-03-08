@@ -4205,8 +4205,9 @@ button.danger { background: color-mix(in srgb, #e45959 30%, var(--panel) 70%); b
 }
 
 .goal-cells-stage__goal--selected .goal-cells-stage__goal-shell {
-  stroke: rgba(255, 214, 122, 0.95);
-  stroke-width: 3;
+  stroke: rgba(255, 214, 122, 0.98);
+  stroke-width: 4;
+  filter: drop-shadow(0 0 10px rgba(255, 214, 122, 0.55));
 }
 
 .goal-cells-stage__goal-title {
@@ -4216,6 +4217,17 @@ button.danger { background: color-mix(in srgb, #e45959 30%, var(--panel) 70%); b
   pointer-events: none;
 }
 
+
+.goal-cells-stage__goal--selected .goal-cells-stage__goal-title {
+  fill: rgba(255, 237, 181, 0.98);
+  font-size: 13px;
+}
+
+.goal-cells-stage__kr--weak .goal-cells-stage__kr-core {
+  stroke: rgba(255, 136, 136, 0.98);
+  stroke-width: 2.6;
+  filter: drop-shadow(0 0 6px rgba(255, 136, 136, 0.45));
+}
 .goal-cells-stage__kr-core { fill: rgba(224, 235, 255, 0.9); stroke: rgba(84, 113, 178, 0.85); stroke-width: 1.8; }
 .goal-cells-stage__lever-title { font-size: 10px; text-anchor: middle; fill: rgba(232, 239, 255, 0.95); pointer-events: none; }
 .goal-cells-stage__kr--selected .goal-cells-stage__kr-core { stroke: rgba(255, 215, 133, 0.95); stroke-width: 2.6; }
