@@ -7,7 +7,11 @@ const DEFAULT_SCENE_WIDTH = 900
 const DEFAULT_SCENE_HEIGHT = 560
 const FIT_PADDING = 36
 const MAX_UNIVERSE_LEVERS = 3
-const CAMERA_STORAGE_KEY = 'goals.camera.v1'
+const CAMERA_STORAGE_KEY = 'goals.camera.v2'
+const CAMERA_MIN_SCALE = 0.05
+const CAMERA_MAX_SCALE = 10
+const CAMERA_MAX_VIEW_MULTIPLIER = 5
+const VIEWPORT_STABLE_TIMEOUT_MS = 800
 
 interface StageLever {
   id: string
@@ -230,6 +234,7 @@ export function GoalCellsStage({ goals, goalsLoaded = true, links, showLinks, se
   const previousDataSignatureRef = useRef<string>('')
   const initialAppliedRef = useRef<'restore' | 'fit' | null>(null)
   const cameraLockedRef = useRef(false)
+  const isProgrammaticRef = useRef(false)
   const lastAppliedFitKeyRef = useRef<string | null>(null)
   const isInteractingRef = useRef(false)
   const interactionEndTimerRef = useRef<number | null>(null)
@@ -324,7 +329,11 @@ export function GoalCellsStage({ goals, goalsLoaded = true, links, showLinks, se
     if (!sceneRef.current || !zoomRef.current) return false
     const selection = select(sceneRef.current)
     void durationMs
+    isProgrammaticRef.current = true
     selection.call(zoomRef.current.transform, target)
+    requestAnimationFrame(() => {
+      isProgrammaticRef.current = false
+    })
     return true
   }, [])
 
@@ -382,6 +391,14 @@ export function GoalCellsStage({ goals, goalsLoaded = true, links, showLinks, se
     return null
   }, [])
 
+  const isSavedCameraValid = useCallback((value: ZoomTransform): boolean => {
+    if (value.k < CAMERA_MIN_SCALE || value.k > CAMERA_MAX_SCALE) return false
+    const maxViewDimension = Math.max(viewSize.width, viewSize.height)
+    const maxOffset = maxViewDimension * CAMERA_MAX_VIEW_MULTIPLIER
+    if (Math.abs(value.x) > maxOffset || Math.abs(value.y) > maxOffset) return false
+    return true
+  }, [viewSize.height, viewSize.width])
+
   useEffect(() => {
     if (!sceneRef.current) return
     const behavior = zoom<SVGSVGElement, unknown>()
@@ -400,8 +417,11 @@ export function GoalCellsStage({ goals, goalsLoaded = true, links, showLinks, se
       .on('zoom', (event) => {
         setTransform(event.transform)
       })
-      .on('end', () => {
-        saveCamera(transform)
+      .on('end', (event) => {
+        const isUserGesture = Boolean(event.sourceEvent)
+        if (isUserGesture && !isProgrammaticRef.current) {
+          saveCamera(event.transform)
+        }
         if (interactionEndTimerRef.current !== null) window.clearTimeout(interactionEndTimerRef.current)
         interactionEndTimerRef.current = window.setTimeout(() => {
           isInteractingRef.current = false
@@ -419,7 +439,15 @@ export function GoalCellsStage({ goals, goalsLoaded = true, links, showLinks, se
       }
       selection.on('.zoom', null)
     }
-  }, [saveCamera, transform, viewSize.height, viewSize.width])
+  }, [saveCamera, viewSize.height, viewSize.width])
+
+  useEffect(() => {
+    if (viewportStable) return
+    const timer = window.setTimeout(() => {
+      setViewportStable(true)
+    }, VIEWPORT_STABLE_TIMEOUT_MS)
+    return () => window.clearTimeout(timer)
+  }, [viewportStable])
 
   useEffect(() => {
     const previousSignature = previousDataSignatureRef.current
@@ -439,7 +467,7 @@ export function GoalCellsStage({ goals, goalsLoaded = true, links, showLinks, se
     if (initialAppliedRef.current) return
     let applied = false
     const restored = readSavedCamera()
-    if (restored) {
+    if (restored && isSavedCameraValid(restored)) {
       applied = applyTransform(restored, 0)
       if (applied) {
         initialAppliedRef.current = 'restore'
@@ -462,7 +490,25 @@ export function GoalCellsStage({ goals, goalsLoaded = true, links, showLinks, se
     requestAnimationFrame(() => {
       setCameraLocked(true)
     })
-  }, [applyTransform, goalsLoaded, layoutGoals.length, readSavedCamera, runFitToView, viewportStable])
+  }, [applyTransform, goalsLoaded, isSavedCameraValid, layoutGoals.length, readSavedCamera, runFitToView, viewportStable])
+
+  const resetCamera = useCallback(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        window.localStorage.removeItem(CAMERA_STORAGE_KEY)
+      } catch {
+        // ignore storage failures
+      }
+    }
+    cameraLockedRef.current = false
+    setCameraLocked(false)
+    const applied = layoutGoals.length > 0 ? runFitToView(0) : applyTransform(zoomIdentity, 0)
+    if (!applied) return
+    requestAnimationFrame(() => {
+      cameraLockedRef.current = true
+      setCameraLocked(true)
+    })
+  }, [applyTransform, layoutGoals.length, runFitToView])
 
   useEffect(() => {
     if (resetSignal <= 0) return
@@ -564,6 +610,7 @@ export function GoalCellsStage({ goals, goalsLoaded = true, links, showLinks, se
         {stageReady && tooFewGoalsHint ? <p className="goal-cells-stage__inline-hint">{tooFewGoalsHint}</p> : null}
         {stageReady ? <div className="goal-cells-stage__floating-controls" role="toolbar" aria-label="Управление сценой">
           <button type="button" className="filter-button goal-cells-stage__hud-chip" onClick={() => queueFit('ALL', 'button:reset', true)}>{isMobile ? '↺' : resetLabel}</button>
+          <button type="button" className="filter-button goal-cells-stage__hud-chip" onClick={resetCamera}>Сброс камеры</button>
           <button type="button" className="filter-button goal-cells-stage__hud-chip" onClick={() => queueFit('FOCUS', `button:focus:${selectedGoalId ?? 'none'}`, true)} disabled={!selectedGoalId}>{isMobile ? '◎' : focusLabel}</button>
           {debugEnabled ? (
             <div className="goal-cells-stage__debug-hud" aria-live="polite">
@@ -572,6 +619,7 @@ export function GoalCellsStage({ goals, goalsLoaded = true, links, showLinks, se
               <span className="goal-cells-stage__hud-chip">k:{transform.k.toFixed(2)} x:{transform.x.toFixed(0)} y:{transform.y.toFixed(0)}</span>
               <span className="goal-cells-stage__hud-chip">auto:{lastAutoMoveCause} · stable:{viewportStable ? '1' : '0'}</span>
               <span className="goal-cells-stage__hud-chip">camera:{cameraMode} · initial:{initialMode ?? 'none'}</span>
+              <span className="goal-cells-stage__hud-chip">ready g:{goalsLoaded ? '1' : '0'} v:{viewportStable ? '1' : '0'} i:{initialApplied ? '1' : '0'}</span>
             </div>
           ) : null}
         </div> : null}
