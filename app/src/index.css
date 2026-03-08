@@ -4095,6 +4095,29 @@ button.danger { background: color-mix(in srgb, #e45959 30%, var(--panel) 70%); b
   height: 100%;
 }
 
+.goal-cells-stage__scene-content {
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  transition: opacity 260ms ease;
+}
+
+.goal-cells-stage__scene-content--ready {
+  opacity: 1;
+}
+
+.goal-cells-stage__load-gate {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  font-size: 14px;
+  letter-spacing: 0.02em;
+  color: color-mix(in srgb, #e3ecff 92%, #8ea8dc 8%);
+  background: linear-gradient(180deg, rgba(5, 10, 18, 0.9), rgba(4, 8, 14, 0.92));
+}
+
 .goal-cells-stage__floating-controls {
   position: absolute;
   top: 10px;

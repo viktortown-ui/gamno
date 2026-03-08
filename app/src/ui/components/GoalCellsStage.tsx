@@ -7,6 +7,7 @@ const DEFAULT_SCENE_WIDTH = 900
 const DEFAULT_SCENE_HEIGHT = 560
 const FIT_PADDING = 36
 const MAX_UNIVERSE_LEVERS = 3
+const CAMERA_STORAGE_KEY = 'goals.camera.v1'
 
 interface StageLever {
   id: string
@@ -37,6 +38,7 @@ export interface UniverseStageLink {
 
 interface GoalCellsStageProps {
   goals: UniverseStageGoal[]
+  goalsLoaded?: boolean
   links: UniverseStageLink[]
   showLinks: boolean
   selectedGoalId: string | null
@@ -145,6 +147,8 @@ function computeUniverseLayout(width: number, height: number, goals: UniverseSta
   }).sum((node) => node.value)
 
   const packed = pack<PackDatum>().size([width, height]).padding(18)(root)
+  const rootX = packed.x
+  const rootY = packed.y
   return (packed.children ?? []).map((leaf: HierarchyCircularNode<PackDatum>) => {
     const goal = leaf.data.goal
     if (!goal) {
@@ -152,10 +156,10 @@ function computeUniverseLayout(width: number, height: number, goals: UniverseSta
     }
     return {
       ...goal,
-      x: leaf.x,
-      y: leaf.y,
+      x: leaf.x - rootX,
+      y: leaf.y - rootY,
       r: Math.max(36, leaf.r),
-      leversLayout: packLevers(goal, leaf.x, leaf.y, Math.max(36, leaf.r), selectedBranchId),
+      leversLayout: packLevers(goal, leaf.x - rootX, leaf.y - rootY, Math.max(36, leaf.r), selectedBranchId),
       visibleLeverCount: Math.min(MAX_UNIVERSE_LEVERS, goal.levers.length),
       isSelected: goal.id === selectedGoalId,
       temperature: goal.temperature,
@@ -203,7 +207,7 @@ function buildLinkPath(source: { x: number; y: number; r: number }, target: { x:
   }
 }
 
-export function GoalCellsStage({ goals, links, showLinks, selectedGoalId, selectedBranchId, onSelectGoal, onSelectBranch, onClearBranch, resetSignal = 0, tooFewGoalsHint = null, overlayLabel = 'Сцена', resetLabel = 'Сброс вида (R)', focusLabel = 'Фокус (F)', onMissionHudClick }: GoalCellsStageProps) {
+export function GoalCellsStage({ goals, goalsLoaded = true, links, showLinks, selectedGoalId, selectedBranchId, onSelectGoal, onSelectBranch, onClearBranch, resetSignal = 0, tooFewGoalsHint = null, overlayLabel = 'Сцена', resetLabel = 'Сброс вида (R)', focusLabel = 'Фокус (F)', onMissionHudClick }: GoalCellsStageProps) {
   const [viewSize, setViewSize] = useState({ width: DEFAULT_SCENE_WIDTH, height: DEFAULT_SCENE_HEIGHT })
   const [transform, setTransform] = useState<ZoomTransform>(zoomIdentity)
   const [isMobile, setIsMobile] = useState(false)
@@ -212,6 +216,8 @@ export function GoalCellsStage({ goals, links, showLinks, selectedGoalId, select
   const [fitApplyCount, setFitApplyCount] = useState(0)
   const [lastFitReason, setLastFitReason] = useState('none')
   const [viewportStable, setViewportStable] = useState(false)
+  const [cameraLocked, setCameraLocked] = useState(false)
+  const [initialApplied, setInitialApplied] = useState<'restore' | 'fit' | null>(null)
   const [lastAutoMoveCause, setLastAutoMoveCause] = useState<'fit' | 'focus' | 'scrollIntoView' | 'scrollRestoration' | 'unknown' | 'scroll-lock'>('unknown')
   const [debugScrollY, setDebugScrollY] = useState(() => (typeof window === 'undefined' ? 0 : Math.round(window.scrollY)))
   const sceneRef = useRef<SVGSVGElement | null>(null)
@@ -222,11 +228,11 @@ export function GoalCellsStage({ goals, links, showLinks, selectedGoalId, select
   const viewportMeasurementsRef = useRef<Array<{ width: number; height: number; measuredAt: number }>>([])
   const viewportStableTimerRef = useRef<number | null>(null)
   const previousDataSignatureRef = useRef<string>('')
+  const initialAppliedRef = useRef<'restore' | 'fit' | null>(null)
+  const cameraLockedRef = useRef(false)
   const lastAppliedFitKeyRef = useRef<string | null>(null)
   const isInteractingRef = useRef(false)
-  const hasUserInteractedRef = useRef(false)
   const interactionEndTimerRef = useRef<number | null>(null)
-  const firstFitAppliedAtRef = useRef<number | null>(null)
   const debugEnabled = typeof window !== 'undefined' && window.localStorage.getItem('cc_debug') === '1'
 
   const queueFit = useCallback((kind: 'ALL' | 'FOCUS', reason: string, force = false, options?: { key?: string; source?: 'auto' | 'manual'; datasetSignatureChanged?: boolean }) => {
@@ -347,6 +353,35 @@ export function GoalCellsStage({ goals, links, showLinks, selectedGoalId, select
     return applyTransform(computeFitTransform([{ x: targetGoal.x, y: targetGoal.y, r: Math.max(targetGoal.r + 28, targetGoal.r * 1.2) }]), durationMs)
   }, [applyTransform, computeFitTransform, goalById, selectedGoalId])
 
+  const saveCamera = useCallback((value: ZoomTransform) => {
+    if (typeof window === 'undefined') return
+    try {
+      window.localStorage.setItem(CAMERA_STORAGE_KEY, JSON.stringify({
+        k: value.k,
+        x: value.x,
+        y: value.y,
+        ts: Date.now(),
+      }))
+    } catch {
+      // ignore storage write failures
+    }
+  }, [])
+
+  const readSavedCamera = useCallback((): ZoomTransform | null => {
+    if (typeof window === 'undefined') return null
+    try {
+      const raw = window.localStorage.getItem(CAMERA_STORAGE_KEY)
+      if (!raw) return null
+      const parsed = JSON.parse(raw) as Partial<{ k: number; x: number; y: number }>
+      if ([parsed.k, parsed.x, parsed.y].every((value) => typeof value === 'number' && Number.isFinite(value))) {
+        return zoomIdentity.translate(parsed.x as number, parsed.y as number).scale(parsed.k as number)
+      }
+    } catch {
+      return null
+    }
+    return null
+  }, [])
+
   useEffect(() => {
     if (!sceneRef.current) return
     const behavior = zoom<SVGSVGElement, unknown>()
@@ -357,7 +392,6 @@ export function GoalCellsStage({ goals, links, showLinks, selectedGoalId, select
       ])
       .on('start', () => {
         isInteractingRef.current = true
-        hasUserInteractedRef.current = true
         if (interactionEndTimerRef.current !== null) {
           window.clearTimeout(interactionEndTimerRef.current)
           interactionEndTimerRef.current = null
@@ -367,6 +401,7 @@ export function GoalCellsStage({ goals, links, showLinks, selectedGoalId, select
         setTransform(event.transform)
       })
       .on('end', () => {
+        saveCamera(transform)
         if (interactionEndTimerRef.current !== null) window.clearTimeout(interactionEndTimerRef.current)
         interactionEndTimerRef.current = window.setTimeout(() => {
           isInteractingRef.current = false
@@ -384,18 +419,50 @@ export function GoalCellsStage({ goals, links, showLinks, selectedGoalId, select
       }
       selection.on('.zoom', null)
     }
-  }, [viewSize.height, viewSize.width])
+  }, [saveCamera, transform, viewSize.height, viewSize.width])
 
   useEffect(() => {
     const previousSignature = previousDataSignatureRef.current
     const datasetSignatureChanged = previousSignature.length > 0 && previousSignature !== dataSignature
     previousDataSignatureRef.current = dataSignature
-    if (!viewportStable || dataSignature.length === 0) return
-    const initialFitKey = `sig:${dataSignature}:${viewSize.width}x${viewSize.height}`
+    if (!datasetSignatureChanged || !cameraLockedRef.current) return
+    if (debugEnabled) {
+      console.debug('[GoalCellsStage] dataset signature changed, camera pinned', {
+        dataSignature,
+        cameraLocked: cameraLockedRef.current,
+      })
+    }
+  }, [dataSignature, debugEnabled])
+
+  useEffect(() => {
+    if (!goalsLoaded || !viewportStable || !zoomRef.current) return
+    if (initialAppliedRef.current) return
+    let applied = false
+    const restored = readSavedCamera()
+    if (restored) {
+      applied = applyTransform(restored, 0)
+      if (applied) {
+        initialAppliedRef.current = 'restore'
+        requestAnimationFrame(() => {
+          setInitialApplied('restore')
+        })
+      }
+    }
+    if (!applied) {
+      applied = layoutGoals.length > 0 ? runFitToView(0) : applyTransform(zoomIdentity, 0)
+      if (applied) {
+        initialAppliedRef.current = 'fit'
+        requestAnimationFrame(() => {
+          setInitialApplied('fit')
+        })
+      }
+    }
+    if (!applied) return
+    cameraLockedRef.current = true
     requestAnimationFrame(() => {
-      queueFit('ALL', `dataset:${dataSignature}`, false, { key: initialFitKey, source: 'auto', datasetSignatureChanged })
+      setCameraLocked(true)
     })
-  }, [dataSignature, queueFit, viewSize.height, viewSize.width, viewportStable])
+  }, [applyTransform, goalsLoaded, layoutGoals.length, readSavedCamera, runFitToView, viewportStable])
 
   useEffect(() => {
     if (resetSignal <= 0) return
@@ -418,10 +485,7 @@ export function GoalCellsStage({ goals, links, showLinks, selectedGoalId, select
       if (fitRequest.kind === 'FOCUS') {
         applied = runFocusSelected(undefined, 260)
       } else {
-        const lockedByInitialFit = fitRequest.source === 'auto'
-          && firstFitAppliedAtRef.current !== null
-          && Date.now() - firstFitAppliedAtRef.current < 1500
-          && !(fitRequest.datasetSignatureChanged && !hasUserInteractedRef.current)
+        const lockedByInitialFit = fitRequest.source === 'auto' && cameraLockedRef.current
         if (lockedByInitialFit) {
           setFitRequest(null)
           return
@@ -429,9 +493,6 @@ export function GoalCellsStage({ goals, links, showLinks, selectedGoalId, select
         applied = runFitToView(260)
       }
       if (!applied) return
-      if (fitRequest.kind === 'ALL' && fitRequest.source === 'auto' && firstFitAppliedAtRef.current === null) {
-        firstFitAppliedAtRef.current = Date.now()
-      }
       lastAppliedFitKeyRef.current = fitRequest.key
       setFitApplyCount((current) => current + 1)
       setLastFitReason(fitRequest.reason)
@@ -491,12 +552,17 @@ export function GoalCellsStage({ goals, links, showLinks, selectedGoalId, select
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [queueFit, selectedGoalId])
 
+  const stageReady = goalsLoaded && viewportStable && initialApplied !== null
+  const cameraMode = cameraLocked ? 'pinned' : 'init'
+  const initialMode = initialApplied
+
   return (
     <div className="goal-cells-stage">
       <div className="goal-cells-stage__scene" ref={sceneWrapRef} aria-label="Сцена всех целей и рычагов">
-        <div className="goal-cells-stage__overlay-label">{overlayLabel}</div>
-        {tooFewGoalsHint ? <p className="goal-cells-stage__inline-hint">{tooFewGoalsHint}</p> : null}
-        <div className="goal-cells-stage__floating-controls" role="toolbar" aria-label="Управление сценой">
+        {!stageReady ? <div className="goal-cells-stage__load-gate" role="status" aria-live="polite">Загрузка сцены…</div> : null}
+        {stageReady ? <div className="goal-cells-stage__overlay-label">{overlayLabel}</div> : null}
+        {stageReady && tooFewGoalsHint ? <p className="goal-cells-stage__inline-hint">{tooFewGoalsHint}</p> : null}
+        {stageReady ? <div className="goal-cells-stage__floating-controls" role="toolbar" aria-label="Управление сценой">
           <button type="button" className="filter-button goal-cells-stage__hud-chip" onClick={() => queueFit('ALL', 'button:reset', true)}>{isMobile ? '↺' : resetLabel}</button>
           <button type="button" className="filter-button goal-cells-stage__hud-chip" onClick={() => queueFit('FOCUS', `button:focus:${selectedGoalId ?? 'none'}`, true)} disabled={!selectedGoalId}>{isMobile ? '◎' : focusLabel}</button>
           {debugEnabled ? (
@@ -505,10 +571,12 @@ export function GoalCellsStage({ goals, links, showLinks, selectedGoalId, select
               <span className="goal-cells-stage__hud-chip">fit:{fitApplyCount} · {lastFitReason}</span>
               <span className="goal-cells-stage__hud-chip">k:{transform.k.toFixed(2)} x:{transform.x.toFixed(0)} y:{transform.y.toFixed(0)}</span>
               <span className="goal-cells-stage__hud-chip">auto:{lastAutoMoveCause} · stable:{viewportStable ? '1' : '0'}</span>
+              <span className="goal-cells-stage__hud-chip">camera:{cameraMode} · initial:{initialMode ?? 'none'}</span>
             </div>
           ) : null}
-        </div>
-        <svg ref={sceneRef} viewBox={`0 0 ${viewSize.width} ${viewSize.height}`} role="img" aria-label="Сцена целей">
+        </div> : null}
+        <div className={stageReady ? 'goal-cells-stage__scene-content goal-cells-stage__scene-content--ready' : 'goal-cells-stage__scene-content'}>
+          <svg ref={sceneRef} viewBox={`0 0 ${viewSize.width} ${viewSize.height}`} role="img" aria-label="Сцена целей">
           <rect className="goal-cells-stage__catcher" x={0} y={0} width={viewSize.width} height={viewSize.height} fill="transparent" onClick={onClearBranch} />
           <g transform={transform.toString()}>
             <g className="goal-cells-stage__links-layer" aria-hidden="true">
@@ -581,7 +649,8 @@ export function GoalCellsStage({ goals, links, showLinks, selectedGoalId, select
               </g>
             ))}
           </g>
-        </svg>
+          </svg>
+        </div>
       </div>
     </div>
   )
