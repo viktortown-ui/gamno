@@ -1,15 +1,13 @@
-import { useCallback, useMemo, useRef, useState, type ChangeEventHandler } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useMemo, useState, type ChangeEventHandler } from 'react'
 import { clearAllData, exportDataBlob, importDataBlob, seedTestData } from '../core/storage/repo'
-import type { AccentColor, AppearanceSettings, DensityMode, MotionMode, ThemeMode, UiPreset, WorldQuality } from '../ui/appearance'
+import type { AppearanceSettings, DensityMode, MotionMode, UiPreset, WorldQuality } from '../ui/appearance'
 import { SparkButton } from '../ui/SparkButton'
 import { hardResetSiteAndReload } from '../core/cacheReset'
-import { getWorldDebugHUDStorageKey, readWorldDebugHUDFlag, resolveWorldDeveloperMode, resolveWorldShowHud } from '../ui/components/worldDebugHUD'
-import { resolveWorldDebugHUDPersistValue } from './settingsDebug'
 
 type BloomPreset = 'soft' | 'normal' | 'hot'
 type WorldSystemPreset = 'normal' | 'compact'
 type WorldLookPreset = 'clean' | 'cinematic'
+type ExpertMode = 'basic' | 'pro'
 
 interface SettingsPageProps {
   onDataChanged: () => Promise<void>
@@ -17,16 +15,13 @@ interface SettingsPageProps {
   onAppearanceChange: (next: AppearanceSettings) => void
 }
 
-interface ToolCard {
+interface ThemePack {
   id: string
+  uiPreset: UiPreset
   title: string
-  benefit: string
-  path?: string
-  onOpen?: () => void
-  badges: string[]
-  category: 'Планирование и фокус' | 'Аналитика и прогноз' | 'Системный контроль'
-  favorite?: boolean
-  advanced?: boolean
+  description: string
+  character: string
+  apply: (appearance: AppearanceSettings) => AppearanceSettings
 }
 
 function readFlag(key: string): boolean {
@@ -41,9 +36,7 @@ function readBloomPreset(): BloomPreset {
 }
 
 function readWorldSystemPreset(): WorldSystemPreset {
-  const raw = globalThis.localStorage?.getItem('worldSystemPreset')
-  if (raw === 'compact') return 'compact'
-  return 'normal'
+  return globalThis.localStorage?.getItem('worldSystemPreset') === 'compact' ? 'compact' : 'normal'
 }
 
 function readWorldLookPreset(): WorldLookPreset {
@@ -63,15 +56,59 @@ function readWorldLutIntensity(): number {
   return Math.min(1, Math.max(0, raw))
 }
 
-const presets: Array<{ id: UiPreset; title: string; description: string; accent: AccentColor; motion: MotionMode; transparency: AppearanceSettings['transparency']; look: WorldLookPreset }> = [
-  { id: 'clean', title: 'Clean', description: 'Чисто, контрастно, минимум свечения.', accent: 'auto', motion: 'reduced', transparency: 'reduced', look: 'clean' },
-  { id: 'neon', title: 'Neon', description: 'Циан/фиолет, ярче подсветки и контрасты.', accent: 'cyan', motion: 'normal', transparency: 'glass', look: 'cinematic' },
-  { id: 'instrument', title: 'Instrument', description: 'Строго, матово, геометрично.', accent: 'blue', motion: 'reduced', transparency: 'reduced', look: 'clean' },
-  { id: 'warm', title: 'Warm', description: 'Теплее оттенки и меньше синего.', accent: 'violet', motion: 'reduced', transparency: 'glass', look: 'clean' },
+function formatBackupTime(value: number | null): string {
+  if (!value) return 'Резервная копия ещё не создавалась.'
+  return `Последняя резервная копия: ${new Date(value).toLocaleString('ru-RU')}`
+}
+
+const THEME_PACKS: ThemePack[] = [
+  {
+    id: 'instrumental',
+    uiPreset: 'instrument',
+    title: 'Приборный',
+    description: 'Строгая инженерная подача, матовые поверхности и минимум свечения.',
+    character: 'Для долгой работы и максимальной ясности',
+    apply: (current) => ({ ...current, uiPreset: 'instrument', accentColor: 'blue', motion: 'reduced', transparency: 'reduced', density: 'normal', fxEnabled: false, worldLookPreset: 'clean', worldUiVariant: 'instrument' }),
+  },
+  {
+    id: 'neon',
+    uiPreset: 'neon',
+    title: 'Неон',
+    description: 'Яркая контрастная тема с сильными акцентами и живым научно-фантастическим настроением.',
+    character: 'Для демонстрации и сильного визуального эффекта',
+    apply: (current) => ({ ...current, uiPreset: 'neon', accentColor: 'cyan', motion: 'normal', transparency: 'glass', density: 'normal', fxEnabled: true, worldLookPreset: 'cinematic', worldUiVariant: 'cinematic' }),
+  },
+  {
+    id: 'deep-space',
+    uiPreset: 'neon',
+    title: 'Глубокий космос',
+    description: 'Атмосферная глубина, мягкие градиенты и ощущение объёма пространства.',
+    character: 'Для погружения и визуальной атмосферы',
+    apply: (current) => ({ ...current, uiPreset: 'neon', accentColor: 'violet', motion: 'reduced', transparency: 'glass', density: 'comfortable', fxEnabled: true, worldLookPreset: 'cinematic', worldUiVariant: 'cinematic' }),
+  },
+  {
+    id: 'warm-outline',
+    uiPreset: 'warm',
+    title: 'Тёплый контур',
+    description: 'Мягкий тёплый баланс цвета без холодного доминирования синего.',
+    character: 'Для спокойной ежедневной работы',
+    apply: (current) => ({ ...current, uiPreset: 'warm', accentColor: 'violet', motion: 'reduced', transparency: 'glass', density: 'normal', fxEnabled: true, worldLookPreset: 'clean', worldUiVariant: 'instrument' }),
+  },
+  {
+    id: 'clean-contrast',
+    uiPreset: 'clean',
+    title: 'Чистый контраст',
+    description: 'Минимализм и высокая читаемость, эффекты сведены к минимуму.',
+    character: 'Для высокой читаемости и концентрации',
+    apply: (current) => ({ ...current, uiPreset: 'clean', accentColor: 'auto', motion: 'off', transparency: 'reduced', density: 'compact', fxEnabled: false, worldLookPreset: 'clean', worldUiVariant: 'instrument' }),
+  },
 ]
 
 export function SettingsPage({ onDataChanged, appearance, onAppearanceChange }: SettingsPageProps) {
-  const navigate = useNavigate()
+  const [mode, setMode] = useState<ExpertMode>('basic')
+  const [search, setSearch] = useState('')
+  const [advancedThemeOpen, setAdvancedThemeOpen] = useState(false)
+  const [themeChoice, setThemeChoice] = useState(() => globalThis.localStorage?.getItem('settingsThemeChoice') ?? 'instrumental')
   const [worldOrbitDim, setWorldOrbitDim] = useState(() => readFlag('worldOrbitDim'))
   const [worldSelectiveBloom, setWorldSelectiveBloom] = useState(() => readFlag('worldSelectiveBloom'))
   const [worldShowAllOrbits, setWorldShowAllOrbits] = useState(() => readFlag('worldShowAllOrbits'))
@@ -81,20 +118,10 @@ export function SettingsPage({ onDataChanged, appearance, onAppearanceChange }: 
   const [worldQuality, setWorldQuality] = useState<WorldQuality>(() => readWorldQuality())
   const [worldAO, setWorldAO] = useState(() => readFlag('worldAO'))
   const [worldLutIntensity, setWorldLutIntensity] = useState(() => readWorldLutIntensity())
-  const [worldDebugHUD, setWorldDebugHUD] = useState(() => readWorldDebugHUDFlag())
-  const [restartHint, setRestartHint] = useState(false)
-  const [advancedOpen, setAdvancedOpen] = useState(false)
-  const [advancedToolsOpen, setAdvancedToolsOpen] = useState(false)
-  const [toolsSearch, setToolsSearch] = useState('')
-  const worldDeveloperUnlockClicksRef = useRef(0)
-  const [worldDeveloperOverrideEnabled, setWorldDeveloperOverrideEnabled] = useState(() => readFlag('worldDeveloper'))
-  const developerMode = resolveWorldDeveloperMode({ isDev: import.meta.env.DEV, worldDeveloper: worldDeveloperOverrideEnabled })
-  const worldDebugHUDEnabled = resolveWorldShowHud({ isDev: import.meta.env.DEV, worldDeveloper: worldDeveloperOverrideEnabled, worldDebugHUD })
-
-  const debugSummary = useMemo(
-    () => `Качество: ${worldQuality} · Стиль: ${worldLookPreset} · AO: ${worldAO ? 'ON' : 'OFF'} · Свечение: ${worldBloomPreset} · LUT: ${(worldLutIntensity * 100).toFixed(0)}% · Dev: ${developerMode ? 'ON' : 'OFF'}`,
-    [developerMode, worldAO, worldBloomPreset, worldLookPreset, worldLutIntensity, worldQuality],
-  )
+  const [backupTimestamp, setBackupTimestamp] = useState<number | null>(() => {
+    const raw = Number(globalThis.localStorage?.getItem('settingsBackupTimestamp'))
+    return Number.isFinite(raw) && raw > 0 ? raw : null
+  })
 
   const persistWorldSettings = (next: {
     orbitDim?: boolean
@@ -106,7 +133,6 @@ export function SettingsPage({ onDataChanged, appearance, onAppearanceChange }: 
     quality?: WorldQuality
     ao?: boolean
     lut?: number
-    hud?: boolean
   }) => {
     if (typeof window === 'undefined') return
     if (next.orbitDim !== undefined) window.localStorage.setItem('worldOrbitDim', next.orbitDim ? '1' : '0')
@@ -115,42 +141,41 @@ export function SettingsPage({ onDataChanged, appearance, onAppearanceChange }: 
     if (next.bloomPreset !== undefined) window.localStorage.setItem('worldBloomPreset', next.bloomPreset)
     if (next.systemPreset !== undefined) window.localStorage.setItem('worldSystemPreset', next.systemPreset)
     if (next.lookPreset !== undefined) window.localStorage.setItem('worldLookPreset', next.lookPreset)
-    if (next.quality !== undefined) window.localStorage.setItem('worldQuality', next.quality === 'high' ? 'high' : next.quality === 'economy' ? 'economy' : 'standard')
+    if (next.quality !== undefined) window.localStorage.setItem('worldQuality', next.quality)
     if (next.ao !== undefined) window.localStorage.setItem('worldAO', next.ao ? '1' : '0')
-    if (next.lut !== undefined) window.localStorage.setItem('worldLutIntensity', next.lut.toFixed(2))
-    if (next.hud !== undefined) window.localStorage.setItem(getWorldDebugHUDStorageKey(), resolveWorldDebugHUDPersistValue({ developerMode, worldDebugHUD: next.hud }))
-    setRestartHint(true)
+    if (next.lut !== undefined) window.localStorage.setItem('worldLutIntensity', String(next.lut))
+    setWorldQuality(readWorldQuality())
   }
 
-  const handleClear = async () => {
-    if (!window.confirm('Это удалит все данные локально на этом устройстве.')) return
-    await clearAllData()
-    await onDataChanged()
-  }
-
-  const handleExport = useCallback(async () => {
+  const handleExport = async () => {
     const blob = await exportDataBlob()
     const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    const date = new Date().toLocaleDateString('ru-RU').replace(/\./g, '-')
-    link.href = url
-    link.download = `concorer-backup-${date}.json`
-    link.click()
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `gamno-export-${new Date().toISOString().slice(0, 10)}.json`
+    a.click()
     URL.revokeObjectURL(url)
-  }, [])
+  }
+
+  const handleCreateBackup = async () => {
+    await handleExport()
+    const now = Date.now()
+    globalThis.localStorage?.setItem('settingsBackupTimestamp', String(now))
+    setBackupTimestamp(now)
+  }
 
   const handleImport: ChangeEventHandler<HTMLInputElement> = async (event) => {
     const file = event.target.files?.[0]
     if (!file) return
-    if (!window.confirm('Перезаписать локальные данные этим файлом?')) return
     await importDataBlob(file)
     await onDataChanged()
     event.target.value = ''
   }
 
-  const handleHardCacheReset = async () => {
-    if (!window.confirm('Сбросить service worker, CacheStorage и перезагрузить страницу? Это удалит оффлайн-кэш.')) return
-    await hardResetSiteAndReload()
+  const handleClear = async () => {
+    if (!window.confirm('Очистить все данные? Это действие нельзя отменить.')) return
+    await clearAllData()
+    await onDataChanged()
   }
 
   const handleSeed = async () => {
@@ -172,368 +197,118 @@ export function SettingsPage({ onDataChanged, appearance, onAppearanceChange }: 
     setWorldQuality('standard')
     setWorldAO(false)
     setWorldLutIntensity(0.44)
-    setWorldDebugHUD(false)
-    persistWorldSettings({ orbitDim: false, selectiveBloom: false, showAllOrbits: false, bloomPreset: 'normal', systemPreset: 'normal', lookPreset: 'clean', quality: 'standard', ao: false, lut: 0.44, hud: false })
+    persistWorldSettings({ orbitDim: false, selectiveBloom: false, showAllOrbits: false, bloomPreset: 'normal', systemPreset: 'normal', lookPreset: 'clean', quality: 'standard', ao: false, lut: 0.44 })
   }
 
-  const toolCards = useMemo<ToolCard[]>(() => [
-    { id: 'tool-world', title: 'Мир', benefit: 'Быстро видеть главное и запускать лучший следующий шаг.', path: '/world', badges: ['Основное', 'Навигация'], category: 'Планирование и фокус', favorite: true },
-    { id: 'tool-core', title: 'Чек-ин ядра', benefit: 'Фиксировать состояние и тренд за 1–2 минуты.', path: '/core', badges: ['Основное', 'Ежедневно'], category: 'Планирование и фокус', favorite: true },
-    { id: 'tool-goals', title: 'Цели', benefit: 'Держать приоритеты и не распыляться на второстепенное.', path: '/goals', badges: ['Основное'], category: 'Планирование и фокус' },
-    { id: 'tool-oracle', title: 'Оракул', benefit: 'Получать подсказки по решению в неочевидных ситуациях.', path: '/oracle', badges: ['Основное', 'AI-помощник'], category: 'Аналитика и прогноз', favorite: true },
-    { id: 'tool-dashboard', title: 'Дашборд', benefit: 'Смотреть метрики и динамику без лишних переходов.', path: '/dashboard', badges: ['Основное', 'Метрики'], category: 'Аналитика и прогноз' },
-    { id: 'tool-multiverse', title: 'Мульти', benefit: 'Сравнивать альтернативные сценарии перед решением.', path: '/multiverse', badges: ['Продвинутое', 'Сценарии'], category: 'Аналитика и прогноз', advanced: true },
-    { id: 'tool-black-swans', title: 'Чёрные лебеди', benefit: 'Проверять устойчивость к редким сильным рискам.', path: '/black-swans', badges: ['Продвинутое', 'Риск'], category: 'Аналитика и прогноз', advanced: true },
-    { id: 'tool-system', title: 'Система', benefit: 'Контролировать здоровье модели и сервисные показатели.', path: '/system', badges: ['Продвинутое', 'Диагностика'], category: 'Системный контроль', advanced: true },
-    { id: 'tool-export', title: 'Экспорт данных', benefit: 'Сохранять резервную копию перед важными изменениями.', onOpen: handleExport, badges: ['Основное', 'Безопасность'], category: 'Системный контроль', favorite: true },
-    { id: 'tool-reset', title: 'Сброс кэша', benefit: 'Быстро починить интерфейс, если всё тормозит.', onOpen: handleHardCacheReset, badges: ['Продвинутое', 'Техподдержка'], category: 'Системный контроль', advanced: true },
-  ], [handleExport])
-
-  const filteredTools = useMemo(() => {
-    const query = toolsSearch.trim().toLowerCase()
-    return toolCards.filter((tool) => {
-      if (!advancedToolsOpen && tool.advanced) return false
-      if (!query) return true
-      return [tool.title, tool.benefit, tool.category, ...tool.badges].join(' ').toLowerCase().includes(query)
-    })
-  }, [advancedToolsOpen, toolCards, toolsSearch])
-
-  const favoriteTools = filteredTools.filter((tool) => tool.favorite)
-  const categorizedTools = useMemo(() => {
-    const categories: ToolCard['category'][] = ['Планирование и фокус', 'Аналитика и прогноз', 'Системный контроль']
-    return categories.map((category) => ({
-      category,
-      items: filteredTools.filter((tool) => tool.category === category),
-    }))
-  }, [filteredTools])
-
-  const quickActions = [
-    { id: 'quick-world', label: 'Открыть Мир', action: () => navigate('/world') },
-    { id: 'quick-checkin', label: 'Сделать чек-ин', action: () => navigate('/core') },
-    { id: 'quick-export', label: 'Экспортировать данные', action: handleExport },
-    { id: 'quick-seed', label: 'Сгенерировать тестовые данные', action: handleSeed },
-  ]
-
-  const openTool = (tool: ToolCard) => {
-    if (tool.path) {
-      navigate(tool.path)
-      return
-    }
-    tool.onOpen?.()
+  const handleHardCacheReset = async () => {
+    if (!window.confirm('Сбросить кэш приложения и перезагрузить страницу?')) return
+    await hardResetSiteAndReload()
   }
 
-  const handleSettingsTitleClick = () => {
-    worldDeveloperUnlockClicksRef.current += 1
-    if (worldDeveloperUnlockClicksRef.current < 7) return
-    worldDeveloperUnlockClicksRef.current = 0
-    const enabled = !worldDeveloperOverrideEnabled
-    globalThis.localStorage?.setItem('worldDeveloper', enabled ? '1' : '0')
-    setWorldDeveloperOverrideEnabled(enabled)
-  }
+  const visibleSections = useMemo(() => {
+    const query = search.trim().toLowerCase()
+    if (!query) return new Set(['data', 'appearance', 'behavior', 'world', 'sound', 'tools', 'system'])
+    const byText: Array<[string, string]> = [
+      ['data', 'данные безопасность резерв копия импорт экспорт очистить сброс'],
+      ['appearance', 'внешний вид тема контраст неон тонкая настройка яркость прозрачность'],
+      ['behavior', 'поведение интерфейса'],
+      ['world', 'мир и графика'],
+      ['sound', 'звук и отклик'],
+      ['tools', 'инструменты и подсказки'],
+      ['system', 'разработчика система'],
+    ]
+    return new Set(byText.filter((item) => item[1].includes(query)).map((item) => item[0]))
+  }, [search])
 
-  const applyPreset = (preset: typeof presets[number]) => {
-    onAppearanceChange({ ...appearance, uiPreset: preset.id, accentColor: preset.accent, motion: preset.motion, transparency: preset.transparency, worldLookPreset: preset.look, worldUiVariant: preset.id === 'instrument' ? 'instrument' : 'cinematic', fxEnabled: preset.id !== 'clean' })
-  }
-
-  const changeTheme = (theme: ThemeMode) => onAppearanceChange({ ...appearance, theme })
-  const changeAccent = (accentColor: AccentColor) => onAppearanceChange({ ...appearance, accentColor })
-  const changeDensity = (density: DensityMode) => onAppearanceChange({ ...appearance, density })
-  const changeMotion = (motion: MotionMode) => onAppearanceChange({ ...appearance, motion })
+  const selectedTheme = THEME_PACKS.find((theme) => theme.id === themeChoice) ?? THEME_PACKS[0]
 
   return (
-    <section className="page settings-page">
-      <header className="settings-head panel">
+    <section className="page settings-page settings-v2">
+      <header className="panel settings-v2__head">
         <div>
-          <h1 onClick={handleSettingsTitleClick} style={{ cursor: 'default' }}>Настройки</h1>
-          <p>Данные хранятся локально на этом устройстве (IndexedDB).</p>
+          <h1>Настройки</h1>
+          <p>Единый центр управления: главное — сверху, глубокие параметры — ниже.</p>
         </div>
-        <span className="settings-version-badge">Сборка: {import.meta.env.MODE}</span>
+        <div className="settings-v2__controls">
+          <label>
+            Поиск по настройкам
+            <input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Например: резервная копия, контраст, звук" />
+          </label>
+          <div className="segmented" role="radiogroup" aria-label="Режим настроек">
+            <button type="button" className={mode === 'basic' ? 'is-active' : ''} onClick={() => setMode('basic')}>Базовый</button>
+            <button type="button" className={mode === 'pro' ? 'is-active' : ''} onClick={() => setMode('pro')}>Профи</button>
+          </div>
+        </div>
       </header>
 
-      {restartHint ? (
-        <article className="panel settings-restart-hint" role="status" aria-live="polite">
-          <p>Часть графических изменений будет полностью видна после перезапуска мира.</p>
-          <SparkButton type="button" onClick={() => window.location.reload()}>Перезапустить мир</SparkButton>
-        </article>
-      ) : null}
-
-      <article className="panel settings-card">
-        <h2>Внешний вид — пресеты</h2>
-        <p>Быстро меняют цвета, контраст, прозрачность и характер интерфейса.</p>
-        <div className="settings-presets" role="radiogroup" aria-label="Быстрые пресеты">
-          {presets.map((preset) => (
-            <button
-              key={preset.id}
-              type="button"
-              className={`preset-card ${appearance.uiPreset === preset.id ? 'preset-card--active' : ''}`}
-              onClick={() => applyPreset(preset)}
-              role="radio"
-              aria-checked={appearance.uiPreset === preset.id}
-            >
-              <strong>{preset.title}</strong>
-              <span>{preset.description}</span>
-              <span className="preset-mini-preview" aria-hidden="true" />
-            </button>
-          ))}
-        </div>
-      </article>
-
-      <article className="panel settings-card">
-        <h2>Внешний вид</h2>
-        <div className="settings-grid">
-          <div>
-            <h3>Тема</h3>
-            <p>Выберите как выглядят светлые/тёмные поверхности.</p>
-            <div className="segmented" role="radiogroup" aria-label="Тема">
-              {([
-                ['dark', 'Тёмная'],
-                ['light', 'Светлая'],
-                ['system', 'Системная'],
-              ] as Array<[ThemeMode, string]>).map(([value, label]) => (
-                <button key={value} type="button" className={appearance.theme === value ? 'is-active' : ''} onClick={() => changeTheme(value)}>{label}</button>
-              ))}
-            </div>
+      {visibleSections.has('data') ? (
+        <section className="panel settings-sector" aria-label="Данные и безопасность">
+          <h2>Данные и безопасность</h2>
+          <p>Управляйте резервным копированием и восстановлением. Опасные действия вынесены отдельно.</p>
+          <p className="settings-sector__status">{formatBackupTime(backupTimestamp)}</p>
+          <div className="settings-rows">
+            <div className="settings-row"><div><strong>Экспорт данных</strong><small>Скачать все локальные данные в файл.</small></div><SparkButton type="button" onClick={handleExport}>Экспортировать</SparkButton></div>
+            <div className="settings-row"><div><strong>Импорт данных</strong><small>Восстановить данные из ранее сохранённого файла.</small></div><label className="import-label">Выбрать файл<input type="file" onChange={handleImport} /></label></div>
+            <div className="settings-row"><div><strong>Создать резервную копию</strong><small>Сделать новую копию перед важными изменениями.</small></div><SparkButton type="button" onClick={handleCreateBackup}>Создать копию</SparkButton></div>
           </div>
-          <div>
-            <h3>Акцентный цвет</h3>
-            <p>Основной цвет подсветки кнопок и активных состояний.</p>
-            <div className="chips-row" role="radiogroup" aria-label="Акцентный цвет">
-              {([
-                ['cyan', 'Циан'],
-                ['violet', 'Фиолет'],
-                ['blue', 'Синий'],
-                ['auto', 'Авто'],
-              ] as Array<[AccentColor, string]>).map(([value, label]) => (
-                <button key={value} type="button" className={`chip-button ${appearance.accentColor === value ? 'is-active' : ''}`} onClick={() => changeAccent(value)}>{label}</button>
-              ))}
-            </div>
-          </div>
-          <div>
-            <h3>Плотность интерфейса</h3>
-            <p>Обычная, компактная или крупная плотность элементов.</p>
-            <div className="segmented" role="radiogroup" aria-label="Плотность интерфейса">
-              {([
-                ['normal', 'Обычная'],
-                ['compact', 'Компактная'],
-                ['comfortable', 'Крупная'],
-              ] as Array<[DensityMode, string]>).map(([value, label]) => (
-                <button key={value} type="button" className={appearance.density === value ? 'is-active' : ''} onClick={() => changeDensity(value)}>{label}</button>
-              ))}
-            </div>
-          </div>
-        </div>
-      </article>
-
-      <article className="panel settings-card">
-        <h2>Движение и эффекты</h2>
-        <div className="settings-grid">
-          <div>
-            <h3>Анимации</h3>
-            <p>Скорость и интенсивность движения интерфейса.</p>
-            <div className="segmented" role="radiogroup" aria-label="Анимации">
-              {([
-                ['normal', 'Обычные'],
-                ['reduced', 'Умеренные'],
-                ['off', 'Выключить'],
-              ] as Array<[MotionMode, string]>).map(([value, label]) => (
-                <button key={value} type="button" className={appearance.motion === value ? 'is-active' : ''} onClick={() => changeMotion(value)}>{label}</button>
-              ))}
-            </div>
-          </div>
-          <label className="switch-row">
-            <span>
-              <strong>Эффекты интерфейса (FX)</strong>
-              <small>Свечение, мягкие тени и стеклянные эффекты.</small>
-            </span>
-            <input type="checkbox" checked={appearance.fxEnabled} onChange={(event) => onAppearanceChange({ ...appearance, fxEnabled: event.target.checked })} />
-          </label>
-          <label className="switch-row">
-            <span>
-              <strong>Звуки интерфейса</strong>
-              <small>Короткий отклик при действиях в UI.</small>
-            </span>
-            <input type="checkbox" checked={appearance.uiSoundEnabled} onChange={(event) => onAppearanceChange({ ...appearance, uiSoundEnabled: event.target.checked })} />
-          </label>
-          {appearance.uiSoundEnabled ? (
-            <label>
-              Громкость звуков
-              <input type="range" min={0} max={100} step={1} value={appearance.uiSoundVolume} onChange={(event) => onAppearanceChange({ ...appearance, uiSoundVolume: Number(event.target.value) })} />
-            </label>
-          ) : null}
-        </div>
-      </article>
-
-      <article className="panel settings-card">
-        <h2>Графика мира</h2>
-        <p>Если тормозит — ставьте «Эконом».</p>
-        <div className="segmented" role="radiogroup" aria-label="Качество мира">
-          {([
-            ['economy', 'Эконом'],
-            ['standard', 'Стандарт'],
-            ['high', 'Высокое'],
-          ] as Array<[WorldQuality, string]>).map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              className={worldQuality === value ? 'is-active' : ''}
-              onClick={() => {
-                setWorldQuality(value)
-                persistWorldSettings({ quality: value })
-                onAppearanceChange({ ...appearance, worldQuality: value })
-              }}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        <SparkButton type="button" onClick={() => setAdvancedOpen((value) => !value)}>
-          {advancedOpen ? 'Скрыть продвинутые настройки графики' : 'Продвинутые настройки графики'}
-        </SparkButton>
-      </article>
-
-      {advancedOpen ? (
-        <article className="panel settings-card settings-advanced">
-          <h2>Продвинутые</h2>
-          <p>Внимание: может влиять на FPS и внешний вид.</p>
-          <p className="settings-debug-status">{debugSummary}</p>
-          <div className="settings-debug-grid">
-            <label className="switch-row">
-              <span>
-                <strong>Затемнять орбиты</strong>
-                <small>Делает дальние орбиты менее заметными.</small>
-              </span>
-              <input type="checkbox" checked={worldOrbitDim} onChange={(event) => { setWorldOrbitDim(event.target.checked); persistWorldSettings({ orbitDim: event.target.checked }) }} />
-            </label>
-            <label className="switch-row">
-              <span>
-                <strong>Подсветка выбранного</strong>
-                <small>Дополнительный свет вокруг выбранного объекта.</small>
-              </span>
-              <input type="checkbox" checked={worldSelectiveBloom} onChange={(event) => { setWorldSelectiveBloom(event.target.checked); persistWorldSettings({ selectiveBloom: event.target.checked }) }} />
-            </label>
-            <label className="switch-row">
-              <span>
-                <strong>Показывать все орбиты</strong>
-                <small>Отключает скрытие второстепенных орбит.</small>
-              </span>
-              <input type="checkbox" checked={worldShowAllOrbits} onChange={(event) => { setWorldShowAllOrbits(event.target.checked); persistWorldSettings({ showAllOrbits: event.target.checked }) }} />
-            </label>
-            <label>
-              Свечение
-              <select value={worldBloomPreset} onChange={(event) => { const value = event.target.value as BloomPreset; setWorldBloomPreset(value); persistWorldSettings({ bloomPreset: value }) }}>
-                <option value="soft">Выкл</option>
-                <option value="normal">Мягкое</option>
-                <option value="hot">Яркое</option>
-              </select>
-            </label>
-            <label>
-              Стиль рендера
-              <select value={worldSystemPreset} onChange={(event) => { const value = event.target.value === 'compact' ? 'compact' : 'normal'; setWorldSystemPreset(value); persistWorldSettings({ systemPreset: value }) }}>
-                <option value="normal">Обычный</option>
-                <option value="compact">Компактный</option>
-              </select>
-            </label>
-            <label>
-              Цветокоррекция: {Math.round(worldLutIntensity * 100)}
-              <input type="range" min={0} max={1} step={0.01} value={worldLutIntensity} onChange={(event) => { const value = Number(event.target.value); setWorldLutIntensity(value); persistWorldSettings({ lut: value }) }} />
-            </label>
-            {developerMode ? (
-              <label className="switch-row">
-                <span>
-                  <strong>Показывать HUD</strong>
-                  <small>Служебная информация рендера поверх мира.</small>
-                </span>
-                <input type="checkbox" checked={worldDebugHUD} onChange={(event) => { setWorldDebugHUD(event.target.checked); persistWorldSettings({ hud: event.target.checked }) }} />
-              </label>
-            ) : null}
-            {developerMode ? (
-              <label className="switch-row">
-                <span>
-                  <strong>Ambient Occlusion</strong>
-                  <small>Дополнительная глубина света (тяжелее для GPU).</small>
-                </span>
-                <input type="checkbox" checked={worldAO} onChange={(event) => { setWorldAO(event.target.checked); persistWorldSettings({ ao: event.target.checked }) }} />
-              </label>
-            ) : null}
-          </div>
-
-          <div className="settings-dev-tools">
-            <h3>Для разработчика</h3>
-            {developerMode ? <small className="mono">Dev mode: ON · HUD: {worldDebugHUDEnabled ? 'ON' : 'OFF'}</small> : null}
+          <div className="settings-danger-zone">
+            <p>⚠️ Опасная зона: удаление данных необратимо.</p>
             <div className="settings-actions">
-              <SparkButton type="button" onClick={handleHardCacheReset}>Сброс кэша и перезагрузка</SparkButton>
-              <SparkButton type="button" onClick={handleSeed}>Сгенерировать тестовые данные (30 дней)</SparkButton>
+              <SparkButton type="button" className="danger" onClick={handleClear}>Очистить данные</SparkButton>
+              <SparkButton type="button" onClick={handleResetSettingsOnly}>Сбросить только настройки</SparkButton>
             </div>
           </div>
-        </article>
+        </section>
       ) : null}
 
-      <article className="panel settings-card tools-hub" aria-label="Инструменты">
-        <div className="tools-hub__head">
-          <div>
-            <h2>Инструменты</h2>
-            <p>Витрина нужных действий: сначала основное, затем продвинутые инструменты.</p>
-          </div>
-          <button type="button" className="button-secondary tools-hub__advanced-toggle" onClick={() => setAdvancedToolsOpen((prev) => !prev)}>
-            {advancedToolsOpen ? 'Скрыть продвинутые' : 'Показать продвинутые'}
-          </button>
-        </div>
-        <label className="tools-hub__search" htmlFor="tools-search">
-          Поиск по инструментам
-          <input id="tools-search" type="search" value={toolsSearch} onChange={(event) => setToolsSearch(event.target.value)} placeholder="Например: риск, чек-ин, экспорт" />
-        </label>
-
-        <section className="tools-hub__quick" aria-label="Быстрые действия">
-          <h3>Быстрые действия</h3>
-          <div className="tools-hub__quick-grid">
-            {quickActions.map((item) => (
-              <button key={item.id} type="button" className="tools-hub__quick-action" onClick={item.action}>{item.label}</button>
+      {visibleSections.has('appearance') ? (
+        <section className="panel settings-sector settings-sector--appearance" aria-label="Внешний вид">
+          <h2>Внешний вид</h2>
+          <p>Сначала выберите готовую тему. Тонкие переопределения доступны ниже.</p>
+          <div className="settings-theme-grid" role="radiogroup" aria-label="Готовые темы">
+            {THEME_PACKS.map((theme) => (
+              <button key={theme.id} type="button" className={`theme-card ${themeChoice === theme.id ? 'theme-card--active' : ''}`} onClick={() => { onAppearanceChange(theme.apply(appearance)); setThemeChoice(theme.id); globalThis.localStorage?.setItem('settingsThemeChoice', theme.id) }} role="radio" aria-checked={themeChoice === theme.id}>
+                <strong>{theme.title}</strong>
+                <span>{theme.description}</span>
+                <em>{theme.character}</em>
+                <span className={`theme-preview theme-preview--${theme.id}`} aria-hidden="true" />
+              </button>
             ))}
           </div>
-        </section>
-
-        <section aria-label="Избранное" className="tools-hub__favorites">
-          <h3>Избранное</h3>
-          <div className="tools-hub__grid">
-            {favoriteTools.map((tool) => (
-              <article key={tool.id} className="tools-card">
-                <h4>{tool.title}</h4>
-                <p>{tool.benefit}</p>
-                <div className="tools-card__badges">{tool.badges.map((badge) => <span key={badge}>{badge}</span>)}</div>
-                <button type="button" className="button-secondary tools-card__open" onClick={() => openTool(tool)}>Открыть</button>
-              </article>
-            ))}
-          </div>
-        </section>
-
-        {categorizedTools.map(({ category, items }) => (
-          items.length ? (
-            <section key={category} className="tools-hub__category" aria-label={category}>
-              <h3>{category}</h3>
-              <div className="tools-hub__grid">
-                {items.map((tool) => (
-                  <article key={tool.id} className="tools-card">
-                    <h4>{tool.title}</h4>
-                    <p>{tool.benefit}</p>
-                    <div className="tools-card__badges">{tool.badges.map((badge) => <span key={badge}>{badge}</span>)}</div>
-                    <button type="button" className="button-secondary tools-card__open" onClick={() => openTool(tool)}>Открыть</button>
-                  </article>
-                ))}
+          <div className="settings-expand">
+            <button type="button" className="button-secondary" onClick={() => setAdvancedThemeOpen((prev) => !prev)}>
+              {advancedThemeOpen ? 'Скрыть тонкую настройку темы' : 'Показать тонкую настройку темы'}
+            </button>
+            {(mode === 'pro' || advancedThemeOpen) ? (
+              <div className="settings-rows settings-rows--advanced">
+                <div className="settings-row"><div><strong>Яркость акцентов</strong><small>Определяет заметность активных кнопок и маркеров.</small></div><div className="segmented"><button type="button" className={appearance.accentColor === 'auto' ? 'is-active' : ''} onClick={() => onAppearanceChange({ ...appearance, accentColor: 'auto' })}>Сбалансировано</button><button type="button" className={appearance.accentColor === 'cyan' ? 'is-active' : ''} onClick={() => onAppearanceChange({ ...appearance, accentColor: 'cyan' })}>Ярче</button><button type="button" className={appearance.accentColor === 'violet' ? 'is-active' : ''} onClick={() => onAppearanceChange({ ...appearance, accentColor: 'violet' })}>Мягче</button></div></div>
+                <div className="settings-row"><div><strong>Сила свечения</strong><small>Влияет на «живость» интерфейса и лёгкость восприятия.</small></div><label className="switch-row"><span><small>Сильное свечение может отвлекать.</small></span><input type="checkbox" checked={appearance.fxEnabled} onChange={(event) => onAppearanceChange({ ...appearance, fxEnabled: event.target.checked })} /></label></div>
+                <div className="settings-row"><div><strong>Контраст и прозрачность панелей</strong><small>Больше контраста — выше читаемость, меньше прозрачности — строже вид.</small></div><div className="segmented"><button type="button" className={appearance.transparency === 'reduced' ? 'is-active' : ''} onClick={() => onAppearanceChange({ ...appearance, transparency: 'reduced' })}>Жёсткий контраст</button><button type="button" className={appearance.transparency === 'glass' ? 'is-active' : ''} onClick={() => onAppearanceChange({ ...appearance, transparency: 'glass' })}>Больше глубины</button></div></div>
+                <div className="settings-row"><div><strong>Плотность интерфейса</strong><small>Компактнее — больше информации, крупнее — легче читать.</small></div><div className="segmented">{([
+                  ['compact', 'Компактно'],
+                  ['normal', 'Обычно'],
+                  ['comfortable', 'Крупнее'],
+                ] as Array<[DensityMode, string]>).map(([value, label]) => <button key={value} type="button" className={appearance.density === value ? 'is-active' : ''} onClick={() => onAppearanceChange({ ...appearance, density: value })}>{label}</button>)}</div></div>
+                <div className="settings-row"><div><strong>Скорость анимации</strong><small>Отключение анимации может снизить нагрузку на устройство.</small></div><div className="segmented">{([
+                  ['normal', 'Обычная'],
+                  ['reduced', 'Умеренная'],
+                  ['off', 'Без анимации'],
+                ] as Array<[MotionMode, string]>).map(([value, label]) => <button key={value} type="button" className={appearance.motion === value ? 'is-active' : ''} onClick={() => onAppearanceChange({ ...appearance, motion: value })}>{label}</button>)}</div></div>
+                <div className="settings-row"><div><strong>Подсветка орбит и стиль мира</strong><small>Глубокий слой визуализации. Может влиять на производительность.</small></div><div className="settings-grid-inline"><label className="switch-row"><span><small>Тусклые орбиты</small></span><input type="checkbox" checked={worldOrbitDim} onChange={(event) => { const value = event.target.checked; setWorldOrbitDim(value); persistWorldSettings({ orbitDim: value }) }} /></label><label className="switch-row"><span><small>Выделять только активные орбиты</small></span><input type="checkbox" checked={worldSelectiveBloom} onChange={(event) => { const value = event.target.checked; setWorldSelectiveBloom(value); persistWorldSettings({ selectiveBloom: value }) }} /></label><label className="switch-row"><span><small>Показывать все орбиты сразу</small></span><input type="checkbox" checked={worldShowAllOrbits} onChange={(event) => { const value = event.target.checked; setWorldShowAllOrbits(value); persistWorldSettings({ showAllOrbits: value }) }} /></label></div></div>
+                <div className="settings-row"><div><strong>Параметры графики мира</strong><small>Прямо влияют на нагрузку процессора и видеоускорителя.</small></div><div className="settings-grid-inline"><label>Качество мира<select value={worldQuality} onChange={(event) => { const value = event.target.value === 'economy' || event.target.value === 'high' ? event.target.value : 'standard'; setWorldQuality(value); persistWorldSettings({ quality: value }) }}><option value="economy">Эконом</option><option value="standard">Стандарт</option><option value="high">Высокое</option></select></label><label>Стиль подсветки<select value={worldBloomPreset} onChange={(event) => { const value = event.target.value === 'soft' || event.target.value === 'hot' ? event.target.value : 'normal'; setWorldBloomPreset(value); persistWorldSettings({ bloomPreset: value }) }}><option value="soft">Мягкий</option><option value="normal">Сбалансированный</option><option value="hot">Интенсивный</option></select></label><label>Компоновка мира<select value={worldSystemPreset} onChange={(event) => { const value = event.target.value === 'compact' ? 'compact' : 'normal'; setWorldSystemPreset(value); persistWorldSettings({ systemPreset: value }) }}><option value="normal">Обычная</option><option value="compact">Компактная</option></select></label><label>Стиль поверхности<select value={worldLookPreset} onChange={(event) => { const value = event.target.value === 'cinematic' ? 'cinematic' : 'clean'; setWorldLookPreset(value); persistWorldSettings({ lookPreset: value }) }}><option value="clean">Чистый</option><option value="cinematic">Кинематографичный</option></select></label><label className="switch-row"><span><small>Объёмное затенение (нагрузка на графику)</small></span><input type="checkbox" checked={worldAO} onChange={(event) => { const value = event.target.checked; setWorldAO(value); persistWorldSettings({ ao: value }) }} /></label></div></div>
+                <div className="settings-row"><div><strong>Цветокоррекция</strong><small>Подстраивает тон изображения мира под выбранную тему.</small></div><label>Интенсивность: {Math.round(worldLutIntensity * 100)}<input type="range" min={0} max={1} step={0.01} value={worldLutIntensity} onChange={(event) => { const value = Number(event.target.value); setWorldLutIntensity(value); persistWorldSettings({ lut: value }) }} /></label></div>
               </div>
-            </section>
-          ) : null
-        ))}
-      </article>
+            ) : null}
+          </div>
+          <p className="settings-sector__status">Активная тема: {selectedTheme.title}.</p>
+        </section>
+      ) : null}
 
-      <article className="panel settings-card">
-        <h2>Данные</h2>
-        <div className="settings-actions">
-          <SparkButton type="button" onClick={handleExport}>Экспорт данных</SparkButton>
-          <label className="import-label">Импорт данных<input type="file" onChange={handleImport} /></label>
-          <SparkButton type="button" className="danger" onClick={handleClear}>Очистить данные</SparkButton>
-          <SparkButton type="button" onClick={handleResetSettingsOnly}>Сбросить только настройки</SparkButton>
-        </div>
-      </article>
+      {visibleSections.has('behavior') ? <section className="panel settings-sector settings-placeholder"><h2>Поведение интерфейса</h2><p>Каркас шага 2: логика подсказок, автофокус и поведение виджетов.</p></section> : null}
+      {visibleSections.has('world') ? <section className="panel settings-sector settings-placeholder"><h2>Мир и графика</h2><p>Каркас шага 2: производительность, сцена мира и визуальные профили.</p></section> : null}
+      {visibleSections.has('sound') ? <section className="panel settings-sector settings-placeholder"><h2>Звук и отклик</h2><p>Каркас шага 2: звуковые события, громкость каналов и тактильные отклики.</p></section> : null}
+      {visibleSections.has('tools') ? <section className="panel settings-sector settings-placeholder"><h2>Инструменты и подсказки</h2><p>Каркас шага 2: интеллектуальные подсказки, быстрые действия и сценарии.</p></section> : null}
+      {visibleSections.has('system') ? <section className="panel settings-sector settings-placeholder"><h2>Для разработчика / Система</h2><p>Каркас шага 2: диагностика, служебные флаги и восстановление приложения.</p><div className="settings-actions"><SparkButton type="button" onClick={handleHardCacheReset}>Сброс кэша и перезагрузка</SparkButton><SparkButton type="button" onClick={handleSeed}>Сгенерировать тестовые данные</SparkButton></div></section> : null}
     </section>
   )
 }
