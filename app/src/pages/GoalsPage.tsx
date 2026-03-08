@@ -1781,11 +1781,11 @@ export function GoalsPage() {
                     ? [
                       `риск ${rowProfile.riskScore}`,
                       `долг ${rowProfile.debtCost}`,
-                      `${rowProfile.horizonDays} дней`,
+                      `${rowProfile.horizonDays}д`,
                       rowProfile.nextBestActionId ? 'есть шаг' : 'нет шага',
                       rowProfile.status === 'at_risk' ? 'под риском' : goalStatusBadgeLabel[goal.status].toLowerCase(),
                     ]
-                    : [`${goal.horizonDays} дней`, 'нет шага']
+                    : [`${goal.horizonDays}д`, 'нет шага', goalStatusBadgeLabel[goal.status].toLowerCase()]
                   return (
                     <li key={goal.id}>
                     <div className={selectedGoalId === goal.id ? 'goals-forest__goal-row goals-forest__goal-row--selected' : 'goals-forest__goal-row'}>
@@ -1797,15 +1797,13 @@ export function GoalsPage() {
                           setEditor(goal)
                         }}
                       >
-                        <span>{goal.title}</span>
+                        <span className="goals-forest__goal-title">{goal.title}</span>
                         <span className="goals-forest__signal-line">
-                          {rowSignals.map((signal, index) => <span key={`${goal.id}-${signal}-${index}`} className="chip">{signal}</span>)}
+                          {rowSignals.slice(0, 4).map((signal, index) => <span key={`${goal.id}-${signal}-${index}`} className="chip">{signal}</span>)}
+                          {rowSignals.length > 4 ? <span className="chip">+{rowSignals.length - 4}</span> : null}
                         </span>
                       </button>
-                      <div className="goals-forest__badges" aria-label="Метки цели">
-                        <span className="chip">{goalStatusBadgeLabel[goal.status]}</span>
-                        <span className="chip">{missionStatusChip(goal)}</span>
-                      </div>
+                      <span className="goals-forest__row-mission chip">{missionStatusChip(goal)}</span>
                       <div className="goals-forest__menu-wrap">
                         <button
                           type="button"
@@ -2068,38 +2066,49 @@ export function GoalsPage() {
                 <h3>Ключевые ветви</h3>
                 {!selectedGoalProfile ? <p className="goals-pane__hint">Выберите цель, чтобы увидеть ключевые рычаги.</p> : (
                   <ul>
-                    {selectedGoalProfile.branches.slice(0, 5).map((branch) => (
+                    {selectedGoalProfile.branches.slice(0, 3).map((branch) => (
                       <li key={branch.name}><strong>{branch.name}</strong> · {branch.role} · {branch.strength}</li>
                     ))}
                   </ul>
                 )}
+                {selectedGoalProfile ? <p className="goals-bottom-shelf__verdict">Вердикт: усиливайте первую ветвь перед расширением фронта задач.</p> : null}
               </article>
               <article className="goals-bottom-shelf__card">
                 <h3>Ограничения</h3>
                 {!selectedGoalProfile ? <p className="goals-pane__hint">Данных мало. Сделайте чек-ин или задайте параметры цели.</p> : (
                   <ul>
-                    {selectedGoalProfile.constraints.map((constraint) => <li key={constraint}>{constraint}</li>)}
+                    {selectedGoalProfile.constraints.slice(0, 3).map((constraint) => <li key={constraint}>{constraint}</li>)}
                   </ul>
                 )}
+                {selectedGoalProfile ? <p className="goals-bottom-shelf__verdict">Вердикт: работайте в пределах ограничений, иначе риск резко ускоряется.</p> : null}
               </article>
-              <article className="goals-bottom-shelf__card">
+              <article className="goals-bottom-shelf__card goals-bottom-shelf__card--inaction">
                 <h3>Цена бездействия</h3>
                 {!selectedGoalProfile ? <p className="goals-pane__hint">Без выбранной цели нельзя оценить цену простоя.</p> : (
                   <>
                     <p><strong>{scoreLabel(selectedGoalProfile.inactionCost)} ({selectedGoalProfile.inactionCost})</strong></p>
-                    <p className="goals-pane__hint">Если игнорировать цель, растут долг и риск, падает импульс, а горизонт начинает гореть.</p>
+                    <ul>
+                      <li>Долг: +{selectedGoalProfile.prognosis.idle.debtDelta}</li>
+                      <li>Риск: +{selectedGoalProfile.prognosis.idle.riskDelta}</li>
+                      <li>Импульс: {selectedGoalProfile.prognosis.idle.momentumDelta}</li>
+                    </ul>
+                    <p className="goals-bottom-shelf__verdict">Вердикт: без шага цель теряет управляемость уже в ближайшие дни.</p>
                   </>
                 )}
               </article>
               <article className="goals-bottom-shelf__card">
                 <h3>История решения</h3>
                 {!selected ? <p className="goals-pane__hint">Выберите цель: история решения появится здесь.</p> : missionHistory.length === 0 ? (
-                  <p className="goals-pane__hint">Данных мало. Примите или завершите шаг, чтобы собрать историю решения.</p>
+                  <div className="goals-pane__empty goals-pane__empty--compact">
+                    <p className="goals-pane__hint">История пока пуста. Примите первый шаг, чтобы увидеть динамику решений.</p>
+                    <button type="button" className="ghost-button" onClick={async () => { await acceptCurrentMission() }}>Принять текущий шаг</button>
+                  </div>
                 ) : (
                   <ul>
-                    {missionHistory.slice(0, 5).map((item) => <li key={item.id}>{item.title} · +{item.coresAwarded} · {new Date(item.completedAt).toLocaleDateString('ru-RU')}</li>)}
+                    {missionHistory.slice(0, 4).map((item) => <li key={item.id}>{item.title} · выполнено · +{item.coresAwarded} · {new Date(item.completedAt).toLocaleDateString('ru-RU')}</li>)}
                   </ul>
                 )}
+                {missionHistory.length > 0 ? <p className="goals-bottom-shelf__verdict">Вердикт: повторяющиеся завершения укрепляют темп и снижают риск отката.</p> : null}
               </article>
             </section>
           </div>
@@ -2152,8 +2161,8 @@ export function GoalsPage() {
               <section className={cockpitMissionFlash ? 'goals-surface__cockpit-floor goals-surface__cockpit-floor--next-step goals-cockpit-next-step--flash' : 'goals-surface__cockpit-floor goals-surface__cockpit-floor--next-step'}>
                 <h2>Лучшее решение сейчас</h2>
                 <div className="goals-cockpit-next-step">
-                  <p><strong>{selectedGoalProfile.decision.actionTitle}</strong></p>
-                  <p className="goals-pane__hint"><strong>Почему этот шаг:</strong> {selectedGoalProfile.decision.whyBest}</p>
+                  <p className="goals-cockpit-next-step__headline"><strong>{selectedGoalProfile.decision.actionTitle}</strong></p>
+                  <p className="goals-pane__hint"><strong>Причина:</strong> {selectedGoalProfile.decision.whyBest}</p>
                   <p className="goals-pane__hint"><strong>Эффект:</strong> {selectedGoalProfile.decision.effect}</p>
                   <p className="goals-pane__hint"><strong>Цена:</strong> {selectedGoalProfile.decision.timeCostLabel} / {selectedGoalProfile.decision.energyCostLabel}</p>
                   <p className="goals-pane__hint"><strong>Побочка:</strong> {selectedGoalProfile.decision.sideEffect}</p>
@@ -2162,12 +2171,14 @@ export function GoalsPage() {
 
               <section className="goals-surface__cockpit-floor goals-surface__cockpit-floor--next-step">
                 <h2>Исполнение</h2>
-                <div className="settings-actions goals-cockpit-actions">
-                  {currentMission?.status === 'suggested' ? <button type="button" onClick={async () => { await acceptCurrentMission() }}>Принять</button> : null}
+                <div className="goals-cockpit-actions goals-cockpit-actions--primary">
+                  {currentMission?.status === 'suggested' ? <button type="button" onClick={async () => { await acceptCurrentMission() }}>Принять лучший шаг</button> : null}
+                  {currentMission?.status === 'accepted' ? <button type="button" onClick={async () => { await completeCurrentMission() }}>Отметить выполненным</button> : null}
+                  {currentMission?.status === 'snoozed' ? <button type="button" onClick={async () => { await returnCurrentMission() }}>Вернуть в работу</button> : null}
+                </div>
+                <div className="settings-actions goals-cockpit-actions goals-cockpit-actions--secondary">
                   {(currentMission?.status === 'accepted' || currentMission?.status === 'suggested') ? <button type="button" className="ghost-button" onClick={async () => { await snoozeCurrentMission() }}>Отложить</button> : null}
-                  {currentMission?.status === 'snoozed' ? <button type="button" onClick={async () => { await returnCurrentMission() }}>Вернуть</button> : null}
-                  {currentMission?.status === 'accepted' ? <button type="button" onClick={async () => { await completeCurrentMission() }}>Выполнено</button> : null}
-                  <button type="button" className="ghost-button" onClick={() => setMissionDetailsOpen((value) => !value)}>Разбить в чек-лист</button>
+                  <button type="button" className="ghost-button" onClick={() => setMissionDetailsOpen((value) => !value)}>Чек-лист</button>
                   <button type="button" className="ghost-button" onClick={() => { void setIsForgeOpen(true) }}>Закрепить как режим</button>
                   <button type="button" className="ghost-button" onClick={() => navigate('/autopilot')}>Передать в автопилот</button>
                   <button type="button" className="ghost-button" onClick={focusCockpitMission}>Напоминание</button>
