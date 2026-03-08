@@ -11,7 +11,7 @@ describe('SettingsPage product settings', () => {
     globalThis.localStorage.clear()
   })
 
-  it('writes world settings immediately in advanced mode', async () => {
+  it('writes world settings from тонкая настройка темы', async () => {
     const { SettingsPage } = await import('./SettingsPage')
 
     const container = document.createElement('div')
@@ -25,17 +25,17 @@ describe('SettingsPage product settings', () => {
             onDataChanged={async () => undefined}
             appearance={{ theme: 'system', motion: 'normal', transparency: 'glass', worldUiVariant: 'instrument', worldRenderMode: 'webgl', worldLookPreset: 'clean', worldQuality: 'standard', uiPreset: 'clean', accentColor: 'auto', density: 'normal', fxEnabled: true, uiSoundEnabled: false, uiSoundVolume: 70 }}
             onAppearanceChange={() => undefined}
-          />,
+          />
         </MemoryRouter>,
       )
     })
 
-    const advancedButton = [...container.querySelectorAll('button')].find((item) => item.textContent?.includes('Продвинутые настройки графики'))
+    const advancedButton = [...container.querySelectorAll('button')].find((item) => item.textContent?.includes('Показать тонкую настройку темы'))
     await act(async () => {
       advancedButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     })
 
-    const selectiveBloomToggle = [...container.querySelectorAll('label')].find((item) => item.textContent?.includes('Подсветка выбранного'))?.querySelector('input[type="checkbox"]')
+    const selectiveBloomToggle = [...container.querySelectorAll('label')].find((item) => item.textContent?.includes('Выделять только активные орбиты'))?.querySelector('input[type="checkbox"]')
     await act(async () => {
       selectiveBloomToggle?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     })
@@ -46,7 +46,7 @@ describe('SettingsPage product settings', () => {
     container.remove()
   })
 
-  it('toggles developer mode via 7 clicks on title', async () => {
+  it('shows тонкая настройка темы in профи mode', async () => {
     const { SettingsPage } = await import('./SettingsPage')
 
     const container = document.createElement('div')
@@ -60,19 +60,19 @@ describe('SettingsPage product settings', () => {
             onDataChanged={async () => undefined}
             appearance={{ theme: 'system', motion: 'normal', transparency: 'glass', worldUiVariant: 'instrument', worldRenderMode: 'webgl', worldLookPreset: 'clean', worldQuality: 'standard', uiPreset: 'clean', accentColor: 'auto', density: 'normal', fxEnabled: true, uiSoundEnabled: false, uiSoundVolume: 70 }}
             onAppearanceChange={() => undefined}
-          />,
+          />
         </MemoryRouter>,
       )
     })
 
-    const title = container.querySelector('h1')
-    for (let i = 0; i < 7; i += 1) {
-      await act(async () => {
-        title?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
-      })
-    }
+    expect(container.textContent?.includes('Скорость анимации')).toBe(false)
 
-    expect(globalThis.localStorage.getItem('worldDeveloper')).toBe('1')
+    const proButton = [...container.querySelectorAll('button')].find((item) => item.textContent?.includes('Профи'))
+    await act(async () => {
+      proButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+
+    expect(container.textContent?.includes('Скорость анимации')).toBe(true)
 
     await act(async () => { root.unmount() })
     container.remove()
