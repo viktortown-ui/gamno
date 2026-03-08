@@ -268,3 +268,62 @@
   border: 1px solid color-mix(in srgb, var(--line, #ffffff) 14%, transparent);
   padding: 8px;
 }
+
+.goals-surface .goals-forest__goal-row > .filter-button {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+}
+
+.goals-forest__signal-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.goals-forest__signal-line .chip {
+  font-size: 10px;
+  opacity: 0.9;
+}
+
+.goals-cockpit-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 6px;
+}
+
+.goals-cockpit-forecast {
+  display: grid;
+  gap: 8px;
+}
+
+.goals-cockpit-forecast > div {
+  border-left: 1px solid color-mix(in srgb, var(--line, #ffffff) 22%, transparent);
+  padding-left: 8px;
+}
+
+.goals-cockpit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.goals-bottom-shelf {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.goals-bottom-shelf__card {
+  border: 1px solid color-mix(in srgb, var(--line, #ffffff) 14%, transparent);
+  padding: 8px;
+  background: color-mix(in srgb, #0f1828 70%, transparent);
+}
+
+.goals-bottom-shelf__card ul {
+  margin: 6px 0 0;
+  padding-left: 16px;
+  display: grid;
+  gap: 4px;
+}

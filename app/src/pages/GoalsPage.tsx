@@ -18,9 +18,11 @@ import {
 import { evaluateGoalScore, type GoalStateInput } from '../core/engines/goal'
 import { hardResetSiteAndReload } from '../core/cacheReset'
 import { getLatestForecastRun } from '../repo/forecastRepo'
+import { getLastSnapshot as getLastTimeDebtSnapshot } from '../repo/timeDebtRepo'
+import { getLastInsight as getLastSocialInsight } from '../repo/socialRadarRepo'
+import { getLastBlackSwanRun } from '../repo/blackSwanRepo'
 import { GoalYggdrasilTree, type BranchStrength } from '../ui/components/GoalYggdrasilTree'
 import { GoalCellsStage, type UniverseStageGoal, type UniverseStageLink } from '../ui/components/GoalCellsStage'
-import { DruidGauge } from './goals/components/DruidGauge'
 import { ForgeSheet } from './goals/components/ForgeSheet'
 import { PresetSelector } from './goals/components/PresetSelector'
 import { RuneDial } from './goals/components/RuneDial'
@@ -31,6 +33,8 @@ import { dayKeyFromTs } from '../core/utils/dayKey'
 import { buildMissionSuggestion, missionEffectRange, type MissionTag } from './goals/missionPlanner'
 import { completeMission, ensureSuggestedMission, getCurrentMission, setMissionStatus } from '../repo/missionRepo'
 import { buildGoalAutoLinkSuggestions } from '../core/engines/goal/autoLinkSuggestions'
+import { buildGoalProfile, energyLabel, formatCostLabel, scoreLabel } from './goals/goalProfile'
+import type { GoalProfile } from './goals/goalProfile'
 import './goals/GoalsSurface.css'
 
 type GoalTemplateId = 'growth' | 'anti-storm' | 'energy-balance' | 'money'
@@ -298,6 +302,9 @@ export function GoalsPage() {
   const [editor, setEditor] = useState<GoalRecord | null>(null)
   const [goalState, setGoalState] = useState<GoalStateInput | null>(null)
   const [historyTrend, setHistoryTrend] = useState<'up' | 'down' | null>(null)
+  const [timeDebtSnapshot, setTimeDebtSnapshot] = useState<Awaited<ReturnType<typeof getLastTimeDebtSnapshot>>>()
+  const [socialInsight, setSocialInsight] = useState<Awaited<ReturnType<typeof getLastSocialInsight>>>()
+  const [blackSwanRun, setBlackSwanRun] = useState<Awaited<ReturnType<typeof getLastBlackSwanRun>>>()
   const [selectedKrId, setSelectedKrId] = useState<string | null>(null)
   const [stageResetSignal, setStageResetSignal] = useState(0)
   const goalsStageMode = 'cells' as const
@@ -482,16 +489,22 @@ export function GoalsPage() {
   const missionConfirmDialogRef = useRef<HTMLDivElement | null>(null)
 
   const reload = async () => {
-    const [allGoals, active, latestState, latestRegime, checkins, latestForecast] = await Promise.all([
+    const [allGoals, active, latestState, latestRegime, checkins, latestForecast, latestDebt, latestSocial, latestBlackSwan] = await Promise.all([
       listGoals(),
       getActiveGoal(),
       getLatestStateSnapshot(),
       getLatestRegimeSnapshot(),
       listCheckins(),
       getLatestForecastRun(),
+      getLastTimeDebtSnapshot(),
+      getLastSocialInsight(),
+      getLastBlackSwanRun(),
     ])
 
     setGoals(allGoals)
+    setTimeDebtSnapshot(latestDebt)
+    setSocialInsight(latestSocial)
+    setBlackSwanRun(latestBlackSwan)
     const picked = allGoals.find((item) => item.id === selectedGoalId) ?? active ?? allGoals[0] ?? null
     setSelectedGoalId(picked?.id ?? null)
     setEditor(picked)
@@ -580,10 +593,7 @@ export function GoalsPage() {
     return goals.filter((goal) => ids.has(goal.id) && goal.status === 'active')
   }, [goals, selectedLinksByType.conflicts])
 
-  const dependsLinkedGoals = useMemo(() => {
-    const ids = new Set((selectedLinksByType.depends_on ?? []).map((item) => item.toGoalId))
-    return goals.filter((goal) => ids.has(goal.id))
-  }, [goals, selectedLinksByType.depends_on])
+
 
   const autoLinkSuggestions = useMemo(() => {
     if (!selected) return []
@@ -1016,6 +1026,27 @@ export function GoalsPage() {
     return goalsCopyRu.cockpit.missionHasStep
   }
 
+  const goalProfiles = useMemo(() => {
+    return goals.map((goal) => ({
+      goalId: goal.id,
+      profile: buildGoalProfile({
+        goal,
+        allGoals: goals,
+        goalState,
+        debtSnapshot: timeDebtSnapshot,
+        socialInsight,
+        blackSwanRun,
+        nextMissionTitle,
+        diagnosisReason,
+        weakestMetricLabel: weakestKrMetricLabel,
+        historyTrend,
+      }),
+    }))
+  }, [blackSwanRun, diagnosisReason, goalState, goals, historyTrend, nextMissionTitle, socialInsight, timeDebtSnapshot, weakestKrMetricLabel])
+
+  const goalProfileMap = useMemo(() => new Map(goalProfiles.map((item) => [item.goalId, item.profile])), [goalProfiles])
+  const selectedGoalProfile: GoalProfile | null = selected ? (goalProfileMap.get(selected.id) ?? null) : null
+
   const closeForge = () => {
     setIsForgeOpen(false)
     requestAnimationFrame(() => forgeOpenButtonRef.current?.focus({ preventScroll: true }))
@@ -1049,29 +1080,6 @@ export function GoalsPage() {
     setCockpitMissionFlash(true)
     window.setTimeout(() => setCockpitMissionFlash(false), 1000)
   }
-
-  const trunkHealth = useMemo(() => {
-    if (!scoring) return { label: '—', stateKind: 'na' as const, value01: null }
-    if (scoring.goalGap <= -5) return { label: 'Норма', stateKind: 'good' as const, value01: 0.8 }
-    if (scoring.goalGap <= 2) return { label: 'Под риском', stateKind: 'warn' as const, value01: 0.5 }
-    return { label: 'Критично', stateKind: 'bad' as const, value01: 0.2 }
-  }, [scoring])
-
-  const stormStatus = useMemo(() => {
-    if (typeof goalState?.pCollapse !== 'number') {
-      return { label: '—', stateKind: 'na' as const, value01: null }
-    }
-    const collapse = goalState.pCollapse
-    if (collapse < 0.18) return { label: 'Штиль', stateKind: 'good' as const, value01: 0.84 }
-    if (collapse < 0.35) return { label: 'Умеренный', stateKind: 'warn' as const, value01: 0.5 }
-    return { label: 'Сильный', stateKind: 'bad' as const, value01: 0.18 }
-  }, [goalState?.pCollapse])
-
-  const impulseStatus = useMemo(() => {
-    if (historyTrend === 'up') return { label: 'Растёт', stateKind: 'good' as const, value01: 0.8 }
-    if (historyTrend === 'down') return { label: 'Падает', stateKind: 'bad' as const, value01: 0.22 }
-    return { label: 'Стоит', stateKind: 'warn' as const, value01: 0.5 }
-  }, [historyTrend])
 
   const yggdrasilBranches = useMemo(() => {
     const rowsWithPriority = krProgressRows.map((row) => {
@@ -1767,8 +1775,19 @@ export function GoalsPage() {
               </div>
             ) : (
               <ul>
-                {visibleForestGoals.map((goal) => (
-                  <li key={goal.id}>
+                {visibleForestGoals.map((goal) => {
+                  const rowProfile = goalProfileMap.get(goal.id)
+                  const rowSignals = rowProfile
+                    ? [
+                      `риск ${rowProfile.riskScore}`,
+                      `долг ${rowProfile.debtCost}`,
+                      `${rowProfile.horizonDays} дней`,
+                      rowProfile.nextBestActionId ? 'есть шаг' : 'нет шага',
+                      rowProfile.status === 'at_risk' ? 'под риском' : goalStatusBadgeLabel[goal.status].toLowerCase(),
+                    ]
+                    : [`${goal.horizonDays} дней`, 'нет шага']
+                  return (
+                    <li key={goal.id}>
                     <div className={selectedGoalId === goal.id ? 'goals-forest__goal-row goals-forest__goal-row--selected' : 'goals-forest__goal-row'}>
                       <button
                         type="button"
@@ -1778,7 +1797,10 @@ export function GoalsPage() {
                           setEditor(goal)
                         }}
                       >
-                        {goal.title}
+                        <span>{goal.title}</span>
+                        <span className="goals-forest__signal-line">
+                          {rowSignals.map((signal, index) => <span key={`${goal.id}-${signal}-${index}`} className="chip">{signal}</span>)}
+                        </span>
                       </button>
                       <div className="goals-forest__badges" aria-label="Метки цели">
                         <span className="chip">{goalStatusBadgeLabel[goal.status]}</span>
@@ -1808,8 +1830,9 @@ export function GoalsPage() {
                         </button>
                       </div>
                     </div>
-                  </li>
-                ))}
+                    </li>
+                  )
+                })}
               </ul>
             )}
           </div>
@@ -2039,52 +2062,121 @@ export function GoalsPage() {
                 ))}
               </ul>
             </section>
+
+            <section className="goals-bottom-shelf">
+              <article className="goals-bottom-shelf__card">
+                <h3>Ключевые ветви</h3>
+                {!selectedGoalProfile ? <p className="goals-pane__hint">Выберите цель, чтобы увидеть ключевые рычаги.</p> : (
+                  <ul>
+                    {selectedGoalProfile.branches.slice(0, 5).map((branch) => (
+                      <li key={branch.name}><strong>{branch.name}</strong> · {branch.role} · {branch.strength}</li>
+                    ))}
+                  </ul>
+                )}
+              </article>
+              <article className="goals-bottom-shelf__card">
+                <h3>Ограничения</h3>
+                {!selectedGoalProfile ? <p className="goals-pane__hint">Данных мало. Сделайте чек-ин или задайте параметры цели.</p> : (
+                  <ul>
+                    {selectedGoalProfile.constraints.map((constraint) => <li key={constraint}>{constraint}</li>)}
+                  </ul>
+                )}
+              </article>
+              <article className="goals-bottom-shelf__card">
+                <h3>Цена бездействия</h3>
+                {!selectedGoalProfile ? <p className="goals-pane__hint">Без выбранной цели нельзя оценить цену простоя.</p> : (
+                  <>
+                    <p><strong>{scoreLabel(selectedGoalProfile.inactionCost)} ({selectedGoalProfile.inactionCost})</strong></p>
+                    <p className="goals-pane__hint">Если игнорировать цель, растут долг и риск, падает импульс, а горизонт начинает гореть.</p>
+                  </>
+                )}
+              </article>
+              <article className="goals-bottom-shelf__card">
+                <h3>История решения</h3>
+                {!selected ? <p className="goals-pane__hint">Выберите цель: история решения появится здесь.</p> : missionHistory.length === 0 ? (
+                  <p className="goals-pane__hint">Данных мало. Примите или завершите шаг, чтобы собрать историю решения.</p>
+                ) : (
+                  <ul>
+                    {missionHistory.slice(0, 5).map((item) => <li key={item.id}>{item.title} · +{item.coresAwarded} · {new Date(item.completedAt).toLocaleDateString('ru-RU')}</li>)}
+                  </ul>
+                )}
+              </article>
+            </section>
           </div>
         </article>
 
         <article className="goals-surface__cockpit goals-pane goals-tree-state">
-          <section className="goals-surface__cockpit-floor goals-surface__cockpit-floor--summary">
-            <h2>{goalsCopyRu.cockpit.summary}</h2>
-            <div className="goals-druid-gauges" aria-label="Состояние">
-              <DruidGauge label="Здоровье" value01={trunkHealth.value01} stateLabel={trunkHealth.label} stateKind={trunkHealth.stateKind} />
-              <DruidGauge label="Шторм" value01={stormStatus.value01} stateLabel={stormStatus.label} stateKind={stormStatus.stateKind} />
-              <DruidGauge label="Импульс" value01={impulseStatus.value01} stateLabel={impulseStatus.label} stateKind={impulseStatus.stateKind} />
-            </div>
-            <p className="goals-pane__hint">{conflictLinkedGoals.length > 0 ? `Риск: конфликты с целями (${conflictLinkedGoals.length})` : 'Риск: критичных конфликтов нет'}{dependsLinkedGoals.length > 0 ? ` · зависимостей: ${dependsLinkedGoals.length}` : ''}</p>
-          </section>
-          <section className="goals-surface__cockpit-floor goals-surface__cockpit-floor--diagnosis">
-            <h2>{goalsCopyRu.cockpit.diagnosis}</h2>
-            {selected ? (
-              <>
-                <p><strong>{goalsCopyRu.cockpit.weakSpot}:</strong> {weakestKrMetricLabel}</p>
-                <p className="goals-pane__hint"><strong>{goalsCopyRu.cockpit.reason}:</strong> {diagnosisReason}</p>
-              </>
-            ) : (
-              <p className="goals-pane__hint">{goalsCopyRu.cockpit.selectHint}</p>
-            )}
-          </section>
-          <section className={cockpitMissionFlash ? 'goals-surface__cockpit-floor goals-surface__cockpit-floor--next-step goals-cockpit-next-step--flash' : 'goals-surface__cockpit-floor goals-surface__cockpit-floor--next-step'}>
-            <h2>{goalsCopyRu.cockpit.nextStep}</h2>
-            {selected ? (
-              <div className="goals-cockpit-next-step">
-                <p><strong>{currentMission?.title ?? nextMissionTitle}</strong></p>
-                <p className="goals-pane__hint"><strong>{goalsCopyRu.cockpit.missionEffect}:</strong> {currentMission?.effectText ?? 'уточняется'}</p>
-                <p className="goals-pane__hint"><strong>{goalsCopyRu.cockpit.missionCost}:</strong> {currentMission?.costMinutes ?? 15} мин.</p>
-                {currentMission?.status === 'snoozed' ? <p className="goals-pane__hint"><strong>{goalsCopyRu.cockpit.missionSnoozed}</strong></p> : null}
-                {currentMission?.status === 'done' ? <p className="goals-pane__hint"><strong>Готово.</strong> Новый шаг подготовлен автоматически.</p> : null}
-                <div className="settings-actions">
-                  {currentMission?.status === 'suggested' ? <button type="button" onClick={async () => { await acceptCurrentMission() }}>{goalsCopyRu.cockpit.missionAccept}</button> : null}
-                  {currentMission?.status === 'accepted' ? <button type="button" onClick={async () => { await completeCurrentMission() }}>{goalsCopyRu.cockpit.missionComplete}</button> : null}
-                  {(currentMission?.status === 'suggested' || currentMission?.status === 'accepted') ? <button type="button" className="ghost-button" onClick={async () => { await snoozeCurrentMission() }}>{goalsCopyRu.cockpit.missionDefer}</button> : null}
-                  {currentMission?.status === 'snoozed' ? <button type="button" onClick={async () => { await returnCurrentMission() }}>{goalsCopyRu.cockpit.missionReturn}</button> : null}
-                  {(currentMission?.status === 'suggested' || currentMission?.status === 'accepted') ? <button type="button" className="ghost-button" onClick={() => setMissionDetailsOpen((value) => !value)}>{goalsCopyRu.cockpit.missionWhyToggle}</button> : null}
+          {!selected || !selectedGoalProfile ? (
+            <section className="goals-surface__cockpit-floor goals-surface__cockpit-floor--summary">
+              <h2>Кузница решения</h2>
+              <p className="goals-pane__hint">Выберите цель: здесь появятся паспорт, диагноз, прогноз и главный шаг.</p>
+            </section>
+          ) : (
+            <>
+              <section className="goals-surface__cockpit-floor goals-surface__cockpit-floor--summary">
+                <h2>Паспорт цели</h2>
+                {selectedGoalProfile.preliminary ? <p className="goals-pane__hint">Оценка предварительная: данных мало, уверенность низкая.</p> : null}
+                <div className="goals-cockpit-grid">
+                  <p><strong>Важность:</strong> {scoreLabel(selectedGoalProfile.importance)} ({selectedGoalProfile.importance})</p>
+                  <p><strong>Горизонт:</strong> {selectedGoalProfile.horizonDays} дней</p>
+                  <p><strong>Статус:</strong> {selectedGoalProfile.status === 'at_risk' ? 'под риском' : selectedGoalProfile.status}</p>
+                  <p><strong>Режим:</strong> {selected.modePresetId ?? 'balance'}</p>
+                  <p><strong>Риск срыва:</strong> {scoreLabel(selectedGoalProfile.riskScore, 'низкий', 'средний', 'высокий')} ({selectedGoalProfile.riskScore})</p>
+                  <p><strong>Цена бездействия:</strong> {scoreLabel(selectedGoalProfile.inactionCost)} ({selectedGoalProfile.inactionCost})</p>
+                  <p><strong>Стоимость шага:</strong> {formatCostLabel(selectedGoalProfile.timeCost)} ({selectedGoalProfile.timeCost})</p>
+                  <p><strong>Энергоёмкость:</strong> {energyLabel(selectedGoalProfile.energyCost)} ({selectedGoalProfile.energyCost})</p>
+                  <p><strong>Связность:</strong> {scoreLabel(selectedGoalProfile.linkageScore, 'слабая', 'средняя', 'высокая')} ({selectedGoalProfile.linkageScore})</p>
+                  <p><strong>Конфликтность:</strong> {selectedGoalProfile.conflicts.length > 0 ? `${selectedGoalProfile.conflicts.length} сильных конфликта` : 'конфликтов мало'}</p>
                 </div>
-                {missionDetailsOpen ? <p className="goals-pane__hint"><strong>{goalsCopyRu.cockpit.reason}:</strong> {currentMission?.why ?? 'Чтобы удержать траекторию выбранной цели.'}</p> : null}
-              </div>
-            ) : (
-              <p className="goals-pane__hint">{goalsCopyRu.cockpit.selectHint}</p>
-            )}
-          </section>
+              </section>
+
+              <section className="goals-surface__cockpit-floor goals-surface__cockpit-floor--diagnosis">
+                <h2>Диагноз</h2>
+                <p><strong>Слабое место:</strong> {selectedGoalProfile.diagnosis.weakSpot}</p>
+                <p className="goals-pane__hint"><strong>Почему:</strong> {selectedGoalProfile.diagnosis.why}</p>
+                <p className="goals-pane__hint"><strong>Главный блокер:</strong> {selectedGoalProfile.diagnosis.mainBlocker}</p>
+                <p className="goals-pane__hint"><strong>Главная опора:</strong> {selectedGoalProfile.diagnosis.mainSupport}</p>
+                <p className="goals-pane__hint"><strong>Главный конфликт:</strong> {selectedGoalProfile.diagnosis.mainConflict}</p>
+                <p className="goals-pane__hint">Уверенность: {selectedGoalProfile.diagnosis.confidence === 'high' ? 'высокая' : selectedGoalProfile.diagnosis.confidence === 'medium' ? 'средняя' : 'низкая'}.</p>
+              </section>
+
+              <section className="goals-surface__cockpit-floor goals-surface__cockpit-floor--diagnosis">
+                <h2>Мини-прогноз</h2>
+                <div className="goals-cockpit-forecast">
+                  <div><strong>Ничего не делать</strong><p className="goals-pane__hint">риск +{selectedGoalProfile.prognosis.idle.riskDelta} · долг +{selectedGoalProfile.prognosis.idle.debtDelta} · импульс {selectedGoalProfile.prognosis.idle.momentumDelta}</p><p className="goals-pane__hint">{selectedGoalProfile.prognosis.idle.verdict}</p></div>
+                  <div><strong>Принять шаг</strong><p className="goals-pane__hint">риск {selectedGoalProfile.prognosis.takeStep.riskDelta} · долг {selectedGoalProfile.prognosis.takeStep.debtDelta} · импульс +{selectedGoalProfile.prognosis.takeStep.momentumDelta}</p><p className="goals-pane__hint">{selectedGoalProfile.prognosis.takeStep.verdict}</p></div>
+                  <div><strong>Отложить на 3 дня</strong><p className="goals-pane__hint">риск +{selectedGoalProfile.prognosis.delay3d.riskDelta} · долг +{selectedGoalProfile.prognosis.delay3d.debtDelta} · импульс {selectedGoalProfile.prognosis.delay3d.momentumDelta}</p><p className="goals-pane__hint">{selectedGoalProfile.prognosis.delay3d.verdict}</p></div>
+                </div>
+              </section>
+
+              <section className={cockpitMissionFlash ? 'goals-surface__cockpit-floor goals-surface__cockpit-floor--next-step goals-cockpit-next-step--flash' : 'goals-surface__cockpit-floor goals-surface__cockpit-floor--next-step'}>
+                <h2>Лучшее решение сейчас</h2>
+                <div className="goals-cockpit-next-step">
+                  <p><strong>{selectedGoalProfile.decision.actionTitle}</strong></p>
+                  <p className="goals-pane__hint"><strong>Почему этот шаг:</strong> {selectedGoalProfile.decision.whyBest}</p>
+                  <p className="goals-pane__hint"><strong>Эффект:</strong> {selectedGoalProfile.decision.effect}</p>
+                  <p className="goals-pane__hint"><strong>Цена:</strong> {selectedGoalProfile.decision.timeCostLabel} / {selectedGoalProfile.decision.energyCostLabel}</p>
+                  <p className="goals-pane__hint"><strong>Побочка:</strong> {selectedGoalProfile.decision.sideEffect}</p>
+                </div>
+              </section>
+
+              <section className="goals-surface__cockpit-floor goals-surface__cockpit-floor--next-step">
+                <h2>Исполнение</h2>
+                <div className="settings-actions goals-cockpit-actions">
+                  {currentMission?.status === 'suggested' ? <button type="button" onClick={async () => { await acceptCurrentMission() }}>Принять</button> : null}
+                  {(currentMission?.status === 'accepted' || currentMission?.status === 'suggested') ? <button type="button" className="ghost-button" onClick={async () => { await snoozeCurrentMission() }}>Отложить</button> : null}
+                  {currentMission?.status === 'snoozed' ? <button type="button" onClick={async () => { await returnCurrentMission() }}>Вернуть</button> : null}
+                  {currentMission?.status === 'accepted' ? <button type="button" onClick={async () => { await completeCurrentMission() }}>Выполнено</button> : null}
+                  <button type="button" className="ghost-button" onClick={() => setMissionDetailsOpen((value) => !value)}>Разбить в чек-лист</button>
+                  <button type="button" className="ghost-button" onClick={() => { void setIsForgeOpen(true) }}>Закрепить как режим</button>
+                  <button type="button" className="ghost-button" onClick={() => navigate('/autopilot')}>Передать в автопилот</button>
+                  <button type="button" className="ghost-button" onClick={focusCockpitMission}>Напоминание</button>
+                </div>
+                {missionDetailsOpen ? <p className="goals-pane__hint">Шаг можно декомпозировать на 2–3 подзадачи и повторять как режим.</p> : null}
+                {selectedGoalProfile.warnings.map((warning) => <p key={warning} className="goals-pane__hint">⚠ {warning}</p>)}
+              </section>
+            </>
+          )}
         </article>
       </div>
 
