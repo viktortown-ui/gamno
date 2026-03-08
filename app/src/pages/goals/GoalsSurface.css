@@ -132,7 +132,7 @@
 
 .goals-surface__cockpit {
   display: grid;
-  grid-template-rows: 1fr 1fr;
+  grid-template-rows: auto auto minmax(0, 1fr);
   gap: 0;
   padding: 0;
 }
@@ -224,4 +224,47 @@
   line-height: 1.2;
   opacity: 0.6;
   pointer-events: none;
+}
+
+
+.goals-surface .goals-forest__goal-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+}
+
+.goals-surface .goals-forest__goal-row .chip {
+  font-size: 11px;
+  padding: 2px 8px;
+}
+
+.goals-surface__cockpit-floor--diagnosis {
+  border-bottom: 1px solid color-mix(in srgb, var(--line, #ffffff) 12%, transparent);
+}
+
+.goals-surface__cockpit-floor--next-step {
+  background: color-mix(in srgb, #13213a 58%, transparent);
+}
+
+.goals-cockpit-next-step {
+  display: grid;
+  gap: 8px;
+  padding: 2px 0;
+}
+
+.goals-cockpit-next-step .settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.goals-stage-krs ul {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.goals-stage-krs__item {
+  border: 1px solid color-mix(in srgb, var(--line, #ffffff) 14%, transparent);
+  padding: 8px;
 }
