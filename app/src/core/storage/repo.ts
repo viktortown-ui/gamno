@@ -348,6 +348,44 @@ function normalizeGoalRecord(row: unknown): GoalRecord | null {
       .slice(0, 10)
     : []
 
+
+  const missions = Array.isArray((source as { missions?: unknown }).missions)
+    ? ((source as { missions?: unknown }).missions as unknown[])
+      .map((item) => {
+        if (!item || typeof item !== 'object') return null
+        const rowItem = item as Record<string, unknown>
+        const rawStatus = typeof rowItem.status === 'string' ? rowItem.status : 'suggested'
+        const status: 'suggested' | 'accepted' | 'snoozed' | 'done' = rawStatus === 'accepted' || rawStatus === 'snoozed' || rawStatus === 'done'
+          ? rawStatus
+          : rawStatus === 'принята'
+            ? 'accepted'
+            : rawStatus === 'выполнена'
+              ? 'done'
+              : rawStatus === 'отложена'
+                ? 'snoozed'
+                : 'suggested'
+        return {
+          id: String(rowItem.id ?? `mission-${Math.random().toString(36).slice(2, 8)}`),
+          goalId: String(rowItem.goalId ?? id),
+          leverId: typeof rowItem.leverId === 'string' ? rowItem.leverId : null,
+          title: String(rowItem.title ?? 'Чек-ин и калибровка'),
+          why: String(rowItem.why ?? 'Удерживает курс цели и снижает хаос.'),
+          effectText: typeof rowItem.effectText === 'string'
+            ? rowItem.effectText
+            : typeof (rowItem.effect as Record<string, unknown> | undefined)?.min === 'number' && typeof (rowItem.effect as Record<string, unknown> | undefined)?.max === 'number'
+              ? `${(rowItem.effect as Record<string, number>).min}…${(rowItem.effect as Record<string, number>).max} ед.`
+              : 'Стабилизирует движение по цели.',
+          costMinutes: (Number(rowItem.costMinutes) >= 10 ? Math.min(60, Math.max(10, Math.round(Number(rowItem.costMinutes) / 5) * 5)) : 15) as 10 | 15 | 20 | 25 | 30 | 35 | 40 | 45 | 50 | 55 | 60,
+          status,
+          createdAt: Number(rowItem.createdAt ?? now),
+          updatedAt: Number(rowItem.updatedAt ?? now),
+          doneAt: Number.isFinite(rowItem.doneAt) ? Number(rowItem.doneAt) : undefined,
+        }
+      })
+      .filter((item): item is NonNullable<typeof item> => Boolean(item))
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+    : []
+
   const missionControl = source.missionControl && typeof source.missionControl === 'object'
     ? {
       rerollDayKey: typeof source.missionControl.rerollDayKey === 'string' ? source.missionControl.rerollDayKey : undefined,
@@ -385,6 +423,7 @@ function normalizeGoalRecord(row: unknown): GoalRecord | null {
     activeMission,
     missionHistory,
     missionControl,
+    missions,
     modePresetId: source.modePresetId,
     isManualTuning: Boolean(source.isManualTuning),
     manualTuning: source.manualTuning ? {
