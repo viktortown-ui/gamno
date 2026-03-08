@@ -61,20 +61,19 @@ export interface GoalMissionControl {
   lastSuggestions?: Array<{ krKey: string; templateId: string; ts: number }>
 }
 
-export type GoalMissionStatus = 'предложена' | 'принята' | 'выполнена' | 'отложена'
+export type MissionStatus = 'suggested' | 'accepted' | 'snoozed' | 'done'
 
-export interface GoalMission {
+export interface Mission {
   id: string
   goalId: string
   leverId: string | null
   title: string
   why: string
-  effect: { min: number; max: number; unit: 'ед.' }
-  costMinutes: 15 | 30 | 45 | 60
-  status: GoalMissionStatus
+  effectText: string
+  costMinutes: 10 | 15 | 20 | 25 | 30 | 35 | 40 | 45 | 50 | 55 | 60
+  status: MissionStatus
   createdAt: number
   updatedAt: number
-  startedAt?: number
   doneAt?: number
 }
 
@@ -94,7 +93,7 @@ export interface GoalRecord {
   activeMission?: GoalActiveMission
   missionHistory?: GoalMissionHistoryItem[]
   missionControl?: GoalMissionControl
-  missions?: GoalMission[]
+  missions?: Mission[]
   modePresetId?: GoalModePresetId
   isManualTuning?: boolean
   manualTuning?: GoalManualTuning

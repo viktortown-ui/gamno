@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { METRICS, type MetricId } from '../core/metrics'
-import type { GoalKeyResult, GoalLinkType, GoalModePresetId, GoalRecord } from '../core/models/goal'
+import type { GoalKeyResult, GoalLinkType, GoalModePresetId, GoalRecord, Mission } from '../core/models/goal'
 import {
   addGoalEvent,
   createGoal,
@@ -29,6 +29,7 @@ import { AdvancedTuning } from './goals/components/AdvancedTuning'
 import { goalsCopyRu } from './goals/goals.copy.ru'
 import { dayKeyFromTs } from '../core/utils/dayKey'
 import { buildMissionSuggestion, missionEffectRange, type MissionTag } from './goals/missionPlanner'
+import { completeMission, ensureSuggestedMission, getCurrentMission, setMissionStatus } from '../repo/missionRepo'
 import { buildGoalAutoLinkSuggestions } from '../core/engines/goal/autoLinkSuggestions'
 import './goals/GoalsSurface.css'
 
@@ -1006,11 +1007,29 @@ export function GoalsPage() {
   const activeMission = selected?.activeMission
   const missionProgress = activeMission ? missionProgressLabel(activeMission.startedAt, activeMission.durationDays) : null
   const missionHistory = selected?.missionHistory ?? []
+  const currentMission: Mission | null = selected ? (getCurrentMission(selected) ?? null) : null
+  const missionStatusChip = (goal: GoalRecord): string => {
+    const mission = getCurrentMission(goal)
+    if (!mission) return goalsCopyRu.cockpit.missionHasStep
+    if (mission.status === 'accepted') return goalsCopyRu.cockpit.missionInWork
+    if (mission.status === 'done') return goalsCopyRu.cockpit.missionDone
+    return goalsCopyRu.cockpit.missionHasStep
+  }
 
   const closeForge = () => {
     setIsForgeOpen(false)
     requestAnimationFrame(() => forgeOpenButtonRef.current?.focus({ preventScroll: true }))
   }
+
+  useEffect(() => {
+    if (!selected) return
+    void (async () => {
+      const before = getCurrentMission(selected)
+      await ensureSuggestedMission(selected)
+      if (!before) await reload()
+    })()
+  }, [reload, selected])
+
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -1181,6 +1200,31 @@ export function GoalsPage() {
       },
     })
     setMissionDetailsOpen(false)
+    await reload()
+  }
+
+
+  const acceptCurrentMission = async () => {
+    if (!selected || !currentMission) return
+    await setMissionStatus(selected, currentMission.id, 'accepted')
+    await reload()
+  }
+
+  const snoozeCurrentMission = async () => {
+    if (!selected || !currentMission) return
+    await setMissionStatus(selected, currentMission.id, 'snoozed')
+    await reload()
+  }
+
+  const returnCurrentMission = async () => {
+    if (!selected || !currentMission) return
+    await setMissionStatus(selected, currentMission.id, 'suggested')
+    await reload()
+  }
+
+  const completeCurrentMission = async () => {
+    if (!selected || !currentMission) return
+    await completeMission(selected, currentMission.id)
     await reload()
   }
 
@@ -1361,9 +1405,9 @@ export function GoalsPage() {
         sizeScore,
         temperature,
         levers,
-        missionHud: selectedGoalId === goal.id ? {
-          title: goal.activeMission?.title ?? nextMissionTitle,
-          costLabel: `${goal.activeMission?.timeBandMinutes ?? nextMissionTemplate?.timeBandMinutes ?? 15} мин`,
+        missionHud: selectedGoalId === goal.id && getCurrentMission(goal) && getCurrentMission(goal)?.status !== 'done' ? {
+          title: getCurrentMission(goal)?.title ?? nextMissionTitle,
+          costLabel: `${getCurrentMission(goal)?.costMinutes ?? 15} мин`,
         } : undefined,
       }
     })
@@ -1738,7 +1782,7 @@ export function GoalsPage() {
                       </button>
                       <div className="goals-forest__badges" aria-label="Метки цели">
                         <span className="chip">{goalStatusBadgeLabel[goal.status]}</span>
-                        {goal.activeMission ? <span className="chip">{goalsCopyRu.cockpit.missionInWork}</span> : <span className="chip">{goalsCopyRu.cockpit.missionHasStep}</span>}
+                        <span className="chip">{missionStatusChip(goal)}</span>
                       </div>
                       <div className="goals-forest__menu-wrap">
                         <button
@@ -2023,15 +2067,19 @@ export function GoalsPage() {
             <h2>{goalsCopyRu.cockpit.nextStep}</h2>
             {selected ? (
               <div className="goals-cockpit-next-step">
-                <p><strong>{activeMission?.title ?? nextMissionTitle}</strong></p>
-                <p className="goals-pane__hint"><strong>{goalsCopyRu.cockpit.missionEffect}:</strong> {activeMission ? `${activeMission.expectedMin}…${activeMission.expectedMax} ед.` : nextMissionEffect ? `${nextMissionEffect.min}…${nextMissionEffect.max} ед.` : 'уточняется'}</p>
-                <p className="goals-pane__hint"><strong>{goalsCopyRu.cockpit.missionCost}:</strong> {activeMission?.timeBandMinutes ?? nextMissionTemplate?.timeBandMinutes ?? 15} мин.</p>
+                <p><strong>{currentMission?.title ?? nextMissionTitle}</strong></p>
+                <p className="goals-pane__hint"><strong>{goalsCopyRu.cockpit.missionEffect}:</strong> {currentMission?.effectText ?? 'уточняется'}</p>
+                <p className="goals-pane__hint"><strong>{goalsCopyRu.cockpit.missionCost}:</strong> {currentMission?.costMinutes ?? 15} мин.</p>
+                {currentMission?.status === 'snoozed' ? <p className="goals-pane__hint"><strong>{goalsCopyRu.cockpit.missionSnoozed}</strong></p> : null}
+                {currentMission?.status === 'done' ? <p className="goals-pane__hint"><strong>Готово.</strong> Новый шаг подготовлен автоматически.</p> : null}
                 <div className="settings-actions">
-                  <button type="button" onClick={async () => { if (!activeMission) { await acceptMission(); return } openMissionConfirm() }}>{goalsCopyRu.cockpit.missionAccept}</button>
-                  <button type="button" className="ghost-button" onClick={async () => { await rerollMission() }}>{goalsCopyRu.cockpit.missionDefer}</button>
-                  <button type="button" className="ghost-button" onClick={() => setMissionDetailsOpen((value) => !value)}>{goalsCopyRu.cockpit.missionWhyToggle}</button>
+                  {currentMission?.status === 'suggested' ? <button type="button" onClick={async () => { await acceptCurrentMission() }}>{goalsCopyRu.cockpit.missionAccept}</button> : null}
+                  {currentMission?.status === 'accepted' ? <button type="button" onClick={async () => { await completeCurrentMission() }}>{goalsCopyRu.cockpit.missionComplete}</button> : null}
+                  {(currentMission?.status === 'suggested' || currentMission?.status === 'accepted') ? <button type="button" className="ghost-button" onClick={async () => { await snoozeCurrentMission() }}>{goalsCopyRu.cockpit.missionDefer}</button> : null}
+                  {currentMission?.status === 'snoozed' ? <button type="button" onClick={async () => { await returnCurrentMission() }}>{goalsCopyRu.cockpit.missionReturn}</button> : null}
+                  {(currentMission?.status === 'suggested' || currentMission?.status === 'accepted') ? <button type="button" className="ghost-button" onClick={() => setMissionDetailsOpen((value) => !value)}>{goalsCopyRu.cockpit.missionWhyToggle}</button> : null}
                 </div>
-                {missionDetailsOpen ? <p className="goals-pane__hint"><strong>{goalsCopyRu.cockpit.reason}:</strong> {nextMissionTemplate?.why ?? 'Чтобы удержать траекторию выбранной цели.'}</p> : null}
+                {missionDetailsOpen ? <p className="goals-pane__hint"><strong>{goalsCopyRu.cockpit.reason}:</strong> {currentMission?.why ?? 'Чтобы удержать траекторию выбранной цели.'}</p> : null}
               </div>
             ) : (
               <p className="goals-pane__hint">{goalsCopyRu.cockpit.selectHint}</p>

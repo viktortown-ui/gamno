@@ -39,16 +39,16 @@ describe('missionPlanner', () => {
 
   it('строит предложенную миссию в нужном статусе и формате', () => {
     const mission = buildProposedMission(buildGoal(), 100)
-    expect(mission.status).toBe('предложена')
-    expect(mission.effect.unit).toBe('ед.')
-    expect(mission.costMinutes).toBeGreaterThanOrEqual(15)
+    expect(mission.status).toBe('suggested')
+    expect(mission.effectText.length).toBeGreaterThan(3)
+    expect(mission.costMinutes).toBeGreaterThanOrEqual(10)
   })
 
   it('находит единственную активную миссию', () => {
     const goal = buildGoal({
       missions: [
-        { id: 'm1', goalId: 'g-1', leverId: 'kr-focus', title: 'X', why: 'Y', effect: { min: 1, max: 2, unit: 'ед.' }, costMinutes: 15, status: 'выполнена', createdAt: 1, updatedAt: 1, doneAt: 2 },
-        { id: 'm2', goalId: 'g-1', leverId: 'kr-stress', title: 'A', why: 'B', effect: { min: 2, max: 4, unit: 'ед.' }, costMinutes: 30, status: 'принята', createdAt: 2, updatedAt: 2 },
+        { id: 'm1', goalId: 'g-1', leverId: 'kr-focus', title: 'X', why: 'Y', effectText: 'x', costMinutes: 15, status: 'done', createdAt: 1, updatedAt: 1, doneAt: 2 },
+        { id: 'm2', goalId: 'g-1', leverId: 'kr-stress', title: 'A', why: 'B', effectText: 'y', costMinutes: 30, status: 'accepted', createdAt: 2, updatedAt: 2 },
       ],
     })
     expect(getActiveMission(goal)?.id).toBe('m2')

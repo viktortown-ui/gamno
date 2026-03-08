@@ -1,55 +1,35 @@
 import type { MetricId } from '../../core/metrics'
-import type { GoalMission, GoalModePresetId, GoalRecord } from '../../core/models/goal'
+import type { GoalModePresetId, GoalRecord, Mission } from '../../core/models/goal'
 
-export type MissionTag = 'energy' | 'sleep' | 'focus' | 'money' | 'social' | 'stress'
+export type MissionTag = 'energy' | 'sleep' | 'focus' | 'money' | 'stress' | 'recovery' | 'checkin' | 'productivity' | 'social'
 
 export interface MissionTemplate {
   id: string
   title: string
   why: string
-  costMinutes: 15 | 30 | 45 | 60
-  effect: { min: number; max: number; unit: 'ед.' }
+  effectText: string
+  costMinutes: Mission['costMinutes']
   tags?: MissionTag[]
   ifThenPlan?: string
 }
 
 const fallbackTemplate: MissionTemplate = {
-  id: 'fallback-checkin',
-  title: 'Калибровка / чек-ин',
-  why: 'Данных для точного шага пока мало, поэтому короткая калибровка стабилизирует курс и проясняет следующее действие.',
+  id: 'universal-checkin',
+  title: 'Чек-ин и калибровка',
+  why: 'Короткая калибровка проясняет, где застрял прогресс, и возвращает управляемость.',
+  effectText: 'Снижается туман и становится понятен следующий шаг.',
   costMinutes: 15,
-  effect: { min: 2, max: 4, unit: 'ед.' },
+  tags: ['checkin'],
 }
 
-const templatesByMetric: Partial<Record<MetricId, MissionTemplate[]>> = {
-  energy: [
-    { id: 'energy-reset', title: 'Глубокий ресет', why: 'Энергия просела: короткий цикл восстановления вернёт управляемость и снимет вялость.', costMinutes: 30, effect: { min: 6, max: 10, unit: 'ед.' }, tags: ['energy', 'stress'] },
-    { id: 'energy-walk', title: 'Прогулка без экрана', why: 'Движение и свет поднимают тонус и дают чистый старт следующему блоку.', costMinutes: 45, effect: { min: 5, max: 8, unit: 'ед.' }, tags: ['energy'] },
-  ],
-  sleepHours: [
-    { id: 'sleep-evening', title: 'Вечерний протокол сна', why: 'Сон — базовый рычаг: стабильный ритуал снижает шум и ускоряет засыпание.', costMinutes: 30, effect: { min: 4, max: 7, unit: 'ед.' }, tags: ['sleep'] },
-  ],
-  stress: [
-    { id: 'stress-unload', title: 'Разгрузочный слот', why: 'Стресс стал узким местом: контролируемая пауза снижает перегрев и возвращает фокус.', costMinutes: 45, effect: { min: 5, max: 9, unit: 'ед.' }, tags: ['stress'] },
-  ],
-  focus: [
-    { id: 'focus-deep', title: 'Один глубокий блок', why: 'Фокус ослаб: один завершённый блок создаст тягу и уменьшит прокрастинацию.', costMinutes: 60, effect: { min: 6, max: 10, unit: 'ед.' }, tags: ['focus'] },
-  ],
-  productivity: [
-    { id: 'productivity-top1', title: 'Закрыть задачу №1', why: 'Главный результат дня убирает хаос и даёт сильный прирост по цели.', costMinutes: 60, effect: { min: 7, max: 10, unit: 'ед.' }, tags: ['focus'] },
-  ],
-  cashFlow: [
-    { id: 'money-review', title: 'Финансовый мини-разбор', why: 'Контроль денежного контура снижает неопределённость и убирает утечки.', costMinutes: 30, effect: { min: 4, max: 8, unit: 'ед.' }, tags: ['money'] },
-  ],
-  social: [
-    { id: 'social-call', title: 'Опорный контакт', why: 'Короткий живой контакт возвращает опору и снижает риск изоляции.', costMinutes: 15, effect: { min: 3, max: 5, unit: 'ед.' }, tags: ['social'] },
-  ],
-  mood: [
-    { id: 'mood-reset', title: 'Перезапуск состояния', why: 'Нейтрализация эмоционального шума помогает удержать темп без срыва.', costMinutes: 30, effect: { min: 4, max: 7, unit: 'ед.' }, tags: ['energy', 'stress'] },
-  ],
-  health: [
-    { id: 'health-mobility', title: 'Мобилизация тела', why: 'Снятие зажимов возвращает ресурс и поддерживает устойчивость на дистанции.', costMinutes: 30, effect: { min: 4, max: 7, unit: 'ед.' }, tags: ['energy'] },
-  ],
+const templatesByMetric: Partial<Record<MetricId, MissionTemplate>> = {
+  energy: { id: 'energy-walk', title: 'Прогулка без экрана', why: 'Энергия просела — движение и воздух быстро поднимут тонус.', effectText: 'Больше ресурса и устойчивости для следующего действия.', costMinutes: 30, tags: ['energy', 'recovery'] },
+  sleepHours: { id: 'sleep-quiet-hour', title: 'Тихий час перед сном', why: 'Сон расшатан: мягкий ритуал снижает перегрев и упрощает засыпание.', effectText: 'Стабильнее восстановление и ясность утром.', costMinutes: 45, tags: ['sleep', 'recovery'] },
+  stress: { id: 'stress-reset-10', title: 'Сброс напряжения на 10 минут', why: 'Стресс стал узким местом — пауза вернёт контроль над вниманием.', effectText: 'Меньше внутреннего шума и импульсивных решений.', costMinutes: 10, tags: ['stress', 'recovery'] },
+  focus: { id: 'focus-closed-block', title: 'Один закрытый блок без отвлечений', why: 'Фокус проседает, поэтому нужен один завершённый кусок работы.', effectText: 'Возвращается чувство продвижения и темп.', costMinutes: 30, tags: ['focus', 'productivity'] },
+  productivity: { id: 'productivity-tail', title: 'Добить один зависший хвост', why: 'Подвисшие хвосты съедают импульс и усиливают прокрастинацию.', effectText: 'Освобождается внимание и растёт скорость исполнения.', costMinutes: 25, tags: ['productivity'] },
+  cashFlow: { id: 'money-leak-check', title: 'Быстрый контроль утечки', why: 'Деньги/ресурс проседают — нужна короткая проверка утекающих трат.', effectText: 'Снижается неопределённость и укрепляется опора.', costMinutes: 20, tags: ['money'] },
+  health: { id: 'recovery-soft', title: 'Мягкое восстановление тела', why: 'Телу не хватает восстановления, это блокирует остальные ветви.', effectText: 'Больше ресурса на цель без перегрева.', costMinutes: 20, tags: ['recovery'] },
 }
 
 const presetFallbackMetric: Record<GoalModePresetId, MetricId> = {
@@ -57,35 +37,23 @@ const presetFallbackMetric: Record<GoalModePresetId, MetricId> = {
   recovery: 'sleepHours',
   sprint: 'focus',
   finance: 'cashFlow',
-  'social-shield': 'social',
+  'social-shield': 'stress',
 }
 
 export function resolveWeakLever(goal: GoalRecord): { leverId: string | null; metricId: MetricId | null } {
   const rows = goal.okr.keyResults
   if (rows.length === 0) return { leverId: null, metricId: null }
-  const sorted = [...rows].sort((a, b) => {
-    const ap = typeof a.progress === 'number' ? a.progress : 0.5
-    const bp = typeof b.progress === 'number' ? b.progress : 0.5
-    return ap - bp
-  })
-  const weak = sorted[0]
+  const weak = [...rows].sort((a, b) => (typeof a.progress === 'number' ? a.progress : 0.5) - (typeof b.progress === 'number' ? b.progress : 0.5))[0]
   return { leverId: weak.id, metricId: weak.metricId }
 }
 
 export function pickMissionTemplate(goal: GoalRecord): MissionTemplate {
   const weak = resolveWeakLever(goal)
   const metricId = weak.metricId ?? presetFallbackMetric[goal.modePresetId ?? 'balance']
-  const pool = templatesByMetric[metricId] ?? []
-  if (!pool.length) return fallbackTemplate
-
-  const history = (goal.missions ?? []).map((item) => item.id).join('|')
-  const saltBase = `${goal.id}:${metricId}:${history.length}:${history}`
-  let hash = 0
-  for (let i = 0; i < saltBase.length; i += 1) hash = (hash * 31 + saltBase.charCodeAt(i)) >>> 0
-  return pool[hash % pool.length]
+  return templatesByMetric[metricId] ?? fallbackTemplate
 }
 
-export function buildProposedMission(goal: GoalRecord, now = Date.now()): GoalMission {
+export function buildProposedMission(goal: GoalRecord, now = Date.now()): Mission {
   const template = pickMissionTemplate(goal)
   const weak = resolveWeakLever(goal)
   return {
@@ -94,16 +62,16 @@ export function buildProposedMission(goal: GoalRecord, now = Date.now()): GoalMi
     leverId: weak.leverId,
     title: template.title,
     why: template.why,
-    effect: template.effect,
+    effectText: template.effectText,
     costMinutes: template.costMinutes,
-    status: 'предложена',
+    status: 'suggested',
     createdAt: now,
     updatedAt: now,
   }
 }
 
-export function getActiveMission(goal: GoalRecord): GoalMission | undefined {
-  return (goal.missions ?? []).find((item) => item.status === 'предложена' || item.status === 'принята')
+export function getActiveMission(goal: GoalRecord): Mission | undefined {
+  return (goal.missions ?? []).find((item) => item.status === 'suggested' || item.status === 'accepted' || item.status === 'snoozed')
 }
 
 export type MissionEffectProfile = 'small' | 'medium' | 'large'
@@ -130,33 +98,8 @@ export function buildMissionSuggestion(options: {
   tags?: MissionTag[]
   ifThenPlan?: string
 } {
-  const goal: GoalRecord = {
-    id: `compat-${options.metricId}`,
-    createdAt: 0,
-    updatedAt: 0,
-    title: 'compat',
-    horizonDays: 14,
-    active: true,
-    weights: {},
-    okr: { objective: '', keyResults: [{ id: `kr-${options.metricId}`, metricId: options.metricId, direction: 'up', progress: 0.2 }] },
-    modePresetId: options.presetId,
-    status: 'active',
-    missions: options.excludedTemplateIds.map((id, idx) => ({
-      id,
-      goalId: 'compat',
-      leverId: null,
-      title: 'x',
-      why: 'x',
-      effect: { min: 1, max: 1, unit: 'ед.' },
-      costMinutes: 15,
-      status: 'выполнена',
-      createdAt: idx,
-      updatedAt: idx,
-      doneAt: idx,
-    })),
-  }
-  const picked = pickMissionTemplate(goal)
-  const timeBandMinutes: 5 | 15 | 30 = picked.costMinutes <= 15 ? 15 : picked.costMinutes <= 30 ? 30 : 30
-  const effectProfile: MissionEffectProfile = picked.effect.max >= 8 ? 'large' : picked.effect.max >= 6 ? 'medium' : 'small'
-  return { id: picked.id, title: picked.title, why: picked.why, timeBandMinutes, effectProfile, tags: picked.tags, ifThenPlan: undefined }
+  const template = templatesByMetric[options.metricId] ?? fallbackTemplate
+  const timeBandMinutes: 5 | 15 | 30 = template.costMinutes <= 15 ? 15 : 30
+  const effectProfile: MissionEffectProfile = template.costMinutes >= 30 ? 'large' : template.costMinutes >= 20 ? 'medium' : 'small'
+  return { id: template.id, title: template.title, why: template.why, timeBandMinutes, effectProfile, tags: template.tags, ifThenPlan: undefined }
 }
