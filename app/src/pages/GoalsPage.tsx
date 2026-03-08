@@ -35,6 +35,7 @@ import { completeMission, ensureSuggestedMission, getCurrentMission, setMissionS
 import { buildGoalAutoLinkSuggestions } from '../core/engines/goal/autoLinkSuggestions'
 import { buildGoalProfile, energyLabel, formatCostLabel, scoreLabel } from './goals/goalProfile'
 import type { GoalProfile } from './goals/goalProfile'
+import { buildGoalRootSceneModel, type GoalRelationNode, type GoalRelationType, type GoalSceneMode } from './goals/goalRootScene'
 import './goals/GoalsSurface.css'
 
 type GoalTemplateId = 'growth' | 'anti-storm' | 'energy-balance' | 'money'
@@ -317,6 +318,7 @@ export function GoalsPage() {
   const [forestSearch, setForestSearch] = useState('')
   const [forestGroveFilter, setForestGroveFilter] = useState<string>('all')
   const [rootsStageEnabled, setRootsStageEnabled] = useState(false)
+  const [goalSceneMode, setGoalSceneMode] = useState<GoalSceneMode>('map')
   const [forestMenuGoalId, setForestMenuGoalId] = useState<string | null>(null)
   const [forestMenuStyle, setForestMenuStyle] = useState<CSSProperties | null>(null)
   const forestMenuTriggerRefs = useRef<Record<string, HTMLButtonElement | null>>({})
@@ -1046,6 +1048,31 @@ export function GoalsPage() {
 
   const goalProfileMap = useMemo(() => new Map(goalProfiles.map((item) => [item.goalId, item.profile])), [goalProfiles])
   const selectedGoalProfile: GoalProfile | null = selected ? (goalProfileMap.get(selected.id) ?? null) : null
+
+  const goalRootScene = useMemo(() => buildGoalRootSceneModel({
+    selectedGoal: selected,
+    allGoals: goals,
+    profile: selectedGoalProfile,
+    mode: goalSceneMode,
+    debtTotal: timeDebtSnapshot?.totals.totalDebt,
+    blackSwanRisk: blackSwanRun?.summary.probEverRed,
+    hasSocialInsight: Boolean(socialInsight),
+  }), [blackSwanRun?.summary.probEverRed, goalSceneMode, goals, selected, selectedGoalProfile, socialInsight, timeDebtSnapshot?.totals.totalDebt])
+
+  const goalSceneNodesByType = useMemo(() => {
+    const grouped: Record<GoalRelationType, GoalRelationNode[]> = {
+      helps: [],
+      blocks: [],
+      depends_on: [],
+      conflicts_with: [],
+    }
+    for (const node of goalRootScene?.nodes ?? []) grouped[node.type].push(node)
+    return grouped
+  }, [goalRootScene?.nodes])
+
+  useEffect(() => {
+    if (!selectedGoalId) setGoalSceneMode('map')
+  }, [selectedGoalId])
 
   const closeForge = () => {
     setIsForgeOpen(false)
@@ -1997,25 +2024,84 @@ export function GoalsPage() {
         <article className="goals-surface__stage goals-pane">
           <div className="goals-surface__stage-viewport" role="presentation">
             {goalsStageMode === 'cells' ? (
-              <GoalCellsStage
-                goals={universeStageGoals}
-                goalsLoaded={goalsLoaded}
-                links={universeStageLinks}
-                showLinks={rootsStageEnabled && Boolean(selectedGoalId)}
-                selectedGoalId={selectedGoalId}
-                selectedBranchId={selectedKrId}
-                onSelectGoal={(goalId) => {
-                  setSelectedGoalId(goalId)
-                              }}
-                onSelectBranch={setSelectedKrId}
-                onClearBranch={() => setSelectedKrId(null)}
-                resetSignal={stageResetSignal}
-                tooFewGoalsHint={forestTab === 'active' && universeStageGoals.length < 3 ? 'Добавьте ещё цели.' : null}
-                overlayLabel={goalsCopyRu.stage.hint}
-                resetLabel={goalsCopyRu.stage.resetView}
-                focusLabel={goalsCopyRu.stage.focus}
-                onMissionHudClick={focusCockpitMission}
-              />
+              <div className="goals-scene-shell">
+                <GoalCellsStage
+                  goals={universeStageGoals}
+                  goalsLoaded={goalsLoaded}
+                  links={universeStageLinks}
+                  showLinks={rootsStageEnabled && Boolean(selectedGoalId)}
+                  selectedGoalId={selectedGoalId}
+                  selectedBranchId={selectedKrId}
+                  onSelectGoal={(goalId) => {
+                    setSelectedGoalId(goalId)
+                  }}
+                  onSelectBranch={setSelectedKrId}
+                  onClearBranch={() => setSelectedKrId(null)}
+                  resetSignal={stageResetSignal}
+                  tooFewGoalsHint={forestTab === 'active' && universeStageGoals.length < 3 ? 'Добавьте ещё цели.' : null}
+                  overlayLabel={goalsCopyRu.stage.hint}
+                  resetLabel={goalsCopyRu.stage.resetView}
+                  focusLabel={goalsCopyRu.stage.focus}
+                  onMissionHudClick={focusCockpitMission}
+                />
+
+                <section className="goals-root-scene" aria-label="Карта выбранной цели">
+                  <div className="goals-root-scene__toolbar" role="tablist" aria-label="Режим карты цели">
+                    {([
+                      ['map', 'Карта'],
+                      ['causes', 'Причины'],
+                      ['conflicts', 'Конфликты'],
+                      ['execution', 'Исполнение'],
+                    ] as Array<[GoalSceneMode, string]>).map(([mode, label]) => (
+                      <button
+                        key={mode}
+                        type="button"
+                        className={goalSceneMode === mode ? 'goals-root-scene__mode goals-root-scene__mode--active' : 'goals-root-scene__mode'}
+                        onClick={() => setGoalSceneMode(mode)}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {!selected || !goalRootScene ? <p className="goals-pane__hint">Выберите цель: появится карта опор, блокеров, зависимостей и конфликтов.</p> : (
+                    <div className="goals-root-scene__content">
+                      <div className="goals-root-scene__ring">
+                        <article className="goals-root-scene__cluster goals-root-scene__cluster--helps">
+                          <h4>Опоры</h4>
+                          <ul>{goalSceneNodesByType.helps.map((node) => <li key={node.id}>{node.title}</li>)}</ul>
+                        </article>
+                        <article className="goals-root-scene__cluster goals-root-scene__cluster--blocks">
+                          <h4>Блокеры</h4>
+                          <ul>{goalSceneNodesByType.blocks.map((node) => <li key={node.id}>{node.title}</li>)}</ul>
+                        </article>
+                        <article className="goals-root-scene__center">
+                          <p className="goals-root-scene__eyebrow">Выбранная цель</p>
+                          <h3>{goalRootScene.centerTitle}</h3>
+                          {goalRootScene.nodes.find((node) => node.isPressure) ? <p><strong>Узел давления:</strong> {goalRootScene.nodes.find((node) => node.isPressure)?.title}</p> : null}
+                          {goalRootScene.nodes.find((node) => node.isNextStep) && goalSceneMode === 'execution' ? <p><strong>Главный рычаг:</strong> {goalRootScene.nodes.find((node) => node.isNextStep)?.title}</p> : null}
+                        </article>
+                        <article className="goals-root-scene__cluster goals-root-scene__cluster--depends">
+                          <h4>Зависимости</h4>
+                          <ul>{goalSceneNodesByType.depends_on.map((node) => <li key={node.id}>{node.title}</li>)}</ul>
+                        </article>
+                        <article className="goals-root-scene__cluster goals-root-scene__cluster--conflicts">
+                          <h4>Конфликты</h4>
+                          <ul>{goalSceneNodesByType.conflicts_with.map((node) => <li key={node.id}>{node.title}</li>)}</ul>
+                        </article>
+                      </div>
+                      <div className="goals-root-scene__pressure-list">
+                        {goalRootScene.nodes.slice(0, 6).map((node) => (
+                          <div key={node.id} className={node.isPressure ? 'goals-root-scene__chip goals-root-scene__chip--pressure' : node.isNextStep ? 'goals-root-scene__chip goals-root-scene__chip--next-step' : 'goals-root-scene__chip'}>
+                            <strong>{node.title}</strong>
+                            <span>{node.type} · вес {node.weight} · уверенность {node.confidence} · {node.provenance}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </section>
+              </div>
             ) : selected ? (
               <GoalYggdrasilTree
                 objective={selected.okr.objective}
@@ -2066,21 +2152,21 @@ export function GoalsPage() {
                 <h3>Ключевые ветви</h3>
                 {!selectedGoalProfile ? <p className="goals-pane__hint">Выберите цель, чтобы увидеть ключевые рычаги.</p> : (
                   <ul>
-                    {selectedGoalProfile.branches.slice(0, 3).map((branch) => (
-                      <li key={branch.name}><strong>{branch.name}</strong> · {branch.role} · {branch.strength}</li>
+                    {(goalRootScene?.nodes ?? []).filter((node) => node.type === 'helps').slice(0, 3).map((node) => (
+                      <li key={node.id}><strong>{node.title}</strong> · поддержка · вес {node.weight}</li>
                     ))}
                   </ul>
                 )}
-                {selectedGoalProfile ? <p className="goals-bottom-shelf__verdict">Вердикт: усиливайте первую ветвь перед расширением фронта задач.</p> : null}
+                {selectedGoalProfile ? <p className="goals-bottom-shelf__verdict">Вердикт: усиливайте опоры, которые уже отмечены на центральной карте.</p> : null}
               </article>
               <article className="goals-bottom-shelf__card">
                 <h3>Ограничения</h3>
                 {!selectedGoalProfile ? <p className="goals-pane__hint">Данных мало. Сделайте чек-ин или задайте параметры цели.</p> : (
                   <ul>
-                    {selectedGoalProfile.constraints.slice(0, 3).map((constraint) => <li key={constraint}>{constraint}</li>)}
+                    {(goalRootScene?.nodes ?? []).filter((node) => node.type === 'blocks' || node.type === 'depends_on').slice(0, 3).map((node) => <li key={node.id}>{node.title}</li>)}
                   </ul>
                 )}
-                {selectedGoalProfile ? <p className="goals-bottom-shelf__verdict">Вердикт: работайте в пределах ограничений, иначе риск резко ускоряется.</p> : null}
+                {selectedGoalProfile ? <p className="goals-bottom-shelf__verdict">Вердикт: сначала снимайте главный блокер/зависимость, затем расширяйте фронт.</p> : null}
               </article>
               <article className="goals-bottom-shelf__card goals-bottom-shelf__card--inaction">
                 <h3>Цена бездействия</h3>
@@ -2091,8 +2177,9 @@ export function GoalsPage() {
                       <li>Долг: +{selectedGoalProfile.prognosis.idle.debtDelta}</li>
                       <li>Риск: +{selectedGoalProfile.prognosis.idle.riskDelta}</li>
                       <li>Импульс: {selectedGoalProfile.prognosis.idle.momentumDelta}</li>
+                      {goalRootScene?.nodes.find((node) => node.isPressure) ? <li>Узел давления: {goalRootScene.nodes.find((node) => node.isPressure)?.title}</li> : null}
                     </ul>
-                    <p className="goals-bottom-shelf__verdict">Вердикт: без шага цель теряет управляемость уже в ближайшие дни.</p>
+                    <p className="goals-bottom-shelf__verdict">Вердикт: без шага давление в главном узле усилится и конфликтный контур расширится.</p>
                   </>
                 )}
               </article>
@@ -2105,7 +2192,7 @@ export function GoalsPage() {
                   </div>
                 ) : (
                   <ul>
-                    {missionHistory.slice(0, 4).map((item) => <li key={item.id}>{item.title} · выполнено · +{item.coresAwarded} · {new Date(item.completedAt).toLocaleDateString('ru-RU')}</li>)}
+                    {missionHistory.slice(0, 4).map((item) => <li key={item.id}>{item.title} · выполнено · +{item.coresAwarded} · {new Date(item.completedAt).toLocaleDateString('ru-RU')} · режим {goalSceneMode}</li>)}
                   </ul>
                 )}
                 {missionHistory.length > 0 ? <p className="goals-bottom-shelf__verdict">Вердикт: повторяющиеся завершения укрепляют темп и снижают риск отката.</p> : null}
