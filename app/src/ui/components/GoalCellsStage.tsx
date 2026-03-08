@@ -600,13 +600,14 @@ export function GoalCellsStage({ goals, goalsLoaded = true, links, showLinks, se
 
 
   const stageReady = goalsLoaded && viewportStable && initialApplied !== null
+  const stageWorldClassName = stageReady ? 'goal-cells-stage__world goal-cells-stage__world--ready' : 'goal-cells-stage__world'
 
   useEffect(() => {
     if (!debugEnabled || !sceneWrapRef.current || typeof window === 'undefined') return
     const loadingLabel = Array.from(sceneWrapRef.current.querySelectorAll('div')).find((node) => node.textContent?.includes('Загрузка сцены'))
     if (!loadingLabel) return
     if (loadingLabel.closest('svg') || loadingLabel.closest('.goal-cells-stage__zoom-root')) {
-      console.warn('Loading label must be in overlay, not zoomRoot')
+      console.error('Loading overlay is inside moving world')
     }
   }, [debugEnabled, stageReady])
   const cameraMode = cameraLocked ? 'pinned' : 'init'
@@ -614,9 +615,9 @@ export function GoalCellsStage({ goals, goalsLoaded = true, links, showLinks, se
 
   return (
     <div className="goal-cells-stage">
-      <div className="goal-cells-stage__scene" ref={sceneWrapRef} aria-label="Сцена всех целей и рычагов">
-        <div className={stageReady ? 'goal-cells-stage__scene-content goal-cells-stage__scene-content--ready' : 'goal-cells-stage__scene-content'}>
-          <svg ref={sceneRef} viewBox={`0 0 ${viewSize.width} ${viewSize.height}`} role="img" aria-label="Сцена целей">
+      <div className="goal-cells-stage__shell">
+        <div className="goal-cells-stage__viewport" ref={sceneWrapRef} aria-label="Сцена всех целей и рычагов">
+          <svg className={stageWorldClassName} ref={sceneRef} viewBox={`0 0 ${viewSize.width} ${viewSize.height}`} role="img" aria-label="Сцена целей">
           <rect className="goal-cells-stage__catcher" x={0} y={0} width={viewSize.width} height={viewSize.height} fill="transparent" onClick={onClearBranch} />
           <g className="goal-cells-stage__zoom-root" transform={transform.toString()}>
             <g className="goal-cells-stage__links-layer" aria-hidden="true">
@@ -690,26 +691,26 @@ export function GoalCellsStage({ goals, goalsLoaded = true, links, showLinks, se
             ))}
           </g>
           </svg>
-        </div>
-        <div className="goal-cells-stage__overlay" aria-hidden="true">
-          <div className={stageReady ? 'goal-cells-stage__load-gate goal-cells-stage__load-gate--hidden' : 'goal-cells-stage__load-gate'}>Загрузка сцены…</div>
-          {stageReady ? <div className="goal-cells-stage__overlay-label">{overlayLabel}</div> : null}
-          {stageReady && tooFewGoalsHint ? <p className="goal-cells-stage__inline-hint">{tooFewGoalsHint}</p> : null}
-          {stageReady ? <div className="goal-cells-stage__floating-controls" role="toolbar" aria-label="Управление сценой">
-            <button type="button" className="filter-button goal-cells-stage__hud-chip" onClick={() => queueFit('ALL', 'button:reset', true)}>{isMobile ? '↺' : resetLabel}</button>
-            <button type="button" className="filter-button goal-cells-stage__hud-chip" onClick={resetCamera}>Сброс камеры</button>
-            <button type="button" className="filter-button goal-cells-stage__hud-chip" onClick={() => queueFit('FOCUS', `button:focus:${selectedGoalId ?? 'none'}`, true)} disabled={!selectedGoalId}>{isMobile ? '◎' : focusLabel}</button>
-            {debugEnabled ? (
-              <div className="goal-cells-stage__debug-hud" aria-live="polite">
-                <span className="goal-cells-stage__hud-chip">scrollY:{debugScrollY}</span>
-                <span className="goal-cells-stage__hud-chip">fit:{fitApplyCount} · {lastFitReason}</span>
-                <span className="goal-cells-stage__hud-chip">k:{transform.k.toFixed(2)} x:{transform.x.toFixed(0)} y:{transform.y.toFixed(0)}</span>
-                <span className="goal-cells-stage__hud-chip">auto:{lastAutoMoveCause} · stable:{viewportStable ? '1' : '0'}</span>
-                <span className="goal-cells-stage__hud-chip">camera:{cameraMode} · initial:{initialMode ?? 'none'}</span>
-                <span className="goal-cells-stage__hud-chip">ready g:{goalsLoaded ? '1' : '0'} v:{viewportStable ? '1' : '0'} i:{initialApplied ? '1' : '0'}</span>
-              </div>
-            ) : null}
-          </div> : null}
+          <div className="goal-cells-stage__overlay" aria-hidden="true">
+            <div className={stageReady ? 'goal-cells-stage__load-gate goal-cells-stage__load-gate--hidden' : 'goal-cells-stage__load-gate'}>Загрузка сцены…</div>
+            {stageReady ? <div className="goal-cells-stage__overlay-label">{overlayLabel}</div> : null}
+            {stageReady && tooFewGoalsHint ? <p className="goal-cells-stage__inline-hint">{tooFewGoalsHint}</p> : null}
+            {stageReady ? <div className="goal-cells-stage__floating-controls" role="toolbar" aria-label="Управление сценой">
+              <button type="button" className="filter-button goal-cells-stage__hud-chip" onClick={() => queueFit('ALL', 'button:reset', true)}>{isMobile ? '↺' : resetLabel}</button>
+              <button type="button" className="filter-button goal-cells-stage__hud-chip" onClick={resetCamera}>Сброс камеры</button>
+              <button type="button" className="filter-button goal-cells-stage__hud-chip" onClick={() => queueFit('FOCUS', `button:focus:${selectedGoalId ?? 'none'}`, true)} disabled={!selectedGoalId}>{isMobile ? '◎' : focusLabel}</button>
+              {debugEnabled ? (
+                <div className="goal-cells-stage__debug-hud" aria-live="polite">
+                  <span className="goal-cells-stage__hud-chip">scrollY:{debugScrollY}</span>
+                  <span className="goal-cells-stage__hud-chip">fit:{fitApplyCount} · {lastFitReason}</span>
+                  <span className="goal-cells-stage__hud-chip">k:{transform.k.toFixed(2)} x:{transform.x.toFixed(0)} y:{transform.y.toFixed(0)}</span>
+                  <span className="goal-cells-stage__hud-chip">auto:{lastAutoMoveCause} · stable:{viewportStable ? '1' : '0'}</span>
+                  <span className="goal-cells-stage__hud-chip">camera:{cameraMode} · initial:{initialMode ?? 'none'}</span>
+                  <span className="goal-cells-stage__hud-chip">ready g:{goalsLoaded ? '1' : '0'} v:{viewportStable ? '1' : '0'} i:{initialApplied ? '1' : '0'}</span>
+                </div>
+              ) : null}
+            </div> : null}
+          </div>
         </div>
       </div>
     </div>

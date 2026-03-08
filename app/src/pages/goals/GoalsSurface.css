@@ -75,6 +75,19 @@
 
 .goals-surface__stage {
   overflow: hidden;
+  display: grid;
+  grid-template-rows: minmax(320px, 1fr) auto;
+  min-height: 0;
+  gap: 0;
+}
+
+.goals-surface__stage-viewport {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.goals-surface__stage-meta {
+  min-height: 0;
 }
 
 .goals-surface__left,

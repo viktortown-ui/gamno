@@ -4030,21 +4030,31 @@ button.danger { background: color-mix(in srgb, #e45959 30%, var(--panel) 70%); b
 .goal-cells-stage {
   display: grid;
   gap: 0;
+  min-height: 0;
+  height: 100%;
 }
 
-.goal-cells-stage__scene {
+.goal-cells-stage__shell {
   position: relative;
+  min-height: 0;
+  height: 100%;
+}
+
+.goal-cells-stage__viewport {
+  position: relative;
+  width: 100%;
+  height: 100%;
   min-height: clamp(340px, 52vh, 620px);
+  overflow: hidden;
   border: 0;
   border-radius: 0;
-  overflow: hidden;
   background:
     radial-gradient(120% 90% at 20% 10%, rgba(104, 138, 214, 0.2), transparent 58%),
     radial-gradient(90% 70% at 80% 80%, rgba(91, 61, 146, 0.22), transparent 62%),
     linear-gradient(180deg, #08101d 0%, #050914 55%, #03060f 100%);
 }
 
-.goal-cells-stage__scene::before {
+.goal-cells-stage__viewport::before {
   content: '';
   position: absolute;
   inset: 0;
@@ -4059,7 +4069,7 @@ button.danger { background: color-mix(in srgb, #e45959 30%, var(--panel) 70%); b
   mix-blend-mode: screen;
 }
 
-.goal-cells-stage__scene::after {
+.goal-cells-stage__viewport::after {
   content: '';
   position: absolute;
   inset: 0;
@@ -4090,26 +4100,29 @@ button.danger { background: color-mix(in srgb, #e45959 30%, var(--panel) 70%); b
   color: color-mix(in srgb, var(--text) 74%, var(--muted) 26%);
 }
 
-.goal-cells-stage__scene svg {
-  width: 100%;
-  height: 100%;
-}
-
-.goal-cells-stage__scene-content {
+.goal-cells-stage__world {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   opacity: 0;
-  transition: opacity 260ms ease;
+  transition: opacity 160ms ease;
 }
 
-.goal-cells-stage__scene-content--ready {
+.goal-cells-stage__world--ready {
   opacity: 1;
 }
+
+.goal-cells-stage__zoom-root {
+  transition: none;
+}
+
 
 .goal-cells-stage__overlay {
   position: absolute;
   inset: 0;
   z-index: 4;
+  display: grid;
   pointer-events: none;
 }
 
@@ -4133,8 +4146,8 @@ button.danger { background: color-mix(in srgb, #e45959 30%, var(--panel) 70%); b
 
 .goal-cells-stage__floating-controls {
   position: absolute;
-  top: 10px;
-  right: 10px;
+  top: 12px;
+  right: 12px;
   z-index: 3;
   display: flex;
   gap: 8px;

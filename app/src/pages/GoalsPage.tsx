@@ -1919,7 +1919,7 @@ export function GoalsPage() {
         </article>
 
         <article className="goals-surface__stage goals-pane">
-          <>
+          <div className="goals-surface__stage-viewport" role="presentation">
             {goalsStageMode === 'cells' ? (
               <GoalCellsStage
                 goals={universeStageGoals}
@@ -1958,6 +1958,9 @@ export function GoalsPage() {
               </div>
               </div>
             )}
+          </div>
+
+          <div className="goals-surface__stage-meta">
             {selected && goals.some((item) => item.parentGoalId === selected.id && item.status === 'active') ? (
               <section className="goals-stage-children">
                 <h3>Дочерние деревья супер-цели</h3>
@@ -1966,22 +1969,22 @@ export function GoalsPage() {
                 </ul>
               </section>
             ) : null}
-          </>
 
-          <p className="goals-stage-legend">Размер = влияние · Контур = приоритет · Трещина = слабая · Плод = активная миссия</p>
+            <p className="goals-stage-legend">Размер = влияние · Контур = приоритет · Трещина = слабая · Плод = активная миссия</p>
 
-          <section className="goals-stage-krs">
-            <h3>Ключевые ветви</h3>
-            {selectedKrs.length === 0 ? <p>Ветви появятся после выбора цели.</p> : null}
-            <ul>
-              {selectedKrs.slice(0, 5).map((kr) => (
-                <li key={kr.id} className={selectedKrId === kr.id ? 'goals-stage-krs__item goals-stage-krs__item--selected' : 'goals-stage-krs__item'}>
-                  <strong>{METRICS.find((item) => item.id === kr.metricId)?.labelRu ?? kr.metricId}</strong>
-                  <span>{kr.direction === 'up' ? 'Фокус на росте' : 'Фокус на снижении'}</span>
-                </li>
-              ))}
-            </ul>
-          </section>
+              <section className="goals-stage-krs">
+              <h3>Ключевые ветви</h3>
+              {selectedKrs.length === 0 ? <p>Ветви появятся после выбора цели.</p> : null}
+              <ul>
+                {selectedKrs.slice(0, 5).map((kr) => (
+                  <li key={kr.id} className={selectedKrId === kr.id ? 'goals-stage-krs__item goals-stage-krs__item--selected' : 'goals-stage-krs__item'}>
+                    <strong>{METRICS.find((item) => item.id === kr.metricId)?.labelRu ?? kr.metricId}</strong>
+                    <span>{kr.direction === 'up' ? 'Фокус на росте' : 'Фокус на снижении'}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          </div>
         </article>
 
         <article className="goals-surface__cockpit goals-pane goals-tree-state">
